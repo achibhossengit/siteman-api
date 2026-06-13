@@ -118,12 +118,11 @@ The single Level 0 system is divided by major functional area. Each section head
 | # | Process |
 |---|---|
 | P7.1 | Create / edit labourer |
-| P7.2 | Assign labourer to site |
-| P7.3 | Move labourer between sites (one site at a time) |
-| P7.4 | Activate / deactivate labour account |
-| P7.5 | Update labour salary for a date range |
-| P7.6 | View and search labourers by site / status |
-| P7.7 | Delete labour account |
+| P7.2 | Move labourer to site|
+| P7.3 | Activate / deactivate labour account |
+| P7.4 | Update labour salary for a date range |
+| P7.5 | View and search labourers by site / status |
+| P7.6 | Delete labour account |
 
 ### P8 → Manage Labour Payment
 | # | Process |
@@ -153,7 +152,7 @@ The single Level 0 system is divided by major functional area. Each section head
 ### P12 → Manage Site Expense
 | # | Process |
 |---|---|
-| P12.1 | Record site construction cost (SiteCost: floor + category required) |
+| P12.1 | Record site construction cost (SiteCost: floor required, category nullable) |
 | P12.2 | Record hidden cost (HiddenCost: floor + category nullable) |
 | P12.3 | View cost history |
 

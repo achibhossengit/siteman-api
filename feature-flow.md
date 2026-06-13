@@ -13,7 +13,7 @@
 
 ### P1.2 — Register
 - Visitor provides name, phone_number, email, company detail, and password.
-- System validates BD phone_number and checks it is not already registered.
+- System validates BD phone_number and checks it is not already registered (**phone is globally unique across the whole platform — one phone = one account**).
 - System sends an OTP to this phone number; user completes registration by providing the OTP.
 - On OTP success, inside one database transaction:
   1. System creates the Company using the company detail.
@@ -155,7 +155,9 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 - Reactivation restores access; history is untouched.
 
 ### P5.6 — Delete user
-- Allowed only if the user has no created records.
+- **Not referenced by any entity** (no created records, no site assignments, not an actor on any audit entry) → hard delete allowed; the deletion itself is written to the audit log.
+- **Referenced by any entity** → delete blocked; deactivate instead (P5.5).
+- Implementation: FK references stay `NOT NULL` with `on_delete=PROTECT`; the DB itself enforces "no delete while referenced".
 
 ### P5.7 — View and search users
 - List company users with filters: role, site, active status; search by name/phone.
@@ -193,7 +195,7 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 - Admin sees all sites; othere users see only assigned sites. Filters: open/closed, active/inactive.
 
 ### P6.7 — View site Report
-- Shows current balance = total cash - total cost
+- Shows current cash balance = `deposits − returns − site cost − labour payments` (hidden cost excluded — paid by admin, not from the site box; see P12.2)
 - Shows site revenew
 - Show site total attendence count
 - Show site total cost
@@ -210,13 +212,10 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 ### P6.9 — Deactivate/Activate site floors
 - Floor may activate or deactivate. Deactivate means no new records allow to create under this floor execpt the SiteBill. But, historic data is accessable.
 
-### P6.10 — Deactivate/Activate site floors
-- Floor may activate or deactivate. Deactivate means no new records allow to create under this floor execpt the SiteBill. But, historic data is accessable.
-
-### P6.11 — Mark as done
+### P6.10 — Mark as done
 - This floor work is done, no need new expense or work.
 - Floor will deactivate
-- To activate the site again need to unmark as done first.
+- To activate the floor again need to unmark as done first.
 
 ---
 
@@ -230,10 +229,10 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 - System check name uniqeness
 - Labour starts active, assigned to that site.
 
-### P7.2 — Assign labourer to site
-- Sets or change the labour's current site.
-- Previous site manager no longer create new record against this labour.
-- Now new site manager has autority to create new record for this labour
+### P7.2 — Assign / move labourer to site
+- Sets or changes the labour's current site (one site at a time — assigning to a new site **is** the move).
+- Previous site manager no longer creates new records against this labour.
+- New site manager now has authority to create new records for this labour.
 
 ### P7.3 — Activate / deactivate labour account
 - Inactive labour: no new attendance, no new payments; history stays.
@@ -243,12 +242,13 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 - New salary takes effect for a date range; range must start after the last session end date (locked period cannot be re-priced).
 - Attendance records snapshot the salary at entry time, so past earnings stay correct.
 
-### P7.6 — View and search labourers
+### P7.5 — View and search labourers
 - Filter by site, active status; search by name. Shows current site, salary, balance.
 
-### P7.7 — Delete labour account
-- Allowed only when the labour has no attendance/payment records; otherwise Balance is zero.
-- All of his record stays with null labour id. Kind of unknown labour.
+### P7.6 — Delete labour account
+- **No attendance / payment / return records** → hard delete allowed; the deletion is written to the audit log.
+- **Referenced by any record** → delete blocked; deactivate instead (P7.3).
+- Implementation: labour FK on ledger rows stays `NOT NULL` with `on_delete=PROTECT`; no orphan/null-labour rows.
 
 ---
 
@@ -329,7 +329,7 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 - **Expense category is nullable**: null = "Generalized expense".
 
 ### P12.3 — View cost history
-- Ledger per site, filterable by floor, expense category, cost type, date range.
+- Ledger per site, filterable by floor, expense category, record type (site cost / hidden cost), date range.
 
 ---
 
@@ -371,7 +371,7 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 - Costs grouped by company expense category / floor for a site and date range (SiteCost and HiddenCost shown separately).
 
 ### P15.3 — Site balance report
-- `last cash total − (cost total + labour payment total)` per site — current spendable cash position.
+- `deposits − returns − site cost total − labour payment total` per site — current spendable cash (matches P6.7; hidden cost excluded).
 
 ### P15.4 — Site Profit report
 - Profit per site: `bills − (labour cost + site cost + hidden cost)`.
