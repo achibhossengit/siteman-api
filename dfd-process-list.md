@@ -29,21 +29,21 @@ The single Level 0 system is divided by major functional area. Each section head
 | # | Process |
 |---| --- |
 | P1 | Manage Authentication |
-| P2 | Manage Company |
-| P3 | Manage Company Subscription |
-| P4 | Manage Users |
-| P5 | Manage Sites |
-| P6 | Manage Labour Accounts |
-| P7 | Manage Labour Payment |
-| P8 | Manage Labour Payment Return |
-| P9 | Manage Labour Worksession |
-| P10 | Manage Daily Attendance |
-| P11 | Manage Site Expense |
-| P12 | Manage Site Cash |
-| P13 | Manage Site Bills |
-| P14 | Generate Reports |
-| P15 | Record Edits & Audit Trail |
-| P16 | Manage Platform |
+| P2 | Manage Platform |
+| P3 | Manage Company |
+| P4 | Manage Company Subscription |
+| P5 | Manage Users |
+| P6 | Manage Sites |
+| P7 | Manage Labour Accounts |
+| P8 | Manage Labour Payment |
+| P9 | Manage Labour Payment Return |
+| P10 | Manage Labour Worksession |
+| P11 | Manage Daily Attendance |
+| P12 | Manage Site Expense |
+| P13 | Manage Site Cash |
+| P14 | Manage Site Bills |
+| P15 | Generate Reports |
+| P16 | Record Edits & Audit Trail |
 
 ---
 
@@ -58,135 +58,136 @@ The single Level 0 system is divided by major functional area. Each section head
 | P1.4 | Change password |
 | P1.5 | Logout |
 
-### P2 → Manage Company
+### P2 → Manage Platform
 | # | Process |
 |---|---|
-| P2.1 | Create company (auto-created on registration) |
-| P2.2 | View company profile & status |
-| P2.3 | Edit company details (name, recent activity) |
-| P2.4 | Manage expense categories (company-level, shared by all sites) |
+| P2.1 | System user login |
+| P2.2 | View and search all companies |
+| P2.3 | Activate / deactivate a company |
+| P2.4 | Manage subscription plans (tiers, pricing, durations) |
+| P2.5 | Monitor subscription status of all companies |
+| P2.6 | System admin will create system users |
+| P2.7 | System admin will assign user to different system roles |
+| P2.8 | System admin will assign user to system level permissions |
 
-### P3 → Manage Company Subscription
+### P3 → Manage Company
 | # | Process |
 |---|---|
-| P3.1 | View subscription status, current plan, and validity |
-| P3.2 | Pay for plan via payment gateway |
-| P3.3 | Renew Plan |
-| P3.4 | Upgrade plan |
-| P3.5 | Downgrade plan |
-| P3.6 | Disable write access on expiry |
-| P3.7 | Send renewal reminders |
+| P3.1 | Create company (auto-created on registration) |
+| P3.2 | View company profile & status |
+| P3.3 | Edit company details (name, recent activity) |
+| P3.4 | Manage expense categories (company-level, shared by all sites) |
 
-### P4 → Manage Users
+### P4 → Manage Company Subscription
 | # | Process |
 |---|---|
-| P4.1 | Create user |
-| P4.2 | Assign role to user |
-| P4.3 | Assign user to one or more sites |
-| P4.4 | Assign permissions to user |
-| P4.5 | Activate / deactivate user |
-| P4.6 | Delete user |
-| P4.7 | View and search users |
+| P4.1 | View subscription status, current plan, and validity |
+| P4.2 | Pay for plan via payment gateway |
+| P4.3 | Renew Plan |
+| P4.4 | Upgrade plan |
+| P4.5 | Downgrade plan |
+| P4.6 | Disable write access on expiry |
+| P4.7 | Send renewal reminders |
 
-### P5 → Manage Sites
+### P5 → Manage Users
 | # | Process |
 |---|---|
-| P5.1 | Create / edit site (validate open site count against plan limit) |
-| P5.2 | Deactivate & Activate Site |
-| P5.3 | Close site permanently (data archived, users lose access) |
-| P5.4 | Delete site |
-| P5.5 | Assign managers to site |
-| P5.6 | View company sites (managers see only assigned sites) |
-| P5.7 | View site detail (balance, recent activity) |
-| P5.8 | Manage site floors (name, serial, sqft, rate → contract value) |
-| P5.8 | Deactivate/Activate site floors |
+| P5.1 | Create user |
+| P5.2 | Assign role to user |
+| P5.3 | Assign user to one or more sites |
+| P5.4 | Assign permissions to user |
+| P5.5 | Activate / deactivate user |
+| P5.6 | Delete user |
+| P5.7 | View and search users |
 
-### P6 → Manage Labour Accounts
+### P6 → Manage Sites
 | # | Process |
 |---|---|
-| P6.1 | Create / edit labourer |
-| P6.2 | Assign labourer to site |
-| P6.3 | Move labourer between sites (one site at a time) |
-| P6.4 | Activate / deactivate labour account |
-| P6.5 | Update labour salary for a date range |
-| P6.6 | View and search labourers by site / status |
-| P6.7 | Delete labour account |
+| P6.1 | Create / edit site (validate open site count against plan limit) |
+| P6.2 | Deactivate & Activate Site |
+| P6.3 | Close site permanently (data archived, users lose access) |
+| P6.4 | Delete site |
+| P6.5 | Assign managers to site |
+| P6.6 | View company sites (managers see only assigned sites) |
+| P6.7 | View site detail (balance, recent activity) |
+| P6.8 | Manage site floors (name, serial, sqft, rate → contract value) |
+| P6.9 | Deactivate/Activate site floors |
+| P6.10 | Mark floor as done |
 
-### P7 → Manage Labour Payment
+### P7 → Manage Labour Accounts
 | # | Process |
 |---|---|
-| P7.1 | Issue labour payment (any time, unless labour inactive) |
-| P7.2 | Track labour balance |
-| P7.3 | View labour payment history |
+| P7.1 | Create / edit labourer |
+| P7.2 | Assign labourer to site |
+| P7.3 | Move labourer between sites (one site at a time) |
+| P7.4 | Activate / deactivate labour account |
+| P7.5 | Update labour salary for a date range |
+| P7.6 | View and search labourers by site / status |
+| P7.7 | Delete labour account |
 
-### P8 → Manage Labour Payment Return
+### P8 → Manage Labour Payment
 | # | Process |
 |---|---|
-| P8.1 | Record labour return (overpaid money) |
-| P8.3 | View return history |
+| P8.1 | Issue labour payment (any time, unless labour inactive) |
+| P8.2 | Track labour balance |
+| P8.3 | View labour payment history |
 
-### P9 → Manage Labour Worksession
+### P9 → Manage Labour Payment Return
 | # | Process |
 |---|---|
-| P9.1 | Create work session |
-| P9.2 | View work session history |
+| P9.1 | Record labour return (overpaid money) |
+| P9.2 | View return history |
 
-### P10 → Manage Daily Attendance
+### P10 → Manage Labour Worksession
 | # | Process |
 |---|---|
-| P10.1 | Record daily attendance (grain: labour / floor / day) |
-| P10.2 | View attendance history (by labourer / site / floor / date) |
+| P10.1 | Create work session |
+| P10.2 | View work session history |
 
-### P11 → Manage Site Expense
+### P11 → Manage Daily Attendance
 | # | Process |
 |---|---|
-| P11.1 | Record site construction cost (SiteCost: floor + category required) |
-| P11.2 | Record hidden cost (HiddenCost: floor + category nullable) |
-| P11.3 | View cost history |
+| P11.1 | Record daily attendance (grain: labour / floor / day) |
+| P11.2 | View attendance history (by labourer / site / floor / date) |
 
-### P12 → Manage Site Cash
+### P12 → Manage Site Expense
 | # | Process |
 |---|---|
-| P12.1 | Record cash deposit
-| P12.2 | Record cash return |
-| P12.4 | View site cash history |
+| P12.1 | Record site construction cost (SiteCost: floor + category required) |
+| P12.2 | Record hidden cost (HiddenCost: floor + category nullable) |
+| P12.3 | View cost history |
 
-### P13 → Manage Site Bills
+### P13 → Manage Site Cash
 | # | Process |
 |---|---|
-| P13.1 | Create Site Bills |
-| P13.3 | View bill history |
+| P13.1 | Record cash deposit |
+| P13.2 | Record cash return |
+| P13.3 | View site cash history |
 
-### P14 → Generate Reports
+### P14 → Manage Site Bills
 | # | Process |
 |---|---|
-| P14.1 | Labour balance report |
-| P14.2 | Site expense report |
-| P14.3 | Site balance report |
-| P14.4 | Site revenue report |
-| P14.5 | Site labour cost report |
-| P14.6 | Summary for a desired date range |
-| P14.7 | Company dashboard (site overview, alerts) |
-| P14.8 | Floor costing & revenue report (per floor: contract, billed, cost, profit) |
+| P14.1 | Create Site Bills |
+| P14.2 | View bill history |
 
-### P15 → Record Edits & Audit Trail
+### P15 → Generate Reports
 | # | Process |
 |---|---|
-| P15.1 | Edit / delete an unlocked record (auto-write audit log, recalc later rows) |
-| P15.2 | View audit trail (by record / site / user / action / date) |
-| P15.3 | Remove audit log entries (admin only; never edit) |
+| P15.1 | Labour balance report |
+| P15.2 | Site expense report |
+| P15.3 | Site balance report |
+| P15.4 | Site revenue report |
+| P15.5 | Site labour cost report |
+| P15.6 | Summary for a desired date range |
+| P15.7 | Company dashboard (site overview, alerts) |
+| P15.8 | Floor costing & revenue report (per floor: contract, billed, cost, profit) |
 
-### P16 → Manage Platform
+### P16 → Record Edits & Audit Trail
 | # | Process |
 |---|---|
-| P16.1 | System user login |
-| P16.2 | View and search all companies |
-| P16.3 | Activate / deactivate a company |
-| P16.4 | Manage subscription plans (tiers, pricing, durations) |
-| P16.5 | Monitor subscription status of all companies |
-| P16.6 | System admin will create system users |
-| P16.7 | System admin will assign user to differnt system roles |
-| P16.8 | System admin will assign user to system level permissions |
+| P16.1 | Edit / delete an unlocked record (auto-write audit log, recalc later rows) |
+| P16.2 | View audit trail (by record / site / user / action / date) |
+| P16.3 | Remove audit log entries (admin only; never edit) |
 
 
 ## Subscription Model
