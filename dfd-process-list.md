@@ -64,6 +64,7 @@ The single Level 0 system is divided by major functional area. Each section head
 | P2.1 | Create company (auto-created on registration) |
 | P2.2 | View company profile & status |
 | P2.3 | Edit company details (name, recent activity) |
+| P2.4 | Manage expense categories (company-level, shared by all sites) |
 
 ### P3 → Manage Company Subscription
 | # | Process |
@@ -97,7 +98,8 @@ The single Level 0 system is divided by major functional area. Each section head
 | P5.5 | Assign managers to site |
 | P5.6 | View company sites (managers see only assigned sites) |
 | P5.7 | View site detail (balance, recent activity) |
-| P5.8 | Create site billing & expense category |
+| P5.8 | Manage site floors (name, serial, sqft, rate → contract value) |
+| P5.8 | Deactivate/Activate site floors |
 
 ### P6 → Manage Labour Accounts
 | # | Process |
@@ -132,16 +134,15 @@ The single Level 0 system is divided by major functional area. Each section head
 ### P10 → Manage Daily Attendance
 | # | Process |
 |---|---|
-| P10.1 | Record daily attendance for a labourer |
-| P10.2 | View attendance history (by labourer / site / date) |
+| P10.1 | Record daily attendance (grain: labour / floor / day) |
+| P10.2 | View attendance history (by labourer / site / floor / date) |
 
 ### P11 → Manage Site Expense
 | # | Process |
 |---|---|
-| P11.1 | Record site construction cost |
-| P11.2 | Record other cost (kept separate) |
-| P11.3 | Track and categorise costs by site / floor |
-| P11.4 | View cost history |
+| P11.1 | Record site construction cost (SiteCost: floor + category required) |
+| P11.2 | Record hidden cost (HiddenCost: floor + category nullable) |
+| P11.3 | View cost history |
 
 ### P12 → Manage Site Cash
 | # | Process |
@@ -166,6 +167,7 @@ The single Level 0 system is divided by major functional area. Each section head
 | P14.5 | Site labour cost report |
 | P14.6 | Summary for a desired date range |
 | P14.7 | Company dashboard (site overview, alerts) |
+| P14.8 | Floor costing & revenue report (per floor: contract, billed, cost, profit) |
 
 ### P15 → Handle Update Requests & Approvals
 | # | Process |

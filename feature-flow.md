@@ -3,7 +3,7 @@
 > Source: `dfd-process-list.md` (Level 2). Each Level 2 process = one feature, with its flow and implementation detail.
 > Cross-cutting rules apply everywhere:
 > - **Tenant isolation** — every query is filtered by the requesting user's `company_id`.
-> - **Audit** — every financial/locked write (P7, P8, P10, P11, P12, P13, P15) also writes an audit record (who, when, before/after).
+> - **Audit** — every financial/locked write (P7, P8, P10, P11, P12, P13, P15) also writes an audit record (who, when, before/after). SiteCost and HiddenCost both fall under P11.
 > - **Locking** — records dated on or before the labour's last work-session end date are locked; they can only change through an update request (P15).
 
 ---
@@ -59,6 +59,11 @@
 ### P2.3 — Edit company details
 - Company Admin edits company name and profile fields.
 - System saves and records the change in the audit trail.
+
+### P2.4 — Manage expense categories
+- Company-level master data: Admin creates/edits expense categories (name, display order, active flag).
+- Shared by **all sites** of the company — every SiteCost (P11.1) and HiddenCost (P11.2) row references the same category set, so cross-site reporting stays consistent.
+- Category cannot be deleted once referenced by any cost row → deactivate instead (hidden from new-entry dropdowns, old rows keep their link).
 
 ---
 
@@ -169,10 +174,25 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 - Show site total attendence count
 - Show site total cost
 - Show site Labour Payment
+- Floor breakdown line: per-floor contract value, billed, cost and profit (detail in P14.8).
 
-### P5.8 — Create site billing & expense category
-- Admin defines category names used by cost (P11) and bill (P13) entries, optionally per floor.
-- Category list feeds dropdowns at entry time and grouping in reports.
+### P5.8 — Manage site floors
+- Site-level master data: Admin defines the site's floors — name (e.g. Basement, Floor-1, Floor-2, Floor-2-Extra), display order (serial), measurement (`sqft`), and `rate_per_sqft`.
+- Derived `contract_value = sqft × rate` is the floor's revenue target.
+- Floor list feeds the floor dropdown on attendance (P10.1), site cost (P11.1), hidden cost (P11.2), and bill (P13.1) entries.
+- Editable while the site is open; a floor cannot be deleted once any record references it.
+- Expense categories are company-level (P2.4), not defined here.
+
+### P5.9 — Deactivate/Activate site floors
+- Floor may activate or deactivate. Deactivate means no new records allow to create under this floor execpt the SiteBill. But, historic data is accessable.
+
+### P5.10 — Deactivate/Activate site floors
+- Floor may activate or deactivate. Deactivate means no new records allow to create under this floor execpt the SiteBill. But, historic data is accessable.
+
+### P5.11 — Mark as done
+- This floor work is done, no need new expense or work.
+- Floor will deactivate
+- To activate the site again need to unmark as done first.
 
 ---
 
@@ -258,10 +278,12 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 ## P10 — Manage Daily Attendance
 
 ### P10.1 — Record daily attendance
-- Site Manager picks date, marks labour present (full/half/overtime units) and any extra amount, mark floor.
-- Validations: labour active and assigned to this site, site active, one record per labour per date, date inside the last worksession end date to today date and.
-- Row stores salary snapshot and running totals: labour present-days, labour extra, labour earnings; site present, site extra, site labour total.
-> **allow create today and yesterday date record**. This rules also applied for other entity where need date field not created_at field. such as- site expense, site cash, Site other expense etc
+- Grain is **labour / floor / day**: Site Manager picks date, floor (from the site's floor list, P5.8), present units (full/half/overtime) and any extra amount.
+- A labour may have **multiple attendance rows on the same day** when he works on different floors — uniqueness is **(labour, floor, date)**, not (labour, date).
+- Floor is required so the earnings attribute to floor costing.
+- Validations: labour active and assigned to this site, site active, one row per (labour, floor, date), date inside the last worksession end date → today.
+- Row stores salary snapshot and running totals: labour present-days, labour extra, labour earnings; site present, site extra, site labour total. Earnings also roll up per floor.
+> **allow create today and yesterday date record**. This rule also applies to other entities that use a date field (not created_at): site cost, hidden cost, site cash, etc.
 
 ### P10.2 — View attendance history
 - Filter by labour, site, or date range; shows daily rows + running totals.
@@ -270,20 +292,20 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 
 ## P11 — Manage Site Expense
 
-### P11.1 — Record site construction cost
-- Manager enters site, date, floor, amount, note.
+### P11.1 — Record site construction cost (SiteCost)
+- Manager enters site, date, **floor (required)**, **expense category (company-level — P2.4)**, amount, note.
 - Row computes running `site_total` and `floor_total` from the previous cost row.
+- **Expense category is nullable**: null = "Generalized expense".
 
-### P11.2 — Record other cost
-- Same shape as construction cost but a separate record type — kept apart so permissions can differ.
-- It is not paid from site cash, it is directly paid from company admin.
-- It will use to calculate revenuew of a site, not for balance calculation.
+### P11.2 — Record hidden cost (HiddenCost)
+- Separate record type from SiteCost — kept apart so permissions/visibility can differ ("hidden" from normal site views).
+- It is not paid from site cash; it is paid directly by the company admin.
+- It is used to calculate the **profit/revenue** of a site, not the cash balance.
+- **Floor is nullable**: set → cost allocates to that floor; null → site-general (not tied to any floor).
+- **Expense category is nullable**: null = "Generalized expense".
 
-### P11.3 — Track and categorise costs
-- Costs grouped by site / floor / type; totals come from running fields, detail from grouping.
-
-### P11.4 — View cost history
-- Ledger per site, filterable by floor, category, date range.
+### P11.3 — View cost history
+- Ledger per site, filterable by floor, expense category, cost type, date range.
 
 ---
 
@@ -306,11 +328,11 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 ## P13 — Manage Site Bills
 
 ### P13.1 — Create site bill
-- Manager records revenue: site, date, category, floor, amount, note.
-- Running `site_total` and `floor_total` per bill row. Feeds profit: `bills − (labour cost + site cost + other cost)`.
+- Authorized user records Bill: site, date, **floor (required)**, amount, note.
+- Running `site_total` and `floor_total` per bill row; floor bills accumulate against that floor's contract value (sqft × rate, P5.8).
 
 ### P13.2 — View bill history
-- Ledger per site, filterable by floor, category, date range.
+- Ledger per site, filterable by floor, date range; shows billed vs floor contract value vs remaining receivable.
 
 ---
 
@@ -322,24 +344,33 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 - Per labour: earnings, payments, returns, net balance. Read from latest running totals.
 
 ### P14.2 — Site expense report
-- Costs grouped by category/floor for a site and date range (construction + other shown separately).
+- Costs grouped by company expense category / floor for a site and date range (SiteCost and HiddenCost shown separately).
 
 ### P14.3 — Site balance report
 - `last cash total − (cost total + labour payment total)` per site — current spendable cash position.
 
-### P14.4 — Site revenue report
-- Bills total per site/date range; with cost data gives profit.
+### P14.4 — Site Profit report
+- Profit per site: `bills − (labour cost + site cost + hidden cost)`.
+- Profit Per floor of site: `bills of floor - (labour cost of floor + site cost of floor + hidden cost of floor)`
 
 ### P14.5 — Site labour cost report
-- Attendance earnings aggregated per site (and per floor where recorded).
+- Labour payment per site per date
+- Labour attendence per site per date per floor
+- Labour extra per site per date per floor
+- Labour cost per site: `latest dailyattendence site total`.
+- Labour cost Per floor of site
 
 ### P14.6 — Summary for a date range
 - Company-level roll-up between two dates: cash in/out, costs, bills, labour cost, per-site rows.
+- Site lavel summary
 
 ### P14.7 — Company dashboard
 - Open sites overview, balances, subscription expiry alert, pending update requests, pending transfers, recent activity.
 
----
+### P14.8 — Floor costing & revenue report
+- Per floor of a site: `sqft`, `rate`, contract value (sqft × rate), billed, remaining receivable (contract − billed), labour cost, construction cost, allocated hidden cost, total cost, profit (billed − total cost), cost per sqft.
+- Site-general hidden cost (floor = null) is shown as its own row, **not** pro-rated across floors.
+- Reconciles to site profit: `site profit = (Σ floor profit) − general hidden cost`, which equals `bills − (labour + site cost + all hidden cost)`.
 
 ## P15 — Handle Update Requests & Approvals
 
