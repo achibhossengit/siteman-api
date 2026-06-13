@@ -81,11 +81,12 @@ Construction site labour and cost management for companies. Each company is an i
 5. View cost and bill ledger
 6. Categories them based on site/floors
 
-## Update Requests & Approvals
-1. Request an update to a locked record
-2. Approve or reject an update request with a note
-3. Apply approved changes and recalculate balances
-4. View request status and history
+## Record Edits & Audit Log
+1. Authorized users edit or delete records directly (no approval step)
+2. System auto-logs every update/delete (who, when, before/after, note)
+3. View the audit trail per record, site, user, or date
+4. Admin can view and remove audit entries (never edit them)
+5. Records dated within a closed work session are locked from edits
 
 ## Reports & Dashboard
 1. Labour balance report
@@ -123,5 +124,5 @@ Construction site labour and cost management for companies. Each company is an i
 - **System Admin** — manages all companies and subscriptions.
 - **System Manager** — monitors subscriptions and payments (assigned permissions).
 - **Company Admin** — full control of one company: users, sites, labour, subscription.
-- **Company Manager** — manages assigned sites and handles update requests for them.
-- **Site Manager** — records attendance, cash, and cost for permitted sites; raises update requests.
+- **Company Manager** — manages assigned sites and reviews the audit trail for them.
+- **Site Manager** — records attendance, cash, and cost for permitted sites; edits are logged.

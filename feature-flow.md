@@ -1,13 +1,5 @@
 # SiteMan — Feature and user Flow
 
-> Source: `dfd-process-list.md` (Level 2). Each Level 2 process = one feature, with its flow and implementation detail.
-> Cross-cutting rules apply everywhere:
-> - **Tenant isolation** — every query is filtered by the requesting user's `company_id`.
-> - **Audit** — every financial/locked write (P7, P8, P10, P11, P12, P13, P15) also writes an audit record (who, when, before/after). SiteCost and HiddenCost both fall under P11.
-> - **Locking** — records dated on or before the labour's last work-session end date are locked; they can only change through an update request (P15).
-
----
-
 ## P1 — Manage Authentication
 
 ### P1.1 — Login
@@ -365,28 +357,34 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 - Site lavel summary
 
 ### P14.7 — Company dashboard
-- Open sites overview, balances, subscription expiry alert, pending update requests, pending transfers, recent activity.
+- Open sites overview, balances, subscription expiry alert, recent edits (from audit trail), recent activity.
 
 ### P14.8 — Floor costing & revenue report
 - Per floor of a site: `sqft`, `rate`, contract value (sqft × rate), billed, remaining receivable (contract − billed), labour cost, construction cost, allocated hidden cost, total cost, profit (billed − total cost), cost per sqft.
 - Site-general hidden cost (floor = null) is shown as its own row, **not** pro-rated across floors.
 - Reconciles to site profit: `site profit = (Σ floor profit) − general hidden cost`, which equals `bills − (labour + site cost + all hidden cost)`.
 
-## P15 — Handle Update Requests & Approvals
+## P15 — Record Edits & Audit Trail
 
-### P15.1 — Raise update request
-- Site Manager selects any locked record (attendance, payment, cash, cost, bill), proposes new values + reason.
-- Stored as a generic request (points at target record type + id, proposed changes, status `pending`).
+Edits happen directly; the audit log makes every change accountable.
 
-### P15.2 — Approve / reject request
-- Company Manager/Admin of that site reviews; approves or rejects with a note.
+### P15.1 — Edit / delete a record (direct, with auto audit)
+- An authorized user edits or deletes a record from its own module (attendance P10, payment P7, return P8, cash P12, cost/hidden cost P11, bill P13, plus master data).
+- In one transaction the system:
+  1. Applies the change (financial/ledger rows are **soft-deleted**, not hard-deleted).
+  2. Writes an **audit log entry**: company, actor, timestamp, target record type + id, action (update/delete), **before snapshot**, **after snapshot**, and a **note (required for update/delete of financial records)**.
+  3. Bumps the record's `updated_at`.
+  4. Recalculates running totals of all later rows in the same ledger so the chain stays consistent.
 
-### P15.3 — Apply approved change
-- On approval, in one transaction: target record updated, then all later rows in the same ledger get their running totals recalculated (totals chain stays consistent).
-- Audit records written for the change.
+### P15.2 — View audit trail
+- Any authorized user views the log, filtered by record, site, user, action, or date range.
+- Each entry shows who changed what, when, the before/after values, and the note.
 
-### P15.4 — View request status and history
-- Requester sees own requests; approvers see pending queue per site; full history kept.
+### P15.3 — Remove audit log entries
+- Only Admin (or an explicitly authorized user) can **soft delete** audit entries. No one can **edit** an entry. Now company lose this data accessability only system can see and manage it. If company remove the audit logs accedentally system will allow to back their data by suppport system. System will permanently delete soft deleted audit log for several month or based on its policies using schduled corn job.
+- Even after removal, the affected record's `updated_at` still shows it was modified — tamper-evident backstop.
+
+> **Note** — there is intentionally no admin override to edit a **locked** record. Locking is the hard boundary; if a settled period truly needs a fix, the company-level decision is to reopen via data correction by a system user (P16), not a normal edit.
 
 ---
 
@@ -398,7 +396,7 @@ System-level users; not tied to any company.
 - Separate login for platform staff (no company context); same OTP + JWT pattern.
 
 ### P16.2 — View and search all companies
-- List with open site count, billing status, activity.
+- List with open site count, billing status, activity, audit logs.
 
 ### P16.3 — Activate / deactivate a company
 - Deactivated company: all its users blocked from login; data retained.

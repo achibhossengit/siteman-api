@@ -16,8 +16,8 @@ Only the external entities that talk to the system are identified here.
 | System Admin | Company activation, subscription control | Company list, subscription status |
 | System Manager | Subscription monitoring queries | Subscription/payment status |
 | Company Admin | Registration, user/site/labour data, subscription payment | Reports, dashboards, company status |
-| Company Manager | Update request approvals, labour/site entries | Site reports, pending requests |
-| Site Manager | Attendance, cash, cost entries, update requests | history, statements |
+| Company Manager | Labour/site entries, record edits | Site reports, audit trail |
+| Site Manager | Attendance, cash, cost entries, record edits | history, statements |
 | Payment Gateway | Payment confirmation (IPN/webhook) | Payment request |
 
 ---
@@ -42,7 +42,7 @@ The single Level 0 system is divided by major functional area. Each section head
 | P12 | Manage Site Cash |
 | P13 | Manage Site Bills |
 | P14 | Generate Reports |
-| P15 | Handle Update Requests & Approvals |
+| P15 | Record Edits & Audit Trail |
 | P16 | Manage Platform |
 
 ---
@@ -169,13 +169,12 @@ The single Level 0 system is divided by major functional area. Each section head
 | P14.7 | Company dashboard (site overview, alerts) |
 | P14.8 | Floor costing & revenue report (per floor: contract, billed, cost, profit) |
 
-### P15 → Handle Update Requests & Approvals
+### P15 → Record Edits & Audit Trail
 | # | Process |
 |---|---|
-| P15.1 | Raise update request on a locked record |
-| P15.2 | Approve / reject update request with note |
-| P15.3 | Apply approved change and recalculate releted fields |
-| P15.4 | View request status and history |
+| P15.1 | Edit / delete an unlocked record (auto-write audit log, recalc later rows) |
+| P15.2 | View audit trail (by record / site / user / action / date) |
+| P15.3 | Remove audit log entries (admin only; never edit) |
 
 ### P16 → Manage Platform
 | # | Process |
