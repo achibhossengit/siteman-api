@@ -86,7 +86,7 @@ Construction site labour and cost management for companies. Each company is an i
 2. System auto-logs every update/delete (who, when, before/after, note)
 3. View the audit trail per record, site, user, or date
 4. Admin can view and remove audit entries (never edit them)
-5. Records dated within a closed work session are locked from edits
+5. Records sealed into a closed labour session are locked from edits
 
 ## Reports & Dashboard
 1. Labour balance report

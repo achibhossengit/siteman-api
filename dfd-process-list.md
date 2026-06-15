@@ -35,10 +35,10 @@ The single Level 0 system is divided by major functional area. Each section head
 | P5 | Manage Users |
 | P6 | Manage Sites |
 | P7 | Manage Labour Accounts |
-| P8 | Manage Labour Payment |
+| P8 | Manage Labour Payments (Advance & Fooding) |
 | P9 | Manage Labour Payment Return |
-| P10 | Manage Labour Worksession |
-| P11 | Manage Daily Attendance |
+| P10 | Manage Labour Session |
+| P11 | Manage Daily Attendance & Extra Work |
 | P12 | Manage Site Expense |
 | P13 | Manage Site Cash |
 | P14 | Manage Site Bills |
@@ -69,6 +69,7 @@ The single Level 0 system is divided by major functional area. Each section head
 | P2.6 | System admin will create system users |
 | P2.7 | System admin will assign user to different system roles |
 | P2.8 | System admin will assign user to system level permissions |
+| P2.9 | Data correction on sealed/closed company data (support) |
 
 ### P3 → Manage Company
 | # | Process |
@@ -105,14 +106,15 @@ The single Level 0 system is divided by major functional area. Each section head
 |---|---|
 | P6.1 | Create / edit site (validate open site count against plan limit) |
 | P6.2 | Deactivate & Activate Site |
-| P6.3 | Close site permanently (data archived, users lose access) |
-| P6.4 | Delete site |
-| P6.5 | Assign managers to site |
-| P6.6 | View company sites (managers see only assigned sites) |
-| P6.7 | View site detail (balance, recent activity) |
-| P6.8 | Manage site floors (name, serial, sqft, rate → contract value) |
-| P6.9 | Deactivate/Activate site floors |
-| P6.10 | Mark floor as done |
+| P6.3 | Close site permanently (zero cash, set closed_at, build summary, cron purge details after 30d except editable=true) |
+| P6.4 | Reopen a closed site (check plan slot, clear closed_at, delete summary; only while details un-purged) |
+| P6.5 | Delete site |
+| P6.6 | Assign managers to site |
+| P6.7 | View company sites (managers see only assigned sites) |
+| P6.8 | View site report (balance, revenue, floor breakdown) |
+| P6.9 | Manage site floors (name, serial, sqft, rate → contract value) |
+| P6.10 | Deactivate/Activate site floors |
+| P6.11 | Mark floor as done |
 
 ### P7 → Manage Labour Accounts
 | # | Process |
@@ -124,12 +126,13 @@ The single Level 0 system is divided by major functional area. Each section head
 | P7.5 | View and search labourers by site / status |
 | P7.6 | Delete labour account |
 
-### P8 → Manage Labour Payment
+### P8 → Manage Labour Payments (Advance & Fooding)
 | # | Process |
 |---|---|
-| P8.1 | Issue labour payment (any time, unless labour inactive) |
-| P8.2 | Track labour balance |
-| P8.3 | View labour payment history |
+| P8.1 | Issue advance pay (LabourAdvancePay; blocked if labour inactive) |
+| P8.2 | Issue fooding pay (LabourFoodingPay; seeded from default_fooding) |
+| P8.3 | Track labour balance (earnings − advance − fooding + returns) |
+| P8.4 | View payment history (advance + fooding ledgers) |
 
 ### P9 → Manage Labour Payment Return
 | # | Process |
@@ -137,17 +140,18 @@ The single Level 0 system is divided by major functional area. Each section head
 | P9.1 | Record labour return (overpaid money) |
 | P9.2 | View return history |
 
-### P10 → Manage Labour Worksession
+### P10 → Manage Labour Session
 | # | Process |
 |---|---|
-| P10.1 | Create work session |
-| P10.2 | View work session history |
+| P10.1 | Create / seal a labour session (vacation: review → settle → per-site rollup (LabourSiteSession) → LabourSession → seal editable=false → deactivate) |
+| P10.2 | View session history (per-site breakdown, carried balances) |
 
-### P11 → Manage Daily Attendance
+### P11 → Manage Daily Attendance & Extra Work
 | # | Process |
 |---|---|
-| P11.1 | Record daily attendance (grain: labour / floor / day) |
-| P11.2 | View attendance history (by labourer / site / floor / date) |
+| P11.1 | Record daily attendance (grain: labour / floor / day; present + salary snapshot, editable) |
+| P11.2 | Record extra work (LabourExtraWork: site / floor / labour / date / amount) |
+| P11.3 | View attendance & extra work history (by labourer / site / floor / date) |
 
 ### P12 → Manage Site Expense
 | # | Process |
@@ -184,9 +188,9 @@ The single Level 0 system is divided by major functional area. Each section head
 ### P16 → Record Edits & Audit Trail
 | # | Process |
 |---|---|
-| P16.1 | Edit / delete an unlocked record (auto-write audit log, recalc later rows) |
+| P16.1 | Edit / delete an editable record (editable=true only; auto-write audit log, recalc later rows) |
 | P16.2 | View audit trail (by record / site / user / action / date) |
-| P16.3 | Remove audit log entries (admin only; never edit) |
+| P16.3 | Remove audit log entries (admin soft-delete; never edit; system can restore) |
 
 
 ## Subscription Model
@@ -225,9 +229,9 @@ Two independent state axes for a site:
 
 | Field | Value | Meaning |
 |---|---|---|
-| `is_closed` | `False` | **Open** — site is ongoing. Counts toward the plan's open-site limit. |
-| `is_closed` | `True` | **Closed** — site work is permanently done. Records are archived. Company users lose access. Data may be deleted by system admin. Does not count toward the plan limit. |
+| `closed_at` | `null` | **Open** — site is ongoing. Counts toward the plan's open-site limit. |
+| `closed_at` | timestamp | **Closed** — work permanently done. Company users see only the closure summary; detail rows stay in the same DB but are hidden, then a cron purges them 30 days after `closed_at` (except `editable=true` rows). Does not count toward the plan limit. Reopen possible until purge. |
 | `is_active` | `True` | **Active** — new data (attendance, cash, cost) can be recorded. |
 | `is_active` | `False` | **Inactive** — temporarily paused. No new data can be created. Old data remains accessible. Can be reactivated at any time. |
 
-> A site may open (`is_closed=False`) and inactive (`is_active=False`) at the same time — temporarily paused but still ongoing. The plan limit counts all open sites regardless of active/inactive state.
+> A site may be open (`closed_at=null`) and inactive (`is_active=False`) at the same time — temporarily paused but still ongoing. The plan limit counts all open sites regardless of active/inactive state.
