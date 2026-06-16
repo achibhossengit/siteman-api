@@ -91,6 +91,7 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F6.9 | Manage site floors |
 | F6.10 | Activate / deactivate site floors |
 | F6.11 | Mark floor as done |
+| F6.12 | Manage site configuration |
 
 ### F7 → Manage Labour Accounts
 | # | Feature |
@@ -167,3 +168,4 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F16.1 | Edit / delete a record |
 | F16.2 | View audit trail |
 | F16.3 | Remove audit log entries |
+| F16.4 | Activity view (admin oversight) |

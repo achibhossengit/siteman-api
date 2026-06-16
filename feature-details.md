@@ -8,6 +8,8 @@
 - **`editable` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `editable = true`. Sealing a `LabourSession` (F10) sets the sealed rows `editable = false` → immutable. **This flag is the lock** (replaces any date-based lock).
 - **Direct edit + audit** — authorized users edit/delete directly; the system auto-writes an audit entry (actor, time, before/after, note) and bumps `updated_at` (F16). Ledger rows are **soft-deleted**.
 - **Site cash balance** — `deposits − withdrawals(returns) − site cost − advance pay − fooding pay`. Hidden cost is **excluded** (paid by admin, not from the site box).
+- **Future dates blocked** — no record's `date` may be in the future, for every date-bearing entity, regardless of any config.
+- **Per-site configuration** — each site has a one-to-one `SiteConfig` (F6.12) that tunes, per entity type, how records may be created, edited, and deleted: create window, update window, delete window, and per-day quota. See **Site Configuration** under F6.
 
 ## Roles
 - **System Admin** — manages all companies and subscriptions.
@@ -218,6 +220,45 @@ Two independent state axes for a site:
 
 > A site may be open (`closed_at=null`) and inactive (`is_active=False`) at the same time — temporarily paused but still ongoing. The plan limit counts all open sites regardless of active/inactive state.
 
+### Site Configuration (reference)
+Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with sensible defaults and editable by the Company Admin. It lets each site tune how strictly records may be created and edited — without code changes.
+
+**Window scale** — used by `*_create_window`, `*_update_window` and `*_delete_window`:
+
+| Value | Meaning |
+|---|---|
+| `-1` | Any date ≤ today (no lower bound) |
+| `0` | Disabled — no date qualifies (turns that action off for the entity) |
+| `N ≥ 1` | Last `N` days including today, i.e. `[today − (N−1) … today]` (1 = today only, 2 = today + yesterday, 3 = today + 2 days back, …) |
+
+> Future dates are **always** rejected, regardless of any window.
+
+**Per-day quota scale** — `*_per_day_limit` (labour-scoped entities only):
+
+| Value | Meaning |
+|---|---|
+| `-1` | Unlimited |
+| `0` | Blocked — no rows that day |
+| `N ≥ 1` | At most `N` rows per labour per date (across floors). The (labour, floor, date) uniqueness already blocks duplicate site+floor rows. |
+
+**Cross-site, same date** — there is no separate multisite flag. By default a labour has one record per date; to record the same labour/date at a **different** site, first free the existing row (remove it) or transfer the labour to the new site (F7.2). To genuinely allow both sites on the same date, raise the relevant `*_per_day_limit`.
+
+**Out-of-window override (manual)** — there is no per-row verification. To touch a date outside the current window, a manager asks the admin; the admin widens the matching window (a temporary `N` covering the date, or `-1` to allow any past date), the manager creates/edits/deletes, and the admin reviews the result via the date based activity / audit trail (F16.2). If misused, the admin asks the manager to correct it — no system-enforced approval step.
+
+**Fields by entity** (field name pattern `<entity>_<axis>`, e.g. `attendance_create_window`, `sitecost_update_window`, `advance_delete_window`, `fooding_per_day_limit`):
+
+| Entity | create_window | update_window | delete_window | per_day_limit |
+|---|---|---|---|---|
+| attendance | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) |
+| fooding | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) |
+| advance | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | ✓ (def −1) |
+| return | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
+| extrawork | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
+| sitecost | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
+| hiddencost | ✓ (def -1) | ✓ (def -1) | ✓ (def -1) | — |
+| sitecash (deposit) | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
+| sitecashreturn | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
+
 ### F6.1 — Create / edit site
 - Admin provides site name (and detail fields). New site starts open + active.
 - System validates open site count against the active plan limit before creating; at the limit → creation blocked with an upgrade prompt (F4.4).
@@ -280,6 +321,13 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - This floor work is done, no need new expense or work.
 - Floor will deactivate.
 - To activate the floor again need to unmark as done first.
+
+### F6.12 — Manage site configuration
+- Company Admin views/edits the site's `SiteConfig` (one row per site, auto-created at F6.1 with the defaults above).
+- Controls, per entity type: create window, update window, delete window, and per-day quota (see **Site Configuration** above).
+- Changes apply to **future** create / edit checks only — existing rows are untouched. Every change is audit-logged (F16).
+- Setting a `*_create_window = 0` freezes new entries of that type at the site without deactivating the whole site.
+- **Out-of-window override (manual)** — a manager requests the admin to widen a window (temporary `N` covering the date, or `-1` for any past date); the admin grants it, the manager acts, and the admin reviews via the activity / audit trail (F16.2), asking for a fix if misused. No system-enforced approval step.
 
 ---
 
@@ -390,9 +438,9 @@ Rules:
 - Grain is **labour / floor / day**: Site Manager picks date, floor (from the site's floor list, F6.9), `present` units (full/half/overtime), and `salary` (seeded from the labour default, editable per row).
 - A labour may have **multiple attendance rows on the same day** when he works on different floors — uniqueness is **(labour, floor, date)**, not (labour, date).
 - Floor is required so the earnings attribute to floor costing.
-- Validations: labour active and assigned to this site, site active, floor active, one row per (labour, floor, date), date inside the allowed window (see below). New row is `editable = true`.
+- Validations: labour active and assigned to this site, site active, floor active, one row per (labour, floor, date), and the site config gates (`attendance_create_window`, `attendance_per_day_limit` — F6.12). New row is `editable = true`.
 - Row stores the salary snapshot and running totals: `site_total_present`, `site_total_salary`, `floor_total_present`, `floor_total_salary`.
-> **Allow create for today and yesterday only** (and date ≥ last session end date). This rule also applies to other date-bearing entities: extra work, site cost, hidden cost, site cash, etc.
+> **Creatable dates are governed by the site's `attendance_create_window`** (default today + yesterday), must be **≥ the last session end date**, and **never in the future**. The same pattern (each entity's own `*_create_window` / `*_update_window` / `*_delete_window`, and for labour entities `*_per_day_limit`) applies to extra work, advance, fooding, return, site cost, hidden cost, site cash, and site cash return. See **Site Configuration** (F6) and F6.12.
 
 ### F11.2 — Record extra work
 - Separate ledger (`Labour ExtraWork`): site, floor (F6.9), labour, date, amount, note; `editable = true`.
@@ -494,7 +542,7 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 Edits happen directly; the `editable` flag is the hard lock, and the audit log makes every live edit accountable.
 
 ### F16.1 — Edit / delete a record (direct, with auto audit)
-- Allowed only on rows that are still `editable = true` (sealed rows are immutable — see F10).
+- Allowed only on rows that are still `editable = true` (sealed rows are immutable — see F10) **and** whose date is inside the site's `*_update_window` (for edits) or `*_delete_window` (for deletes) — F6.12. Sealed always blocks; otherwise the stricter of the two limits wins.
 - An authorized user edits or deletes a record from its own module (attendance F11, extra work F11, advance/fooding F8, return F9, cash F13, cost/hidden cost F12, bill F14, plus master data).
 - In one transaction the system:
   1. Applies the change (financial/ledger rows are **soft-deleted**, not hard-deleted).
@@ -509,5 +557,9 @@ Edits happen directly; the `editable` flag is the hard lock, and the audit log m
 ### F16.3 — Remove audit log entries
 - Only Admin (or an explicitly authorized user) can **soft delete** audit entries. No one can **edit** an entry. The company then loses access to that data — only the system can see and manage it; if a company removes audit logs accidentally, the system can restore them via support. A scheduled cron permanently deletes soft-deleted audit logs after a retention period.
 - Even after removal, the affected record's `updated_at` still shows it was modified — tamper-evident backstop.
+
+### F16.4 — Activity view (admin oversight)
+- The admin reviews an **activity feed** built from the audit trail (F16.2): all records created / updated / deleted, filterable by site, user, entity type, and date.
+- This is the verification mechanism — instead of a per-row `verified` flag, the admin watches activity (especially after granting an out-of-window override, F6.12) and manually asks a manager to correct anything wrong.
 
 > **Note** — there is intentionally no admin override to edit a **sealed** (`editable = false`) record. The seal is the hard boundary; if a settled session truly needs a fix, the correction is done by a system user (F2.9), not a normal edit.
