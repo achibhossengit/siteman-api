@@ -15,7 +15,7 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F7 | Manage Labour Accounts |
 | F8 | Manage Labour Payments (Advance & Fooding) |
 | F9 | Manage Labour Payment Return |
-| F10 | Manage Labour Session |
+| F10 | Manage Labour Work Session |
 | F11 | Manage Daily Attendance & Extra Work |
 | F12 | Manage Site Expense |
 | F13 | Manage Site Cash |
@@ -119,10 +119,10 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F9.1 | Record labour return |
 | F9.2 | View return history |
 
-### F10 → Manage Labour Session
+### F10 → Manage Labour Work Session
 | # | Feature |
 |---|---|
-| F10.1 | Create / seal a labour session |
+| F10.1 | Create / seal a labour work session |
 | F10.2 | View session history |
 
 ### F11 → Manage Daily Attendance & Extra Work

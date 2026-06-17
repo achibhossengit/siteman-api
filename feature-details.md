@@ -1,11 +1,11 @@
 # SiteMan — Feature Details
 
 ## Conventions (cross-cutting)
-- **Tenant isolation** — every row carries `company_id`; all queries are scoped to the caller's company. Except system user.
+- **Tenant isolation** — every tenant row carries `company_id`; the tenant API scopes all queries to the caller's company. System users (`scope = system`, `company = null`) are exempt and use the platform API only. See **Access Control & User Model**.
 - **Global phone uniqueness** — one phone = one account across the whole platform.
 - **Running totals** — ledger rows store cumulative fields (`site_total`, `floor_total`, and on attendance `site_total_present` / `site_total_salary` / `floor_total_present` / `floor_total_salary`). Current value = the latest row's total; **per-floor totals chain per floor** (latest row *per floor*), per-site totals chain per site.
-- **Labour balance** — `balance = last_balance + earnings − advance − fooding + returns`, where `earnings = Σ(present × salary) + Σ extra work`. Carried across vacations via `LabourSession` (`last_balance` → `balance`).
-- **`editable` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `editable = true`. Sealing a `LabourSession` (F10) sets the sealed rows `editable = false` → immutable. **This flag is the lock** (replaces any date-based lock).
+- **Labour balance** — `balance = last_balance + earnings − advance − fooding + returns`, where `earnings = Σ(present × salary) + Σ extra work`. Carried across vacations via `LabourWorkSession` (`last_balance` → `balance`).
+- **`editable` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `editable = true`. Sealing a `LabourWorkSession` (F10) sets the sealed rows `editable = false` → immutable. **This flag is the lock** (replaces any date-based lock).
 - **Direct edit + audit** — authorized users edit/delete directly; the system auto-writes an audit entry (actor, time, before/after, note) and bumps `updated_at` (F16). Ledger rows are **soft-deleted**.
 - **Site cash balance** — `deposits − withdrawals(returns) − site cost − advance pay − fooding pay`. Hidden cost is **excluded** (paid by admin, not from the site box).
 - **Future dates blocked** — no record's `date` may be in the future, for every date-bearing entity, regardless of any config.
@@ -17,6 +17,20 @@
 - **Company Admin** — full control of one company: users, sites, labour, subscription.
 - **Company Manager** — manages assigned sites and reviews the audit trail for them.
 - **Site Manager** — records attendance, cash, and cost for permitted sites; edits are logged.
+
+## Access Control & User Model
+
+**One `User` table, two scopes**:
+- **System** (`scope = system`, `company = null`) — platform staff (F2); uses the **Platform API** (`/api/platform/…`), cross-company.
+- **Tenant** (`scope = tenant`, `company` set) — company user (F5); uses the **Tenant API** (`/api/…`), auto-scoped to its company.
+- One phone = one account, so a person is system **or** tenant. Same OTP + JWT login (F1.1 / F2.1); token carries `user_id`, `scope`, `company_id`, groups. A system user reaches tenant data only through explicit platform endpoints (e.g. F2.9).
+
+**Who can do what — two independent layers:**
+- **Capability** (*what*) — a Django **Group**: System Admin / System Manager; Company Admin / Company Manager / Site Manager. Global within its scope, never per-site.
+- **Scope** (*which sites*) — **`UserSite`** links a tenant user to sites. A site can have many managers; a user many sites.
+- A **write** is allowed when: capability (Group) **+** assigned to the site (`UserSite`) **+** inside the entity's window (F6.12) **+** the row is `editable`. On an `admin_managed` site (F6.14) only the Company Admin may write.
+
+**Account deletion** — user (F5.6) and labour (F7.6) are soft-deleted (`deleted_at`), then cron-purged with `ON DELETE SET NULL`. So `created_by` and `labour_id` on ledger rows are **nullable** — a purged account leaves rows as "unknown", financial history intact.
 
 ---
 
@@ -80,7 +94,7 @@ System-level users; not tied to any company.
 - Dashboard of all companies: plan, active / expiring soon / expired, revenue summary.
 
 ### F2.6 — Create system users
-- System Admin creates platform staff accounts.
+- System Admin creates platform staff accounts (`scope = system`, `company = null`); assigned a system group (F2.7).
 
 ### F2.7 — Assign system roles
 - System Admin assigns staff to system-level groups (System Admin / System Manager).
@@ -174,7 +188,7 @@ Plan tiers are based on open site count only. Longer durations get a per-month d
 - Company Admin provides name, BD phone number, password role, permitted sites.
 - System validates BD phone_number and checks it is not already registered.
 - System sends an OTP to this phone number; admin completes registration by providing the OTP.
-- System will creates user under the same company.
+- System will creates user under the same company (`scope = tenant`, `company` = admin's company).
 - If provide role and permitted sites then Assign this user to that group and permitted sites.
 > Lately this staff user will login using this phone_number and password. and can change the password. There is no security concern about account missused by admin. Because, admin need the otp to register or login staff user account. But, otp will send to this user phone_number. So, Account owner only can login. Admin just has activate, deactivate, role management, permission management and delete this account autority.
 
@@ -183,8 +197,9 @@ Plan tiers are based on open site count only. Longer durations get a per-month d
 - Role change takes effect on next request (permissions read from group).
 
 ### F5.3 — Assign user to sites
-- Admin assigns user to one or more sites (user–site link records).
+- Admin assigns user to one or more sites (`UserSite` link records).
 - Site-scoped actions check this assignment: managers only act on assigned sites.
+- A site may have multiple Site Managers / Company Managers; a user may be assigned to multiple sites. See **Access Control & User Model**.
 
 ### F5.4 — Assign permissions to user
 - Admin grants/revokes fine-grained permissions on top of the role defaults.
@@ -258,6 +273,7 @@ Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with s
 | hiddencost | ✓ (def -1) | ✓ (def -1) | ✓ (def -1) | — |
 | sitecash (deposit) | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
 | sitecashreturn | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
+| sitebill | ✓ (def -1) | ✓ (def -1) | ✓ (def -1) | — |
 
 **Validation ranges** — per-site, customizable by Company Admin. `labour.default_salary` / `default_fooding` are validated against the labour's **current_site** config at create/edit time:
 - `attendance_present_choices` — explicit allowed set for the `present` value, e.g. `[0, 0.5, 1, 1.5, 2, 3]` (only these accepted; the set is not a uniform step, so it is a list not a min/max).
@@ -287,7 +303,7 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 2. **Set `closed_at = now()`** (a null `closed_at` = open, non-null = closed). Closed sites do not count toward the plan's open-site limit.
 3. **Build the closure summary** (immutable snapshot): totals from SiteCost, HiddenCost, SiteBill, DailyAttendance (total present, total salary), LabourExtraWork totals, total cost, total bills, total paid bills, profit, floor contract vs billed — everything the admin needs after the detail is gone.
 4. **Access changes immediately** — authorized users now see **only the summary**; the detail rows stay in the same DB but are hidden from the company side.
-5. **Cron purge** — a scheduled job deletes the detail rows of any site whose `closed_at` is **more than 30 days** old, **except** rows still `editable = true`. Those belong to an unsealed `LabourSession`; they are kept until the next session seals them (`editable = false`), after which a later cron run may delete them.
+5. **Cron purge** — a scheduled job deletes the detail rows of any site whose `closed_at` is **more than 30 days** old, **except** rows still `editable = true`. Those belong to an unsealed `LabourWorkSession`; they are kept until the next session seals them (`editable = false`), after which a later cron run may delete them.
 
 ### F6.4 — Reopen a closed site
 - Admin requests reopen.
@@ -360,7 +376,7 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 
 ### F7.3 — Activate / deactivate labour account
 - Inactive labour: no new attendance, extra work, or payments; history stays.
-- A sealed `LabourSession` (vacation) deactivates the account automatically; returning from vacation requires reactivation **before** any new record (F10.1).
+- A sealed `LabourWorkSession` (vacation) deactivates the account automatically; returning from vacation requires reactivation **before** any new record (F10.1).
 
 ### F7.4 — Update labour salary for a date range
 Salary is stored on each DailyAttendance row. `labour.default_salary` is used only when creating new attendance records.
@@ -402,7 +418,7 @@ A labour is paid through two ledgers — **advance pay** (cash advances) and **f
 - Running `site_total` (site's cumulative fooding) computed from the previous row.
 
 ### F8.3 — Track labour balance
-- `balance = balance (from last worksession) + earnings from dailyattendence(editable=true) − advance(editable=true) − fooding(editable=true) + returns(editable=true)`.
+- `balance = balance (from last work session) + earnings from dailyattendence(editable=true) − advance(editable=true) − fooding(editable=true) + returns(editable=true)`.
 - Read from the latest carried balance / running totals — no full scan needed.
 
 ### F8.4 — View payment history
@@ -421,16 +437,16 @@ A labour is paid through two ledgers — **advance pay** (cash advances) and **f
 
 ---
 
-## F10 — Manage Labour Session
+## F10 — Manage Labour Work Session
 
-A labour works continuously — moving site to site — then takes a vacation. The **period** between two vacations is one Work Session, recorded as a `LabourSession` plus one `LabourSiteSession` per site touched.
+A labour works continuously — moving site to site — then takes a vacation. The **period** between two vacations is one work session, recorded as a `LabourWorkSession` plus one `LabourSiteWorkSession` per site touched.
 
-### F10.1 — Create / seal a labour session (vacation flow)
+### F10.1 — Create / seal a labour work session (vacation flow)
 Triggered when the labour wants to go on vacation:
 1. **Review** — all still-`editable` rows (attendance, extra work, advance, fooding, return) are reviewed; any correction is applied now, while they are still editable.
 2. **Settle** — a final payment is made based on the current balance (pay out the payable, or collect an overpayment) so the balance reflects reality.
-3. **Per-site rollup** — for each site the labour touched this session, create a `LabourSiteSession` aggregating that site's `present`, `extrawork`, `fooding`, `advance`, `salary`, `earnings`, `payable`.
-4. **Session record** — create one `LabourSession` linking all its LabourSiteSessions, with:
+3. **Per-site rollup** — for each site the labour touched this session, create a `LabourSiteWorkSession` aggregating that site's `present`, `extrawork`, `fooding`, `advance`, `salary`, `earnings`, `payable`.
+4. **Session record** — create one `LabourWorkSession` linking all its LabourSiteWorkSessions, with:
    - `start_date` = date of the first record after the previous session's end,
    - `end_date` = date of the **last** record in this session,
    - `last_balance` = balance carried in, `balance` = balance carried out.
@@ -440,7 +456,7 @@ Triggered when the labour wants to go on vacation:
 Rules:
 - Records created after sealing belong to the **next** session.
 - The session `end_date` is the latest sealed record's date.
-- Any new record's date must be **≥ the last session's end_date**.
+- Any new record's date must be **≥ the last work session's end_date**.
 - After returning from vacation, the account must be **reactivated first** (F7.3) before creating any record.
 
 ### F10.2 — View session history
@@ -456,7 +472,7 @@ Rules:
 - Floor is required so the earnings attribute to floor costing.
 - Validations: labour active and assigned to this site, site active, floor active, one row per (labour, floor, date), and the site config gates (`attendance_create_window`, `attendance_per_day_limit` — F6.12). New row is `editable = true`.
 - Row stores the salary snapshot and running totals: `site_total_present`, `site_total_salary`, `floor_total_present`, `floor_total_salary`.
-> **Creatable dates are governed by the site's `attendance_create_window`** (default today + yesterday), must be **≥ the last session end date**, and **never in the future**. The same pattern (each entity's own `*_create_window` / `*_update_window` / `*_delete_window`, and for labour entities `*_per_day_limit`) applies to extra work, advance, fooding, return, site cost, hidden cost, site cash, and site cash return. See **Site Configuration** (F6) and F6.12.
+> **Creatable dates are governed by the site's `attendance_create_window`** (default today + yesterday), must be **≥ the last work session end date**, and **never in the future**. The same pattern (each entity's own `*_create_window` / `*_update_window` / `*_delete_window`, and for labour entities `*_per_day_limit`) applies to extra work, advance, fooding, return, site cost, hidden cost, site cash, site cash return, and site bill. See **Site Configuration** (F6) and F6.12.
 
 ### F11.2 — Record extra work
 - Separate ledger (`Labour ExtraWork`): site, floor (F6.9), labour, date, amount, note; `editable = true`.
@@ -479,6 +495,7 @@ Rules:
 ### F12.2 — Record hidden cost (HiddenCost)
 - Separate record type from SiteCost — kept apart so permissions/visibility can differ ("hidden" from normal site views).
 - It is not paid from site cash; it is paid directly by the company admin.
+- Gated by `hiddencost_create_window` / `hiddencost_update_window` / `hiddencost_delete_window` (default `-1` = any date — admin enters hidden costs late); see F6.12.
 - It is used to calculate the **profit/revenue** of a site, not the cash balance.
 - **Floor is nullable**: set → cost allocates to that floor; null → site-general (not tied to any floor).
 - **Expense category is nullable**: null = "Generalized expense".
@@ -509,6 +526,7 @@ Rules:
 ### F14.1 — Create site bill
 - Authorized user records a bill: site, date, **floor (required, F6.9)**, amount, note.
 - Running `site_total` and `floor_total` per bill row; floor bills accumulate against that floor's contract value (sqft × rate, F6.9).
+- Gated by `sitebill_create_window` / `sitebill_update_window` / `sitebill_delete_window` (default `-1` = any date, so the admin/office can record bills anytime); see F6.12.
 
 ### F14.2 — View bill history
 - Ledger per site, filterable by floor, date range; shows billed vs floor contract value vs remaining receivable.
