@@ -259,6 +259,12 @@ Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with s
 | sitecash (deposit) | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
 | sitecashreturn | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
 
+**Validation ranges** — per-site, customizable by Company Admin. `labour.default_salary` / `default_fooding` are validated against the labour's **current_site** config at create/edit time:
+- `attendance_present_choices` — explicit allowed set for the `present` value, e.g. `[0, 0.5, 1, 1.5, 2, 3]` (only these accepted; the set is not a uniform step, so it is a list not a min/max).
+- `salary_min` / `salary_max` — bounds for attendance `salary` and `labour.default_salary` (e.g. 500–1500).
+- `fooding_min` / `fooding_max` — bounds for fooding pay amount and `labour.default_fooding` (e.g. 50–200).
+- `advance_min` / `advance_max` — bounds for a **single** advance row amount (e.g. 0–10000); caps the per-row amount, not the daily count (`advance_per_day_limit`).
+
 ### F6.1 — Create / edit site
 - Admin provides site name (and detail fields). New site starts open + active.
 - System validates open site count against the active plan limit before creating; at the limit → creation blocked with an upgrade prompt (F4.4).
@@ -329,6 +335,15 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - Setting a `*_create_window = 0` freezes new entries of that type at the site without deactivating the whole site.
 - **Out-of-window override (manual)** — a manager requests the admin to widen a window (temporary `N` covering the date, or `-1` for any past date); the admin grants it, the manager acts, and the admin reviews via the activity / audit trail (F16.2), asking for a fix if misused. No system-enforced approval step.
 
+### F6.13 — View site activity & audit history
+- Site-scoped view of the audit trail (F16.2) and activity feed (F16.4): labour transfers (F7.2) and all create / update / delete events for this site, filterable by user, entity type, and date.
+- View only — audit entries are never edited here; removal is authorized user.
+
+### F6.14 — Admin-managed site
+- Site flag `admin_managed` (bool). When `true`, only the **Company Admin** can write to this site — Site Managers and Company Managers are blocked from creating/editing records; the admin acts as the site manager.
+- Read access for assigned users is unchanged; only **write** is locked to the admin.
+- Toggleable any time; the change is audit-logged.
+
 ---
 
 ## F7 — Manage Labour Accounts
@@ -348,13 +363,14 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - A sealed `LabourSession` (vacation) deactivates the account automatically; returning from vacation requires reactivation **before** any new record (F10.1).
 
 ### F7.4 — Update labour salary for a date range
-Salary is snapshotted on each DailyAttendance row (`Labour.default_salary` only seeds new rows). To re-price work, the attendance rows themselves are updated — and only while still **editable** (not yet sealed into a LabourSession).
+Salary is stored on each DailyAttendance row. `labour.default_salary` is used only when creating new attendance records.
 1. Open the labour's attendance page.
 2. Select a **single cell** (one row) or a **date range** or **particular site** of rows to re-price.
-3. Enter the new salary.
+3. Enter the new salary (must be within the site's `salary_min` / `salary_max`).
 4. System updates `salary` on each selected (`editable = true`) row and recomputes the running `site_total_salary` and `floor_total_salary` of those and all later rows.
-5. Each change is written to the audit log (F16).
 - Rows already sealed (`editable = false`) cannot be re-priced.
+- `attendance_update_window` applies to the `present` field only — salary may be re-priced on any still-editable row regardless of the window.
+- No audit logs need for salary change of dailyattendence.
 
 ### F7.5 — View and search labourers
 - Filter by site, active status; search by name. Shows current site, salary, balance.
