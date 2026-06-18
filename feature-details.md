@@ -121,6 +121,17 @@ System-level users; not tied to any company.
 **How it drives cron** — the scheduled jobs run on a **fixed schedule** (daily, set at deploy). They read these **threshold values** at run time and decide what to act on. So changing a value takes effect on the next run.
 
 > **Lifecycle timeline:** `valid_until` reached → write disabled immediately (F4.6) → **+ `company_deactivate_after_expiry` days** still unpaid → company deactivated, logins blocked → **+ `delete_deactivated_company` days** → data purged.
+
+### F2.11 — Reset a company (system user only, OTP dual-control)
+A low-frequency support action for clients who tested the app on a real account and want a clean production start. Destructive and **irreversible**, so it lives only on the platform side under two-party control.
+
+1. Company Admin requests a reset via support (email / contact) — there is **no reset button on the tenant side**.
+2. An authorized **System user** opens the company, hits **Reset**, and types the **company name** to confirm.
+3. System sends a **single-use, short-expiry OTP to the Company Admin's phone** (shared OTP service, F1.1) — this proves the company consents.
+4. The Company Admin relays the OTP to the system user, who enters it; the system **validates** it.
+5. On a valid OTP, in **one transaction** the system **hard-deletes** all tenant data (FK-safe order): sites, floors, labours, work sessions, every ledger (attendance, extra work, advance, fooding, return, cash, cost, bill), expense categories, all **non-admin** users (+ `UserSite` links), and the company's **audit logs**. `CompanyConfig` returns to built-in defaults; all `SiteConfig` rows are gone with their sites.
+6. **Kept:** the Company record, **all Company Admin** accounts, and the active subscription (`plan`, `paid_until` untouched) — the company is now like new with zero entities.
+7. The system writes a **platform-level reset log** (system user, company id, timestamp, OTP-verified) stored system-side — it survives the wipe (the company-side audit cannot, per step 5).
 ---
 
 ## F3 — Manage Company
@@ -147,7 +158,7 @@ System-level users; not tied to any company.
 - Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 with its own built-in defaults).
 - Tenant-wide feature flags that apply to every site of the company. The change is audit-logged.
 - Example: **`allow_labour_transfer`** (bool, default `true`) — when `false`, moving a labour from one site to another (F7.2) is blocked company-wide; a labour stays on its original site for its whole lifecycle. Existing assignments are untouched.
-- Reset to default configuration.
+- **Reset to defaults** — Company Admin can reset `CompanyConfig` back to its built-in defaults in one action; config-only (no entity data touched), audit-logged.
 
 ---
 
@@ -365,6 +376,7 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - Controls, per entity type: create window, update window, delete window, and per-day quota (see **Site Configuration** above).
 - Changes apply to **future** create / edit checks only — existing rows are untouched. Every change is audit-logged (F16).
 - Setting a `*_create_window = 0` freezes new entries of that type at the site without deactivating the whole site.
+- **Reset to defaults** — Company Admin can reset this site's `SiteConfig` back to its built-in defaults in one action; config-only (no entity data touched), applies to future checks only, audit-logged.
 - **Out-of-window override (manual)** — a manager requests the admin to widen a window (temporary `N` covering the date, or `-1` for any past date); the admin grants it, the manager acts, and the admin reviews via the activity / audit trail (F16.2), asking for a fix if misused. No system-enforced approval step.
 
 ### F6.13 — View site activity & audit history
