@@ -32,7 +32,7 @@
 ### Who can do what — two independent layers:
 - **Capability** (*what*) — a Django **Group**: System Admin / System Manager; Company Admin / Company Manager / Site Manager. Global within its scope, never per-site.
 - **Scope** (*which sites*) — **`UserSite`** links a tenant user to sites. A site can have many managers; a user many sites.
-- A **write** is allowed when: capability (Group) **+** assigned to the site (`UserSite`) **+** inside the entity's window (F6.12) **+** the row is `editable`. On an `admin_managed` site (F6.14) only the Company Admin may write.
+- A **write** is allowed when: capability (Group) **+** assigned to the site (`UserSite`) **+** inside the entity's window (F6.12) **+** the row is `editable`. The Company Admin manages all sites by default, but to **record** on a site must self-assign and join the Site Manager group (F6.14) — the same write rule then applies.
 ---
 
 ## F1 — Manage Authentication
@@ -110,13 +110,13 @@ System-level users; not tied to any company.
 - System Admin views/edits `SystemConfig` (single global row, auto-created with defaults).
 - Implementation note: SystemConfig is a Singleton (django-solo)
 
-**Examples:**:
-| Field | Default (days) | Meaning |
+**Examples:**
+| Field | Default | Meaning |
 |---|---|---|
-| `maintenance mode` | true | System under maintanance reminder message for all users |
-| `subscription_renew_notification` | 5 | Begin renewal reminders this many days **before** `valid_until` — SMS + dashboard to every Company Admin (F4.7). |
-| `company_deactivate_after_expiry` | 10 | Days **after** expiry to auto-deactivate the company. On expiry, write access is cut immediately (F4.6); after this many further days the cron deactivates the company — no user can log in, reactivation needs a support request (F2.3). |
-| `delete_deactivated_company` | 60 | Days a company may stay deactivated before a cron **purges** its data. |
+| `maintenance_mode` | false | When `true`, show a maintenance banner to all users. |
+| `subscription_renew_notification` | 5 (days) | Begin renewal reminders this many days **before** `valid_until` — SMS + dashboard to every Company Admin (F4.7). |
+| `company_deactivate_after_expiry` | 10 (days) | Days **after** expiry to auto-deactivate the company. On expiry, write access is cut immediately (F4.6); after this many further days the cron deactivates the company — no user can log in, reactivation needs a support request (F2.3). |
+| `delete_deactivated_company` | 60 (days) | Days a company may stay deactivated before a cron **purges** its data. |
 
 **How it drives cron** — the scheduled jobs run on a **fixed schedule** (daily, set at deploy). They read these **threshold values** at run time and decide what to act on. So changing a value takes effect on the next run.
 
@@ -140,7 +140,8 @@ System-level users; not tied to any company.
 ### F3.4 — Manage expense categories
 - **Company-level** master data: Admin creates/edits expense categories (name, display order, active flag).
 - Shared by **all sites** of the company — every SiteCost (F12.1) and HiddenCost (F12.2) row references the same category set, so cross-site reporting stays consistent.
-- Expense category may delele, all referenced rows gets null consider as generalized category.
+- **Deactivate** — hidden from new-entry dropdowns; no new row may reference it, existing rows keep their link.
+- **Delete** — all referencing rows get `null`, treated as "Generalized expense".
 
 ### F3.5 — Manage company configuration
 - Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 with its own built-in defaults).
@@ -153,7 +154,7 @@ System-level users; not tied to any company.
 ## F4 — Manage Company Subscription
 
 ### F4.1 — View subscription status
-- Company Admin sees current plan, expiry date, payment history for each capped resource: open sites, active users, active labour.
+- Company Admin sees current plan, expiry date, payment history, and **usage vs limit** for each capped resource: open sites, active users, active labour.
 
 ### F4.2 — Pay for plan
 - Admin picks a plan tier and duration (1 / 6 / 12 months).
@@ -370,11 +371,11 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - Site-scoped view of the audit trail (F16.2) and activity feed (F16.4): labour transfers (F7.2) and all create / update / delete events for this site, filterable by user, entity type, and date.
 - View only — audit entries are never edited here; removal is authorized user.
 
-### F6.14 — Admin-managed site
-- Normally admin access all sites configurations and view access. No need to assign admin to specific site.
-- In this case admin will assign himself to specific sites, and then assign himself to sitemanager group. Now admin is belongs to  companyadmin and sitemanager(for self assigned sites) both group. 
-- Toggleable any time; the change is audit-logged.
-- This is not security concern, because everycreation and changes in this system kept the created_by, updated_by field so easy to find out who create or change it. if admin create it means he is the siteman of this site.
+### F6.14 — Admin records on a site
+- By default the Company Admin has config + read access to **all** sites and need not be assigned to any site.
+- To **record** on a site, the admin assigns himself to that site (`UserSite`) and joins the **Site Manager** group — he then belongs to both Company Admin and Site Manager (for the self-assigned sites), and the normal write rule (Access Control) applies.
+- Reversible any time — the admin can unassign himself or leave the Site Manager group; the change is audit-logged.
+- No extra security concern: every row keeps `created_by` / `updated_by`, so who created or changed it is always traceable — if the admin created it, he acted as that site's manager.
 
 ---
 
@@ -428,13 +429,11 @@ A labour is paid through two ledgers — **advance pay** (cash advances) and **f
 ### F8.1 — Issue advance pay
 - Manager picks labour, enters amount, note, date → creates a `LabourAdvancePay` row (`editable = true`).
 - Blocked if labour is inactive.
-- Check `allow_labour_advance_pay` from SiteConfiguration
 - Running `site_total` (site's cumulative advance) computed from the previous row.
 
 ### F8.2 — Issue fooding pay
 - Manager picks labour, enters amount (seeded from `default_fooding`), note, date → creates a `LabourFoodingPay` row (`editable = true`).
 - Blocked if labour is inactive.
-- Check `allow_labour_fooding_pay` from SiteConfiguration
 - Running `site_total` (site's cumulative fooding) computed from the previous row.
 
 ### F8.3 — Track labour balance
@@ -496,7 +495,6 @@ Rules:
 
 ### F11.2 — Record extra work
 - Separate ledger (`Labour ExtraWork`): site, floor (F6.9), labour, date, amount, note; `editable = true`.
-- Check the `SiteConfig.allow_extra_work`
 - Kept apart from attendance so ad-hoc extra earnings are tracked on their own.
 - Running `site_total_amount` and `floor_total_amount`. Adds to the labour's earnings.
 
