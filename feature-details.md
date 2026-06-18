@@ -76,6 +76,8 @@
 ## F2 — Manage Platform
 System-level users; not tied to any company.
 
+> **MVP scope** — in the MVP the entire platform side (F2.*) is operated through the **Django admin site** (`/admin/`, Django session auth); there is no platform frontend or public platform API yet, and system users are Django staff/superusers. The dedicated **Platform API** + system OTP/JWT login (F2.1) and custom actions like company reset (F2.11) are a **later phase**. The **tenant** side (F1, F3–F16) ships with its real API + frontend now.
+
 ### F2.1 — System user login
 - Separate login for platform staff (no company context); same OTP + JWT pattern.
 
