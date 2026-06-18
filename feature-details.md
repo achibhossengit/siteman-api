@@ -9,7 +9,10 @@
 - **Direct edit + audit** — authorized users edit/delete directly; the system auto-writes an audit entry (actor, time, before/after, note) and bumps `updated_at` (F16). Ledger rows are **soft-deleted**.
 - **Site cash balance** — `deposits − withdrawals(returns) − site cost − advance pay − fooding pay`. Hidden cost is **excluded** (paid by admin, not from the site box).
 - **Future dates blocked** — no record's `date` may be in the future, for every date-bearing entity, regardless of any config.
-- **Per-site configuration** — each site has a one-to-one `SiteConfig` (F6.12) that tunes, per entity type, how records may be created, edited, and deleted: create window, update window, delete window, and per-day quota. See **Site Configuration** under F6.
+- **Configuration tiers** — behaviour is tuned at three levels, most-specific wins:
+  - **System config** (`SystemConfig`, single global row, System Admin) — platform-wide defaults & feature flags. See **System Configuration** under F2.
+  - **Company config** (`CompanyConfig`, one per company, Company Admin) — per-tenant feature flags, e.g. `allow_labour_transfer` (default `true`). See **Company Configuration** under F3.
+  - **Site config** (`SiteConfig`, one per site, Company Admin) — per-site create/update/delete windows + per-day quotas. See **Site Configuration** under F6.
 
 ## Roles
 - **System Admin** — manages all companies and subscriptions.
@@ -86,9 +89,9 @@ System-level users; not tied to any company.
 - Deactivated company: all its users blocked from login; data retained.
 
 ### F2.4 — Manage subscription plans
-- System Admin creates/edits plan tiers: open-site limit, per-month rate per duration (1/6/12 months).
+- System Admin creates/edits plan tiers: **open-site limit**, **active-user limit**, **active-labour limit**, per-month rate per duration (1/6/12 months). Each limit `-1` = no limit; `N` = cap.
 - Price changes apply to new purchases/renewals only; running subscriptions keep their rate snapshot.
-- Custom plan: limit and price negotiated and set manually per company.
+- Custom plan: limits and price negotiated and set manually per company.
 
 ### F2.5 — Monitor subscription status
 - Dashboard of all companies: plan, active / expiring soon / expired, revenue summary.
@@ -104,6 +107,15 @@ System-level users; not tied to any company.
 
 ### F2.9 — Data correction on sealed/closed data
 - Only a system user can correct a sealed (`editable=false`) row or restore/repair a closed site's data on support request — the company side has no such override.
+
+### F2.10 — Manage system configuration
+- System Admin views/edits `SystemConfig` (single global row, auto-created with defaults).
+- Holds platform-wide defaults & feature flags and the **default values** new `CompanyConfig` rows inherit at company creation (F3.1).
+
+### System Configuration (reference)
+One global `SystemConfig` row (managed in F2.10). Platform-wide switches owned by the System Admin only; companies cannot change these.
+- Carries the **default seed** for each company-level flag (e.g. default `allow_labour_transfer = true`), applied when a company is created. Editing the seed does **not** retro-change existing companies.
+- Room for future platform flags (maintenance mode, signup open/closed, global OTP provider, retention-window defaults) without schema churn — add a field, no new table.
 
 ---
 
@@ -126,14 +138,23 @@ System-level users; not tied to any company.
 - Shared by **all sites** of the company — every SiteCost (F12.1) and HiddenCost (F12.2) row references the same category set, so cross-site reporting stays consistent.
 - Category cannot be deleted once referenced by any cost row → deactivate instead (hidden from new-entry dropdowns, old rows keep their link).
 
+### F3.5 — Manage company configuration
+- Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 from the `SystemConfig` seed).
+- Tenant-wide feature flags that apply to every site of the company. The change is audit-logged.
+
+### Company Configuration (reference)
+One `CompanyConfig` per company (managed in F3.5), auto-created at registration from the `SystemConfig` defaults and editable by the Company Admin.
+- **`allow_labour_transfer`** (bool, default `true`) — when `false`, moving a labour from one site to another (F7.2) is blocked company-wide; a labour stays on its original site for its whole lifecycle. Existing assignments are untouched.
+- Extensible: further tenant-wide flags can be added here as fields without a new table.
+
 ---
 
 ## F4 — Manage Company Subscription
 
-Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), **Business** (20), **Custom** (20+, negotiated). Durations: 1 / 6 / 12 months, longer = per-month discount.
+Plan tiers cap **open site count** (primary): **Free** (1), **Basic** (5), **Popular** (10), **Business** (20), **Custom** (20+, negotiated). Each plan also carries an **active-user limit** and **active-labour limit** (both default `-1` = no limit, so they can be tightened per tier later without schema change). Durations: 1 / 6 / 12 months, longer = per-month discount.
 
 ### F4.1 — View subscription status
-- Company Admin sees current plan, open-site limit vs current usage, expiry date, payment history.
+- Company Admin sees current plan, expiry date, payment history, and **usage vs limit** for each capped resource: open sites, active users, active labour (a `-1` limit shows as "no limit").
 
 ### F4.2 — Pay for plan
 - Admin picks a plan tier and duration (1 / 6 / 12 months).
@@ -152,9 +173,9 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 
 ### F4.5 — Downgrade plan
 - **Before expiry:** not allowed — must wait until the current plan expires.
-- **After expiry:** system checks current open site count against the target plan limit:
-  - Within limit → downgrade proceeds.
-  - Exceeds limit → admin is prompted to close the excess sites or stay on the current plan.
+- **After expiry:** system checks current usage of every capped resource (open sites, active users, active labour) against the target plan limits:
+  - All within limits → downgrade proceeds.
+  - Any exceeds its limit → admin is prompted to shed the excess (close sites / deactivate users / deactivate labour) or stay on the current plan.
 
 ### F4.6 — Disable write access on expiry
 - Middleware checks subscription validity on every request.
@@ -165,15 +186,17 @@ Plan tiers cap open site count: **Free** (1), **Basic** (5), **Popular** (10), *
 - Reminder log kept so the same reminder is not repeated.
 
 ### Subscription Model (reference)
-Plan tiers are based on open site count only. Longer durations get a per-month discount. Prices in BDT.
+Pricing is driven by **open site count**; the user and labour caps default to `-1` (no limit) today and exist so a tier can be tightened later without a schema change. Longer durations get a per-month discount. Prices in BDT.
 
-| Plan | Open Sites | 1 Month | 6 Months | 1 Year |
-|---|---|---|---|---|
-| **Free** | Up to 1 | Free | — | — |
-| **Basic** | Up to 5 | 600 × 1 = **600** | 550 × 6 = **3,300** | 500 × 12 = **6,000** |
-| **Popular** | Up to 10 | 1,000 × 1 = **1,000** | 950 × 6 = **5,700** | 900 × 12 = **10,800** |
-| **Business** | Up to 20 | 3,000 × 1 = **3,000** | 2,900 × 6 = **17,400** | 2,500 × 12 = **30,000** |
-| **Custom** | 20+ | negotiated | negotiated | negotiated |
+| Plan | Open Sites | Active Users | Active Labour | 1 Month | 6 Months | 1 Year |
+|---|---|---|---|---|---|---|
+| **Free** | Up to 1 | −1 | −1 | Free | — | — |
+| **Basic** | Up to 5 | −1 | −1 | 600 × 1 = **600** | 550 × 6 = **3,300** | 500 × 12 = **6,000** |
+| **Popular** | Up to 10 | −1 | −1 | 1,000 × 1 = **1,000** | 950 × 6 = **5,700** | 900 × 12 = **10,800** |
+| **Business** | Up to 20 | −1 | −1 | 3,000 × 1 = **3,000** | 2,900 × 6 = **17,400** | 2,500 × 12 = **30,000** |
+| **Custom** | 20+ | negotiated | negotiated | negotiated | negotiated | negotiated |
+
+> **Limit scale (all three):** `-1` = no limit, `N ≥ 0` = hard cap. "Active" = not deactivated and not soft-deleted. Enforced at create/activate time (F5.1 user, F7.1 labour, F6.1 site); at the cap → blocked with an upgrade prompt (F4.4).
 
 **Renewal & plan management.** When a subscription expires, write access to all sites is disabled and the admin receives an alert to renew payment.
 - **Renew** — admin can renew at any time.
@@ -187,6 +210,7 @@ Plan tiers are based on open site count only. Longer durations get a per-month d
 ### F5.1 — Create Staff user
 - Company Admin provides name, BD phone number, password role, permitted sites.
 - System validates BD phone_number and checks it is not already registered.
+- System checks the company's **active-user count** against the plan's active-user limit (skip if `-1`); at the cap → blocked with an upgrade prompt (F4.4).
 - System sends an OTP to this phone number; admin completes registration by providing the OTP.
 - System will creates user under the same company (`scope = tenant`, `company` = admin's company).
 - If provide role and permitted sites then Assign this user to that group and permitted sites.
@@ -367,10 +391,12 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 ### F7.1 — Create / edit labourer
 - Manager (with site permission) provides name, `default_salary`, `default_present`, `default_fooding`, and current site.
 - System checks name uniqueness.
+- System checks the company's **active-labour count** against the plan's active-labour limit (skip if `-1`); at the cap → blocked with an upgrade prompt (F4.4). Reactivation (F7.3) runs the same check.
 - Labour starts active, assigned to that site. New attendance / fooding rows seed their values from these defaults if not provide explicitly (each row still keeps its own snapshot).
 
 ### F7.2 — Assign / move labourer to site
 - Sets or changes the labour's current site (one site at a time — assigning to a new site **is** the move).
+- **Gated by `CompanyConfig.allow_labour_transfer`** (F3.5): if `false`, moving an already-assigned labour to a different site is blocked (first assignment of a new labour still allowed).
 - Previous site manager no longer creates new records against this labour.
 - New site manager now has authority to create new records for this labour.
 

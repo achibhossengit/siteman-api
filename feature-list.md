@@ -46,6 +46,7 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F2.7 | Assign system roles |
 | F2.8 | Assign system permissions |
 | F2.9 | Data correction on sealed / closed data |
+| F2.10 | Manage system configuration |
 
 ### F3 → Manage Company
 | # | Feature |
@@ -54,6 +55,7 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F3.2 | View company profile & status |
 | F3.3 | Edit company details |
 | F3.4 | Manage expense categories |
+| F3.5 | Manage company configuration |
 
 ### F4 → Manage Company Subscription
 | # | Feature |
