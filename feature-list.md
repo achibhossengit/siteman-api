@@ -10,11 +10,11 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F2 | Manage Platform |
 | F3 | Manage Company |
 | F4 | Manage Company Subscription |
-| F5 | Manage Users |
+| F5 | Manage Company Users |
 | F6 | Manage Sites |
 | F7 | Manage Labour Accounts |
 | F8 | Manage Labour Payments (Advance & Fooding) |
-| F9 | Manage Labour Payment Return |
+| F9 | Manage Labour Return |
 | F10 | Manage Labour Work Session |
 | F11 | Manage Daily Attendance & Extra Work |
 | F12 | Manage Site Expense |
@@ -44,9 +44,10 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F2.5 | Monitor subscription status |
 | F2.6 | Create system users |
 | F2.7 | Assign system roles |
-| F2.8 | Assign system permissions |
+| F2.8 | Assign system-level permissions |
 | F2.9 | Data correction on sealed / closed data |
 | F2.10 | Manage system configuration |
+| F2.11 | Reset a company (system user only, OTP dual-control) |
 
 ### F3 → Manage Company
 | # | Feature |
@@ -68,10 +69,10 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F4.6 | Disable write access on expiry |
 | F4.7 | Send renewal reminders |
 
-### F5 → Manage Users
+### F5 → Manage Company Users
 | # | Feature |
 |---|---|
-| F5.1 | Create user |
+| F5.1 | Create Staff user |
 | F5.2 | Assign role to user |
 | F5.3 | Assign user to sites |
 | F5.4 | Assign permissions to user |
@@ -95,13 +96,13 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F6.11 | Mark floor as done |
 | F6.12 | Manage site configuration |
 | F6.13 | View site activity & audit history |
-| F6.14 | Admin-managed site |
+| F6.14 | Admin records on a site |
 
 ### F7 → Manage Labour Accounts
 | # | Feature |
 |---|---|
 | F7.1 | Create / edit labourer |
-| F7.2 | Move labourer to site |
+| F7.2 | Assign / move labourer to site |
 | F7.3 | Activate / deactivate labour account |
 | F7.4 | Update labour salary |
 | F7.5 | View and search labourers |
@@ -115,7 +116,7 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F8.3 | Track labour balance |
 | F8.4 | View payment history |
 
-### F9 → Manage Labour Payment Return
+### F9 → Manage Labour Return
 | # | Feature |
 |---|---|
 | F9.1 | Record labour return |
