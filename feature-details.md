@@ -1,17 +1,14 @@
 # SiteMan — Feature Details
 
-## Conventions (cross-cutting)
-- **Tenant isolation** — every tenant row carries `company_id`; the tenant API scopes all queries to the caller's company. System users (`scope = system`, `company = null`) are exempt and use the platform API only. See **Access Control & User Model**.
-- **Global phone uniqueness** — one phone = one account across the whole platform.
-- **Running totals** — ledger rows store cumulative fields (`site_total`, `floor_total`, and on attendance `site_total_present` / `site_total_salary` / `floor_total_present` / `floor_total_salary`). Current value = the latest row's total; **per-floor totals chain per floor** (latest row *per floor*), per-site totals chain per site.
-- **Labour balance** — `balance = last_balance + earnings − advance − fooding + returns`, where `earnings = Σ(present × salary) + Σ extra work`. Carried across vacations via `LabourWorkSession` (`last_balance` → `balance`).
-- **`editable` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `editable = true`. Sealing a `LabourWorkSession` (F10) sets the sealed rows `editable = false` → immutable. **This flag is the lock** (replaces any date-based lock).
-- **Direct edit + audit** — authorized users edit/delete directly; the system auto-writes an audit entry (actor, time, before/after, note) and bumps `updated_at` (F16). Ledger rows are **soft-deleted**.
-- **Site cash balance** — `deposits − withdrawals(returns) − site cost − advance pay − fooding pay`. Hidden cost is **excluded** (paid by admin, not from the site box).
-- **Future dates blocked** — no record's `date` may be in the future, for every date-bearing entity, regardless of any config.
-- **Configuration tiers** — behaviour is tuned at three levels, most-specific wins:
-  - **System config** (`SystemConfig`, single global row, System Admin) — platform-wide defaults & feature flags. See **System Configuration** under F2.
-  - **Company config** (`CompanyConfig`, one per company, Company Admin) — per-tenant feature flags, e.g. `allow_labour_transfer` (default `true`). See **Company Configuration** under F3.
+## Conventions
+- **Tenant isolation** — every tenant row carries `company_id`; See **Access Control & User Model**.
+- **Running totals** — ledger rows store cumulative fields (`site_total`, `floor_total` etc). Need to update all later rows after update or delete any rows.
+- **`editable` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `editable = true`.
+- **Direct edit + audit** — authorized users edit/delete directly; the system auto-writes an audit entry (actor, time, before/after, note) and bumps `updated_at` / `deleted_at` (F16). Ledger rows are **soft-deleted**.
+- **Future dates blocked** — no record's `date` may be in the future, for every date-bearing entity.
+- **Configuration tiers**
+  - **System config** (`SystemConfig`, single global row, System Admin) — Governs platform behaviour only. See **System Configuration** under F2.
+  - **Company config** (`CompanyConfig`, one per company, Company Admin) — per-tenant feature flags, e.g. `allow_labour_transfer` (default `true`); created with its **own built-in defaults** at registration. See **Company Configuration** under F3.
   - **Site config** (`SiteConfig`, one per site, Company Admin) — per-site create/update/delete windows + per-day quotas. See **Site Configuration** under F6.
 
 ## Roles
@@ -22,19 +19,20 @@
 - **Site Manager** — records attendance, cash, and cost for permitted sites; edits are logged.
 
 ## Access Control & User Model
-
-**One `User` table, two scopes**:
+### One `User` table, two scopes:
 - **System** (`scope = system`, `company = null`) — platform staff (F2); uses the **Platform API** (`/api/platform/…`), cross-company.
 - **Tenant** (`scope = tenant`, `company` set) — company user (F5); uses the **Tenant API** (`/api/…`), auto-scoped to its company.
 - One phone = one account, so a person is system **or** tenant. Same OTP + JWT login (F1.1 / F2.1); token carries `user_id`, `scope`, `company_id`, groups. A system user reaches tenant data only through explicit platform endpoints (e.g. F2.9).
+- **Why separate login endpoints** 
+  - Phone is globally unique, so `scope` alone *could* drive one shared endpoint; they are split for security, not necessity.
+  - The platform login is an isolated route with its own rate-limit / IP-allowlist / hardening, kept off the tenant attack surface.
+  - A system account can never authenticate on the tenant endpoint (scope mismatch → rejected), shrinking coupling and blast radius. 
+  - It avoids the account enumeration a shared endpoint leaks (which phones are platform staff). OTP generation, JWT issue, and BD-phone normalization live in a **shared service**; each endpoint is a thin wrapper that fixes the scope and applies its own policy — **one core logic, two doors**.
 
-**Who can do what — two independent layers:**
+### Who can do what — two independent layers:
 - **Capability** (*what*) — a Django **Group**: System Admin / System Manager; Company Admin / Company Manager / Site Manager. Global within its scope, never per-site.
 - **Scope** (*which sites*) — **`UserSite`** links a tenant user to sites. A site can have many managers; a user many sites.
 - A **write** is allowed when: capability (Group) **+** assigned to the site (`UserSite`) **+** inside the entity's window (F6.12) **+** the row is `editable`. On an `admin_managed` site (F6.14) only the Company Admin may write.
-
-**Account deletion** — user (F5.6) and labour (F7.6) are soft-deleted (`deleted_at`), then cron-purged with `ON DELETE SET NULL`. So `created_by` and `labour_id` on ledger rows are **nullable** — a purged account leaves rows as "unknown", financial history intact.
-
 ---
 
 ## F1 — Manage Authentication
@@ -50,13 +48,13 @@
 
 ### F1.2 — Register
 - Visitor provides name, phone_number, email, company detail, and password.
-- System validates BD phone_number and checks it is not already registered (**phone is globally unique across the whole platform — one phone = one account**).
+- System validates BD phone_number and checks it is not already registered.
 - System sends an OTP to this phone number; user completes registration by providing the OTP.
 - On OTP success, inside one database transaction:
   1. System creates the Company using the company detail.
   2. System creates the user account under this company.
   3. System assigns this user to the **Company Admin** group.
-- User can now log in; new company starts on the **Free plan** (up to 1 open site).
+- User can now log in; new company starts on the **Free plan** if available.
 
 ### F1.3 — Reset forgotten password
 - User gives registered phone number.
@@ -76,7 +74,6 @@
 ---
 
 ## F2 — Manage Platform
-
 System-level users; not tied to any company.
 
 ### F2.1 — System user login
@@ -92,6 +89,7 @@ System-level users; not tied to any company.
 - System Admin creates/edits plan tiers: **open-site limit**, **active-user limit**, **active-labour limit**, per-month rate per duration (1/6/12 months). Each limit `-1` = no limit; `N` = cap.
 - Price changes apply to new purchases/renewals only; running subscriptions keep their rate snapshot.
 - Custom plan: limits and price negotiated and set manually per company.
+- **Manual payment** — a System user can record a subscription payment that bypasses the gateway (offline / bank / cash, or after a gateway failure) for any company.
 
 ### F2.5 — Monitor subscription status
 - Dashboard of all companies: plan, active / expiring soon / expired, revenue summary.
@@ -110,13 +108,19 @@ System-level users; not tied to any company.
 
 ### F2.10 — Manage system configuration
 - System Admin views/edits `SystemConfig` (single global row, auto-created with defaults).
-- Holds platform-wide defaults & feature flags and the **default values** new `CompanyConfig` rows inherit at company creation (F3.1).
+- Implementation note: SystemConfig is a Singleton (django-solo)
 
-### System Configuration (reference)
-One global `SystemConfig` row (managed in F2.10). Platform-wide switches owned by the System Admin only; companies cannot change these.
-- Carries the **default seed** for each company-level flag (e.g. default `allow_labour_transfer = true`), applied when a company is created. Editing the seed does **not** retro-change existing companies.
-- Room for future platform flags (maintenance mode, signup open/closed, global OTP provider, retention-window defaults) without schema churn — add a field, no new table.
+**Examples:**:
+| Field | Default (days) | Meaning |
+|---|---|---|
+| `maintenance mode` | true | System under maintanance reminder message for all users |
+| `subscription_renew_notification` | 5 | Begin renewal reminders this many days **before** `valid_until` — SMS + dashboard to every Company Admin (F4.7). |
+| `company_deactivate_after_expiry` | 10 | Days **after** expiry to auto-deactivate the company. On expiry, write access is cut immediately (F4.6); after this many further days the cron deactivates the company — no user can log in, reactivation needs a support request (F2.3). |
+| `delete_deactivated_company` | 60 | Days a company may stay deactivated before a cron **purges** its data. |
 
+**How it drives cron** — the scheduled jobs run on a **fixed schedule** (daily, set at deploy). They read these **threshold values** at run time and decide what to act on. So changing a value takes effect on the next run.
+
+> **Lifecycle timeline:** `valid_until` reached → write disabled immediately (F4.6) → **+ `company_deactivate_after_expiry` days** still unpaid → company deactivated, logins blocked → **+ `delete_deactivated_company` days** → data purged.
 ---
 
 ## F3 — Manage Company
@@ -136,29 +140,23 @@ One global `SystemConfig` row (managed in F2.10). Platform-wide switches owned b
 ### F3.4 — Manage expense categories
 - **Company-level** master data: Admin creates/edits expense categories (name, display order, active flag).
 - Shared by **all sites** of the company — every SiteCost (F12.1) and HiddenCost (F12.2) row references the same category set, so cross-site reporting stays consistent.
-- Category cannot be deleted once referenced by any cost row → deactivate instead (hidden from new-entry dropdowns, old rows keep their link).
+- Expense category may delele, all referenced rows gets null consider as generalized category.
 
 ### F3.5 — Manage company configuration
-- Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 from the `SystemConfig` seed).
+- Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 with its own built-in defaults).
 - Tenant-wide feature flags that apply to every site of the company. The change is audit-logged.
-
-### Company Configuration (reference)
-One `CompanyConfig` per company (managed in F3.5), auto-created at registration from the `SystemConfig` defaults and editable by the Company Admin.
-- **`allow_labour_transfer`** (bool, default `true`) — when `false`, moving a labour from one site to another (F7.2) is blocked company-wide; a labour stays on its original site for its whole lifecycle. Existing assignments are untouched.
-- Extensible: further tenant-wide flags can be added here as fields without a new table.
+- Example: **`allow_labour_transfer`** (bool, default `true`) — when `false`, moving a labour from one site to another (F7.2) is blocked company-wide; a labour stays on its original site for its whole lifecycle. Existing assignments are untouched.
+- Reset to default configuration.
 
 ---
 
 ## F4 — Manage Company Subscription
 
-Plan tiers cap **open site count** (primary): **Free** (1), **Basic** (5), **Popular** (10), **Business** (20), **Custom** (20+, negotiated). Each plan also carries an **active-user limit** and **active-labour limit** (both default `-1` = no limit, so they can be tightened per tier later without schema change). Durations: 1 / 6 / 12 months, longer = per-month discount.
-
 ### F4.1 — View subscription status
-- Company Admin sees current plan, expiry date, payment history, and **usage vs limit** for each capped resource: open sites, active users, active labour (a `-1` limit shows as "no limit").
+- Company Admin sees current plan, expiry date, payment history for each capped resource: open sites, active users, active labour.
 
 ### F4.2 — Pay for plan
 - Admin picks a plan tier and duration (1 / 6 / 12 months).
-- System computes the price from the plan's per-month rate × duration (rate snapshot stored).
 - Admin starts payment → system creates a payment attempt and redirects to the payment gateway.
 - Gateway sends confirmation (IPN/webhook); system verifies signature and amount.
 - On success: subscription record saved (plan, duration, amount, transaction id), `paid_until` extended from the activation date.
@@ -179,14 +177,15 @@ Plan tiers cap **open site count** (primary): **Free** (1), **Basic** (5), **Pop
 
 ### F4.6 — Disable write access on expiry
 - Middleware checks subscription validity on every request.
-- Expired → write access to all sites is disabled (read-only); admin gets an alert to renew.
+- Expired → write access to all sites is disabled immediately (read-only); admin gets an alert to renew.
+- If still unpaid `company_deactivate_after_expiry` days later (SystemConfig, F2.10), a cron **deactivates** the company — all logins blocked; reactivation then needs a support request (F2.3). Left deactivated for `delete_deactivated_company` days → data purged.
 
 ### F4.7 — Send renewal reminders
-- Scheduled job sends SMS/notification before expiry and again after expiry.
+- Scheduled job sends SMS + dashboard notification to every Company Admin starting `subscription_renew_notification` days before expiry (SystemConfig, F2.10), and again after expiry.
 - Reminder log kept so the same reminder is not repeated.
 
 ### Subscription Model (reference)
-Pricing is driven by **open site count**; the user and labour caps default to `-1` (no limit) today and exist so a tier can be tightened later without a schema change. Longer durations get a per-month discount. Prices in BDT.
+Pricing is driven by **open site count**; the user and labour caps default to `-1` (no limit) today and exist so a tier can be tightened later without a schema change. Longer durations get a **per-month discount**. Prices in BDT.
 
 | Plan | Open Sites | Active Users | Active Labour | 1 Month | 6 Months | 1 Year |
 |---|---|---|---|---|---|---|
@@ -196,19 +195,13 @@ Pricing is driven by **open site count**; the user and labour caps default to `-
 | **Business** | Up to 20 | −1 | −1 | 3,000 × 1 = **3,000** | 2,900 × 6 = **17,400** | 2,500 × 12 = **30,000** |
 | **Custom** | 20+ | negotiated | negotiated | negotiated | negotiated | negotiated |
 
-> **Limit scale (all three):** `-1` = no limit, `N ≥ 0` = hard cap. "Active" = not deactivated and not soft-deleted. Enforced at create/activate time (F5.1 user, F7.1 labour, F6.1 site); at the cap → blocked with an upgrade prompt (F4.4).
-
-**Renewal & plan management.** When a subscription expires, write access to all sites is disabled and the admin receives an alert to renew payment.
-- **Renew** — admin can renew at any time.
-- **Upgrade** (e.g. 10 → 20 open sites): *after expiry* → choose any higher/same plan (straight renewal); *before expiry* → remaining value of the current plan is calculated and adjusted against the new plan cost.
-- **Downgrade** (e.g. 10 → 5 open sites): *after expiry* → system checks current open site count: within target limit → proceeds; exceeds limit → admin must close excess sites or stay on the current plan. *Before expiry* → not allowed until the plan expires.
-
+> **Limit scale (all three):** `-1` = no limit, `N ≥ 0` = hard cap.
 ---
 
 ## F5 — Manage Company Users
 
 ### F5.1 — Create Staff user
-- Company Admin provides name, BD phone number, password role, permitted sites.
+- Company Admin provides name, BD phone number, password, role, permitted sites.
 - System validates BD phone_number and checks it is not already registered.
 - System checks the company's **active-user count** against the plan's active-user limit (skip if `-1`); at the cap → blocked with an upgrade prompt (F4.4).
 - System sends an OTP to this phone number; admin completes registration by providing the OTP.
@@ -233,8 +226,6 @@ Pricing is driven by **open site count**; the user and labour caps default to `-
 - Reactivation restores access; history is untouched.
 
 ### F5.6 — Delete user
-**Pre-condition:** Only admin can delete user account of his company.
-
 1. Set `user.deleted_at = now()`, disable account; write to audit log
 2. Admin can view and restore deleted users within a configurable retention window (default: 30 days)
 3. Scheduled job permanently purges users whose `deleted_at` exceeds the retention threshold
@@ -380,9 +371,10 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - View only — audit entries are never edited here; removal is authorized user.
 
 ### F6.14 — Admin-managed site
-- Site flag `admin_managed` (bool). When `true`, only the **Company Admin** can write to this site — Site Managers and Company Managers are blocked from creating/editing records; the admin acts as the site manager.
-- Read access for assigned users is unchanged; only **write** is locked to the admin.
+- Normally admin access all sites configurations and view access. No need to assign admin to specific site.
+- In this case admin will assign himself to specific sites, and then assign himself to sitemanager group. Now admin is belongs to  companyadmin and sitemanager(for self assigned sites) both group. 
 - Toggleable any time; the change is audit-logged.
+- This is not security concern, because everycreation and changes in this system kept the created_by, updated_by field so easy to find out who create or change it. if admin create it means he is the siteman of this site.
 
 ---
 
@@ -436,11 +428,13 @@ A labour is paid through two ledgers — **advance pay** (cash advances) and **f
 ### F8.1 — Issue advance pay
 - Manager picks labour, enters amount, note, date → creates a `LabourAdvancePay` row (`editable = true`).
 - Blocked if labour is inactive.
+- Check `allow_labour_advance_pay` from SiteConfiguration
 - Running `site_total` (site's cumulative advance) computed from the previous row.
 
 ### F8.2 — Issue fooding pay
 - Manager picks labour, enters amount (seeded from `default_fooding`), note, date → creates a `LabourFoodingPay` row (`editable = true`).
 - Blocked if labour is inactive.
+- Check `allow_labour_fooding_pay` from SiteConfiguration
 - Running `site_total` (site's cumulative fooding) computed from the previous row.
 
 ### F8.3 — Track labour balance
@@ -502,6 +496,7 @@ Rules:
 
 ### F11.2 — Record extra work
 - Separate ledger (`Labour ExtraWork`): site, floor (F6.9), labour, date, amount, note; `editable = true`.
+- Check the `SiteConfig.allow_extra_work`
 - Kept apart from attendance so ad-hoc extra earnings are tracked on their own.
 - Running `site_total_amount` and `floor_total_amount`. Adds to the labour's earnings.
 
