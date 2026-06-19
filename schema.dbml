@@ -1,0 +1,670 @@
+// =============================================================
+// SiteMan — Database Schema (DBML)
+// Source of truth for ERD + Django model planning.
+// Paste into https://dbdiagram.io to render the ERD.
+// Derived from feature-details.md (F1–F16).
+// =============================================================
+
+Project SiteMan {
+  database_type: 'PostgreSQL'
+  Note: '''
+  # SiteMan schema conventions
+
+  Construction-site labour & cost management — multi-tenant SaaS.
+  One `user` table, two scopes: `system` (platform staff) / `tenant` (company user).
+
+  ## Shared columns (assumed on EVERY table, not repeated below)
+  - `id`            PK, bigint, auto.
+  - `created_at`    timestamp, auto-set on insert.
+  - `updated_at`    timestamp, auto-bumped on every edit (F16; tamper-evident backstop).
+  - `created_by`    -> user.id, nullable, ON DELETE SET NULL.
+  - `updated_by`    -> user.id, nullable, ON DELETE SET NULL.
+
+  ## Tenant isolation (Conventions)
+  - Every TENANT row carries `company_id` (denormalized on ledgers for fast tenant filtering).
+    To keep the ERD readable, only the primary aggregates draw an explicit ref to `company`;
+    ledger tables list `company_id` as a plain column (reach company via their `site`/`labour`).
+
+  ## Soft-delete (Conventions, F16)
+  - Ledger / financial rows + user + labour carry `deleted_at` (nullable). Soft-deleted, not
+    hard-deleted, in normal operation. A cron purges rows past their retention window; on purge
+    the DB-level ON DELETE SET NULL cascades clear FK refs (F5.6, F7.6).
+
+  ## editable flag (Conventions, F10)
+  - Every labour-linked row (attendance, extra work, advance, fooding, return) starts
+    `editable = true`. Sealing a labour_work_session sets `editable = false` -> immutable.
+
+  ## Running totals (Conventions)
+  - Ledger rows store cumulative fields (`site_total*`, `floor_total*`). Editing/deleting a row
+    recomputes the chain for all later rows (F16.1, F7.4).
+
+  ## Scales
+  - Plan / Company limits:  `-1` = no limit, `N >= 0` = hard cap.
+  - SiteConfig *_window:     `-1` = any date <= today, `0` = disabled, `N >= 1` = last N days incl. today.
+  - SiteConfig *_per_day_limit: `-1` = unlimited, `0` = blocked, `N >= 1` = N rows / labour / date.
+  - Future dates are ALWAYS rejected, regardless of window.
+
+  ## Capability / permissions
+  - Capability = Django Group (System Admin/Manager; Company Admin/Manager; Site Manager) — see group/user_group.
+  - Fine-grained permissions (F2.8, F5.4) use Django's built-in auth_permission / user_user_permissions (not modeled here).
+  - Site scope = `user_site` (which sites a tenant user may act on).
+  '''
+}
+
+// ---------------- Enums ----------------
+
+Enum user_scope {
+  system
+  tenant
+}
+
+Enum payment_method {
+  gateway
+  manual   // recorded by a System user (offline / bank / cash / gateway failure) — F2.4
+}
+
+Enum payment_status {
+  pending
+  success
+  failed
+}
+
+Enum subscription_status {
+  active
+  expired
+  cancelled
+}
+
+Enum audit_action {
+  create
+  update
+  delete
+}
+
+// ============================================================
+// F1 / F2 / F5 — Auth, User, Capability, Site scope
+// ============================================================
+
+Table user {
+  id            bigint      [pk]
+  scope         user_scope  [not null, note: 'system => company_id NULL; tenant => company_id set']
+  company_id    bigint      [ref: > company.id, null, note: 'NULL for system users']
+  name          varchar     [not null]
+  phone_number  varchar     [not null, unique, note: 'BD phone, normalized +8801XXXXXXXXX (F1.1)']
+  email         varchar     [null]
+  password      varchar     [not null, note: 'hashed']
+  is_active     boolean     [not null, default: true]
+  deleted_at    timestamp   [null, note: 'soft-delete; purged after retention (F5.6)']
+
+  Note: 'One phone = one account. Auth = OTP + JWT via shared service (F1.1 / F2.1).'
+}
+
+Table group {
+  id    bigint  [pk]
+  name  varchar [not null, unique, note: 'System Admin / System Manager / Company Admin / Company Manager / Site Manager']
+  Note: 'Django auth_group. Capability layer — global within scope, never per-site.'
+}
+
+Table user_group {
+  id        bigint [pk]
+  user_id   bigint [ref: > user.id, not null]
+  group_id  bigint [ref: > group.id, not null]
+  Note: 'Django auth_user_groups (m2m).'
+
+  Indexes {
+    (user_id, group_id) [unique]
+  }
+}
+
+Table user_site {
+  id       bigint [pk]
+  user_id  bigint [ref: > user.id, not null]
+  site_id  bigint [ref: > site.id, not null]
+  Note: 'F5.3 scope link. A site has many managers; a user many sites. Company Admin self-assigns here to record (F6.14).'
+
+  Indexes {
+    (user_id, site_id) [unique]
+  }
+}
+
+// ============================================================
+// F2 — Platform (SystemConfig singleton, reset log)
+// ============================================================
+
+Table system_config {
+  id                              bigint   [pk, note: 'Singleton — single global row (django-solo), F2.10']
+  maintenance_mode                boolean  [not null, default: false]
+  subscription_renew_notification int      [not null, default: 5,  note: 'days BEFORE valid_until to start reminders (F4.7)']
+  company_deactivate_after_expiry int      [not null, default: 10, note: 'days AFTER expiry to auto-deactivate (F4.6)']
+  delete_deactivated_company      int      [not null, default: 60, note: 'days deactivated before data purge']
+
+  Note: 'Threshold knobs read at runtime by fixed-schedule crons (F2.10).'
+}
+
+Table company_reset_log {
+  id              bigint    [pk]
+  system_user_id  bigint    [ref: > user.id, null, note: 'actor (system scope)']
+  company_id      bigint    [not null, note: 'plain column — survives the wipe; company-side audit cannot (F2.11)']
+  reset_at        timestamp [not null]
+  otp_verified    boolean   [not null, default: true]
+
+  Note: 'Platform-level log of a company reset (F2.11). Stored system-side; persists after tenant data is hard-deleted.'
+}
+
+// ============================================================
+// F3 — Company, expense category, company config
+// ============================================================
+
+Table company {
+  id              bigint    [pk]
+  name            varchar   [not null]
+  is_active       boolean   [not null, default: true, note: 'deactivated => all users blocked from login (F2.3)']
+  // --- subscription cache (denormalized from active subscription for fast checks) ---
+  max_open_sites  int       [not null, default: 1,  note: 'cache; -1 = no limit']
+  max_users       int       [not null, default: -1, note: 'cache; -1 = no limit']
+  max_labour      int       [not null, default: -1, note: 'cache; -1 = no limit']
+  valid_until     date      [null, note: 'cache of active subscription paid_until (F4.6)']
+  deleted_at      timestamp [null, note: 'purge target after deactivation window']
+
+  Note: 'Tenant root. Created inside registration (F1.2 / F3.1).'
+}
+
+Table expense_category {
+  id            bigint  [pk]
+  company_id    bigint  [ref: > company.id, not null]
+  name          varchar [not null]
+  display_order int     [not null, default: 0]
+  is_active     boolean [not null, default: true, note: 'deactivate => hidden from new-entry dropdowns; existing rows keep link (F3.4)']
+
+  Note: 'Company-level master data (F3.4). Shared by all sites. Delete => referencing rows null = "Generalized expense".'
+
+  Indexes {
+    (company_id, name) [unique]
+  }
+}
+
+Table company_config {
+  id                    bigint  [pk]
+  company_id            bigint  [ref: - company.id, not null, unique, note: 'one-to-one']
+  allow_labour_transfer boolean [not null, default: true, note: 'false => block moving labour between sites company-wide (F7.2)']
+
+  Note: 'Per-tenant feature flags (F3.5). Auto-created with defaults at F3.1. Resettable to defaults.'
+}
+
+// ============================================================
+// F2.4 / F4 — Subscription plan, subscription, payment
+// ============================================================
+
+Table plan {
+  id                  bigint        [pk]
+  name                varchar       [not null, note: 'Free / Basic / Popular / Business / Custom']
+  open_site_limit     int           [not null, note: '-1 = no limit']
+  active_user_limit   int           [not null, default: -1]
+  active_labour_limit int           [not null, default: -1]
+  rate_1_month        decimal(12,2) [null, note: 'per-month rate; NULL for negotiated/custom']
+  rate_6_month        decimal(12,2) [null]
+  rate_12_month       decimal(12,2) [null]
+  is_custom           boolean       [not null, default: false]
+  is_active           boolean       [not null, default: true]
+
+  Note: 'Plan template (F2.4). Price edits apply to new purchases/renewals only — running subs keep their snapshot.'
+}
+
+Table subscription {
+  id                  bigint              [pk]
+  company_id          bigint              [ref: > company.id, not null]
+  plan_id             bigint              [ref: > plan.id, null, note: 'NULL allowed for fully custom']
+  // --- snapshot taken at purchase (immune to later plan edits) ---
+  open_site_limit     int                 [not null]
+  active_user_limit   int                 [not null]
+  active_labour_limit int                 [not null]
+  duration_months     int                 [not null, note: '1 / 6 / 12']
+  rate_snapshot       decimal(12,2)       [not null, note: 'per-month rate locked at purchase']
+  amount              decimal(12,2)       [not null, note: 'total paid for this term']
+  start_date          date                [not null, note: 'activation date']
+  paid_until          date                [not null, note: 'extended from activation (F4.2)']
+  status              subscription_status [not null, default: 'active']
+  is_custom           boolean             [not null, default: false]
+
+  Note: 'Per-term snapshot + paid_until (F4). Company cache fields mirror the active row.'
+
+  Indexes {
+    company_id
+  }
+}
+
+Table payment {
+  id              bigint         [pk]
+  subscription_id bigint         [ref: > subscription.id, not null]
+  company_id      bigint         [not null, note: 'denormalized for tenant filtering']
+  method          payment_method [not null]
+  amount          decimal(12,2)  [not null]
+  status          payment_status [not null, default: 'pending']
+  transaction_id  varchar        [null, note: 'gateway txn id; NULL for manual']
+  recorded_by     bigint         [ref: > user.id, null, note: 'system user who logged a manual payment (F2.4)']
+  paid_at         timestamp      [null]
+  gateway_payload jsonb          [null, note: 'raw IPN/webhook for audit']
+
+  Note: 'Payment attempt/record (F4.2, F2.4 manual).'
+}
+
+// ============================================================
+// F6 — Site, site config, floor, closure summary
+// ============================================================
+
+Table site {
+  id          bigint    [pk]
+  company_id  bigint    [ref: > company.id, not null]
+  name        varchar   [not null]
+  is_active   boolean   [not null, default: true, note: 'inactive => no new data; old data readable (F6.2)']
+  closed_at   timestamp [null, note: 'NULL = open (counts toward plan limit); set = closed permanently (F6.3)']
+
+  Note: 'Two independent state axes: closed_at (open/closed) and is_active (active/inactive).'
+
+  Indexes {
+    company_id
+  }
+}
+
+Table site_config {
+  id      bigint [pk]
+  site_id bigint [ref: - site.id, not null, unique, note: 'one-to-one (F6.12)']
+
+  // --- *_create_window / *_update_window / *_delete_window (window scale) ---
+  attendance_create_window     int [not null, default: 1]
+  attendance_update_window     int [not null, default: 1]
+  attendance_delete_window     int [not null, default: 1]
+  fooding_create_window        int [not null, default: 1]
+  fooding_update_window        int [not null, default: 1]
+  fooding_delete_window        int [not null, default: 1]
+  advance_create_window        int [not null, default: 1]
+  advance_update_window        int [not null, default: 1]
+  advance_delete_window        int [not null, default: 1]
+  return_create_window         int [not null, default: 1]
+  return_update_window         int [not null, default: 1]
+  return_delete_window         int [not null, default: 1]
+  extrawork_create_window      int [not null, default: 1]
+  extrawork_update_window      int [not null, default: 1]
+  extrawork_delete_window      int [not null, default: 1]
+  sitecost_create_window       int [not null, default: 1]
+  sitecost_update_window       int [not null, default: 1]
+  sitecost_delete_window       int [not null, default: 1]
+  hiddencost_create_window     int [not null, default: -1]
+  hiddencost_update_window     int [not null, default: -1]
+  hiddencost_delete_window     int [not null, default: -1]
+  sitecash_create_window       int [not null, default: 1]
+  sitecash_update_window       int [not null, default: 1]
+  sitecash_delete_window       int [not null, default: 1]
+  sitecashreturn_create_window int [not null, default: 1]
+  sitecashreturn_update_window int [not null, default: 1]
+  sitecashreturn_delete_window int [not null, default: 1]
+  sitebill_create_window       int [not null, default: -1]
+  sitebill_update_window       int [not null, default: -1]
+  sitebill_delete_window       int [not null, default: -1]
+
+  // --- *_per_day_limit (labour-scoped only; quota scale) ---
+  attendance_per_day_limit int [not null, default: 1]
+  fooding_per_day_limit    int [not null, default: 1]
+  advance_per_day_limit    int [not null, default: -1]
+
+  // --- validation ranges (per-site) ---
+  attendance_present_choices jsonb         [not null, note: 'allowed present set, e.g. [0,0.5,1,1.5,2,3]']
+  salary_min                 decimal(12,2) [not null]
+  salary_max                 decimal(12,2) [not null]
+  fooding_min                decimal(12,2) [not null]
+  fooding_max                decimal(12,2) [not null]
+  advance_min                decimal(12,2) [not null]
+  advance_max                decimal(12,2) [not null]
+
+  Note: 'Per-site create/update/delete windows + per-day quotas + validation ranges (F6.12). Resettable to defaults.'
+}
+
+Table floor {
+  id            bigint        [pk]
+  site_id       bigint        [ref: > site.id, not null]
+  name          varchar       [not null, note: 'Basement, Floor-1, ...']
+  display_order int           [not null, default: 0]
+  sqft          decimal(12,2) [not null]
+  rate_per_sqft decimal(12,2) [not null]
+  // contract_value = sqft * rate_per_sqft (derived, F6.9)
+  is_active     boolean       [not null, default: true]
+  is_done       boolean       [not null, default: false, note: 'mark as done => deactivates floor (F6.11)']
+
+  Note: 'Site-level master data (F6.9). Cannot delete once any record references it.'
+
+  Indexes {
+    (site_id, name) [unique]
+  }
+}
+
+Table site_closure_summary {
+  id                 bigint        [pk]
+  site_id            bigint        [ref: - site.id, not null, unique]
+  total_present      decimal(12,2) [not null]
+  total_salary       decimal(12,2) [not null]
+  total_extrawork    decimal(12,2) [not null]
+  total_cost         decimal(12,2) [not null]
+  total_hidden_cost  decimal(12,2) [not null]
+  total_bills        decimal(12,2) [not null]
+  total_paid_bills   decimal(12,2) [not null]
+  profit             decimal(12,2) [not null]
+  floor_breakdown    jsonb         [not null, note: 'per-floor contract vs billed snapshot']
+
+  Note: 'Immutable snapshot built at close (F6.3). Deleted on reopen (F6.4).'
+}
+
+// ============================================================
+// F7 — Labour account
+// ============================================================
+
+Table labour {
+  id              bigint        [pk]
+  company_id      bigint        [ref: > company.id, not null]
+  current_site_id bigint        [ref: > site.id, null, note: 'one site at a time; reassign = move (F7.2)']
+  name            varchar       [not null]
+  default_salary  decimal(12,2) [not null]
+  default_present decimal(12,2) [not null]
+  default_fooding decimal(12,2) [not null]
+  balance         decimal(12,2) [not null, default: 0, note: 'carried running balance (F8.3)']
+  is_active       boolean       [not null, default: true, note: 'sealed work session auto-deactivates (F7.3 / F10)']
+  deleted_at      timestamp     [null, note: 'delete requires zero balance (F7.6)']
+
+  Indexes {
+    (company_id, name) [unique]
+  }
+}
+
+// ============================================================
+// F10 — Labour work session
+// ============================================================
+
+Table labour_work_session {
+  id           bigint        [pk]
+  labour_id    bigint        [ref: > labour.id, not null]
+  start_date   date          [not null, note: 'first record after previous session end']
+  end_date     date          [not null, note: 'last sealed record date']
+  last_balance decimal(12,2) [not null, note: 'balance carried in']
+  balance      decimal(12,2) [not null, note: 'balance carried out']
+
+  Note: 'Period between two vacations (F10.1). Sealing sets editable=false on all rolled-in rows.'
+}
+
+Table labour_site_work_session {
+  id              bigint        [pk]
+  work_session_id bigint        [ref: > labour_work_session.id, not null]
+  site_id         bigint        [ref: > site.id, not null]
+  present         decimal(12,2) [not null]
+  extrawork       decimal(12,2) [not null]
+  fooding         decimal(12,2) [not null]
+  advance         decimal(12,2) [not null]
+  salary          decimal(12,2) [not null]
+  earnings        decimal(12,2) [not null]
+  payable         decimal(12,2) [not null]
+
+  Note: 'Per-site rollup within a work session (F10.1 step 3).'
+}
+
+// ============================================================
+// F11 — Daily attendance & extra work
+// ============================================================
+
+Table daily_attendance {
+  id                  bigint        [pk]
+  company_id          bigint        [not null]
+  labour_id           bigint        [ref: > labour.id, not null]
+  site_id             bigint        [ref: > site.id, not null]
+  floor_id            bigint        [ref: > floor.id, not null, note: 'required — earnings attribute to floor costing']
+  work_session_id     bigint        [ref: > labour_work_session.id, null, note: 'set when sealed']
+  date                date          [not null]
+  present             decimal(12,2) [not null, note: 'validated against attendance_present_choices']
+  salary              decimal(12,2) [not null, note: 'snapshot; seeded from labour.default_salary']
+  site_total_present  decimal(12,2) [not null]
+  site_total_salary   decimal(12,2) [not null]
+  floor_total_present decimal(12,2) [not null]
+  floor_total_salary  decimal(12,2) [not null]
+  editable            boolean       [not null, default: true]
+  deleted_at          timestamp     [null, note: 'soft-delete']
+
+  Note: 'Grain = labour/floor/day (F11.1). Gated by attendance_create_window + attendance_per_day_limit.'
+
+  Indexes {
+    (labour_id, floor_id, date) [unique]
+  }
+}
+
+Table labour_extra_work {
+  id                 bigint        [pk]
+  company_id         bigint        [not null]
+  labour_id          bigint        [ref: > labour.id, not null]
+  site_id            bigint        [ref: > site.id, not null]
+  floor_id           bigint        [ref: > floor.id, not null]
+  work_session_id    bigint        [ref: > labour_work_session.id, null]
+  date               date          [not null]
+  amount             decimal(12,2) [not null]
+  note               varchar       [null]
+  site_total_amount  decimal(12,2) [not null]
+  floor_total_amount decimal(12,2) [not null]
+  editable           boolean       [not null, default: true]
+  deleted_at         timestamp     [null]
+
+  Note: 'Ad-hoc extra earnings, separate ledger (F11.2). Adds to labour earnings.'
+}
+
+// ============================================================
+// F8 / F9 — Advance, fooding, return ledgers
+// ============================================================
+
+Table labour_advance_pay {
+  id              bigint        [pk]
+  company_id      bigint        [not null]
+  labour_id       bigint        [ref: > labour.id, not null]
+  site_id         bigint        [ref: > site.id, not null]
+  work_session_id bigint        [ref: > labour_work_session.id, null]
+  date            date          [not null]
+  amount          decimal(12,2) [not null, note: 'validated against advance_min/max']
+  note            varchar       [null]
+  site_total      decimal(12,2) [not null]
+  editable        boolean       [not null, default: true]
+  deleted_at      timestamp     [null]
+
+  Note: 'Cash advance payout (F8.1). Draws site cash, reduces labour balance.'
+}
+
+Table labour_fooding_pay {
+  id              bigint        [pk]
+  company_id      bigint        [not null]
+  labour_id       bigint        [ref: > labour.id, not null]
+  site_id         bigint        [ref: > site.id, not null]
+  work_session_id bigint        [ref: > labour_work_session.id, null]
+  date            date          [not null]
+  amount          decimal(12,2) [not null, note: 'seeded from default_fooding; validated against fooding_min/max']
+  note            varchar       [null]
+  site_total      decimal(12,2) [not null]
+  editable        boolean       [not null, default: true]
+  deleted_at      timestamp     [null]
+
+  Note: 'Meal-allowance payout (F8.2).'
+}
+
+Table labour_return {
+  id              bigint        [pk]
+  company_id      bigint        [not null]
+  labour_id       bigint        [ref: > labour.id, not null]
+  site_id         bigint        [ref: > site.id, not null]
+  work_session_id bigint        [ref: > labour_work_session.id, null]
+  date            date          [not null]
+  amount          decimal(12,2) [not null]
+  note            varchar       [null]
+  site_total      decimal(12,2) [not null]
+  editable        boolean       [not null, default: true]
+  deleted_at      timestamp     [null]
+
+  Note: 'Labour returns overpaid money (F9.1). Increases labour balance.'
+}
+
+// ============================================================
+// F12 — Site expense (construction cost + hidden cost)
+// ============================================================
+
+Table site_cost {
+  id                  bigint        [pk]
+  company_id          bigint        [not null]
+  site_id             bigint        [ref: > site.id, not null]
+  floor_id            bigint        [ref: > floor.id, not null]
+  expense_category_id bigint        [ref: > expense_category.id, null, note: 'null = Generalized expense']
+  date                date          [not null]
+  amount              decimal(12,2) [not null]
+  note                varchar       [null]
+  site_total          decimal(12,2) [not null]
+  floor_total         decimal(12,2) [not null]
+  editable            boolean       [not null, default: true]
+  deleted_at          timestamp     [null]
+
+  Note: 'Construction cost (F12.1). Paid from site cash — draws down balance.'
+}
+
+Table hidden_cost {
+  id                  bigint        [pk]
+  company_id          bigint        [not null]
+  site_id             bigint        [ref: > site.id, not null]
+  floor_id            bigint        [ref: > floor.id, null, note: 'null = site-general (not pro-rated, F15.8)']
+  expense_category_id bigint        [ref: > expense_category.id, null, note: 'null = Generalized expense']
+  date                date          [not null]
+  amount              decimal(12,2) [not null]
+  note                varchar       [null]
+  editable            boolean       [not null, default: true]
+  deleted_at          timestamp     [null]
+
+  Note: 'Paid by company admin, NOT from site cash (F12.2). Used for profit/revenue, not cash balance.'
+}
+
+// ============================================================
+// F13 — Site cash (deposit + return/withdrawal)
+// ============================================================
+
+Table site_cash {
+  id          bigint        [pk]
+  company_id  bigint        [not null]
+  site_id     bigint        [ref: > site.id, not null]
+  date        date          [not null]
+  amount      decimal(12,2) [not null]
+  note        varchar       [null]
+  site_total  decimal(12,2) [not null]
+  editable    boolean       [not null, default: true]
+  deleted_at  timestamp     [null]
+
+  Note: 'Incoming cash deposit (F13.1). Increases cash balance.'
+}
+
+Table site_cash_return {
+  id          bigint        [pk]
+  company_id  bigint        [not null]
+  site_id     bigint        [ref: > site.id, not null]
+  date        date          [not null]
+  amount      decimal(12,2) [not null]
+  note        varchar       [null]
+  site_total  decimal(12,2) [not null]
+  editable    boolean       [not null, default: true]
+  deleted_at  timestamp     [null]
+
+  Note: 'Outgoing cash / withdrawal (F13.2). Cannot drive balance below zero.'
+}
+
+// ============================================================
+// F14 — Site bill
+// ============================================================
+
+Table site_bill {
+  id          bigint        [pk]
+  company_id  bigint        [not null]
+  site_id     bigint        [ref: > site.id, not null]
+  floor_id    bigint        [ref: > floor.id, not null, note: 'required — accumulates against floor contract value']
+  date        date          [not null]
+  amount      decimal(12,2) [not null]
+  note        varchar       [null]
+  site_total  decimal(12,2) [not null]
+  floor_total decimal(12,2) [not null]
+  editable    boolean       [not null, default: true]
+  deleted_at  timestamp     [null]
+
+  Note: 'Revenue billed (F14.1). Gated by sitebill_*_window (default -1).'
+}
+
+// ============================================================
+// F16 — Audit trail
+// ============================================================
+
+Table audit_log {
+  id          bigint       [pk]
+  company_id  bigint       [ref: > company.id, not null]
+  actor_id    bigint       [ref: > user.id, null]
+  target_type varchar      [not null, note: 'model name of the changed record']
+  target_id   bigint       [not null]
+  action      audit_action [not null]
+  before      jsonb        [null, note: 'snapshot before update/delete']
+  after       jsonb        [null, note: 'snapshot after create/update']
+  note        varchar      [null, note: 'required for update/delete of financial records']
+  deleted_at  timestamp    [null, note: 'soft-delete; only system sees removed logs; cron purges after retention (F16.3)']
+
+  Note: 'Auto-written on every direct edit (F16.1). Company-side logs are hard-deleted on company reset (F2.11).'
+
+  Indexes {
+    (company_id, target_type, target_id)
+    (company_id, action)
+  }
+}
+
+// ============================================================
+// Table groups (visual grouping in dbdiagram.io)
+// ============================================================
+
+TableGroup auth {
+  user
+  group
+  user_group
+  user_site
+}
+
+TableGroup platform {
+  system_config
+  company_reset_log
+}
+
+TableGroup company_and_subscription {
+  company
+  expense_category
+  company_config
+  plan
+  subscription
+  payment
+}
+
+TableGroup sites_and_floors {
+  site
+  site_config
+  floor
+  site_closure_summary
+}
+
+TableGroup labour_group {
+  labour
+  labour_work_session
+  labour_site_work_session
+}
+
+TableGroup ledgers {
+  daily_attendance
+  labour_extra_work
+  labour_advance_pay
+  labour_fooding_pay
+  labour_return
+  site_cost
+  hidden_cost
+  site_cash
+  site_cash_return
+  site_bill
+}
+
+TableGroup audit {
+  audit_log
+}
