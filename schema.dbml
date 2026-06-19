@@ -35,8 +35,20 @@ Project SiteMan {
     `editable = true`. Sealing a labour_work_session sets `editable = false` -> immutable.
 
   ## Running totals (Conventions)
-  - Ledger rows store cumulative fields (`site_total*`, `floor_total*`). Editing/deleting a row
+  - Ledger rows store cumulative fields (`site_total*`, `billing_total*`). Editing/deleting a row
     recomputes the chain for all later rows (F16.1, F7.4).
+  - NOTE: `billing_total*` columns are the per-`billing_category` running totals.
+
+  ## Categories (F3.4, F12–F14)
+  - Each financial ledger has its OWN per-site category
+    table: sitecost_category, hiddencost_category, sitecash_category, sitecashreturn_category,
+    sitebill_category. Each is scoped to a site, referenced (NULLABLE) by its ledger; null =
+    "Generalized / Uncategorized". Categories carry no running totals.
+
+  ## Billing category (F6.9, renamed from "floor")
+  - `billing_category` = the floor-like revenue/costing unit (e.g. Basement, Floor-1). Master data
+    per site. Measurement lives in `billing_category_details` (1:1). Profit is computed per
+    billing_category (F15.8).
 
   ## Scales
   - Plan / Company limits:  `-1` = no limit, `N >= 0` = hard cap.
@@ -152,7 +164,7 @@ Table company_reset_log {
 }
 
 // ============================================================
-// F3 — Company, expense category, company config
+// F3 — Company, company config
 // ============================================================
 
 Table company {
@@ -167,20 +179,6 @@ Table company {
   deleted_at      timestamp [null, note: 'purge target after deactivation window']
 
   Note: 'Tenant root. Created inside registration (F1.2 / F3.1).'
-}
-
-Table expense_category {
-  id            bigint  [pk]
-  company_id    bigint  [ref: > company.id, not null]
-  name          varchar [not null]
-  display_order int     [not null, default: 0]
-  is_active     boolean [not null, default: true, note: 'deactivate => hidden from new-entry dropdowns; existing rows keep link (F3.4)']
-
-  Note: 'Company-level master data (F3.4). Shared by all sites. Delete => referencing rows null = "Generalized expense".'
-
-  Indexes {
-    (company_id, name) [unique]
-  }
 }
 
 Table company_config {
@@ -249,7 +247,7 @@ Table payment {
 }
 
 // ============================================================
-// F6 — Site, site config, floor, closure summary
+// F6 — Site, site config, billing category, closure summary
 // ============================================================
 
 Table site {
@@ -319,38 +317,125 @@ Table site_config {
   Note: 'Per-site create/update/delete windows + per-day quotas + validation ranges (F6.12). Resettable to defaults.'
 }
 
-Table floor {
-  id            bigint        [pk]
-  site_id       bigint        [ref: > site.id, not null]
-  name          varchar       [not null, note: 'Basement, Floor-1, ...']
-  display_order int           [not null, default: 0]
-  sqft          decimal(12,2) [not null]
-  rate_per_sqft decimal(12,2) [not null]
-  // contract_value = sqft * rate_per_sqft (derived, F6.9)
-  is_active     boolean       [not null, default: true]
-  is_done       boolean       [not null, default: false, note: 'mark as done => deactivates floor (F6.11)']
+Table billing_category {
+  id            bigint  [pk]
+  company_id    bigint  [ref: > company.id, not null]
+  site_id       bigint  [ref: > site.id, not null]
+  name          varchar [not null, note: 'e.g. Basement, Floor-1, Floor-2-Extra (F6.9)']
+  display_order int     [not null, default: 0]
+  is_active     boolean [not null, default: true]
+  is_done       boolean [not null, default: false, note: 'mark as done => deactivates (F6.11). NOTE: not in the requested keep-list but retained here to preserve F6.11; move to billing_category_details if preferred.']
 
-  Note: 'Site-level master data (F6.9). Cannot delete once any record references it.'
+  Note: 'Site-level master data (renamed from floor, F6.9). Cannot delete once any record references it. Measurement in billing_category_details (1:1).'
 
   Indexes {
     (site_id, name) [unique]
   }
 }
 
+Table billing_category_details {
+  id                  bigint        [pk]
+  billing_category_id bigint        [ref: - billing_category.id, not null, unique, note: '1:1 with billing_category']
+  sqft                decimal(12,2) [not null, note: 'physical area']
+  rate_per_sqft       decimal(12,2) [not null, note: 'revenue rate per sqft']
+  custom_amount         decimal(12,2) [null, note: 'ASSUMPTION: flat contract amount; overrides sqft x rate_per_sqft when set. Confirm meaning.']
+
+  Note: '1:1 detail for billing_category. contract_value = sqft x rate_per_sqft (or custom_bill if set), F6.9 / F15.8.'
+}
+
 Table site_closure_summary {
-  id                 bigint        [pk]
-  site_id            bigint        [ref: - site.id, not null, unique]
-  total_present      decimal(12,2) [not null]
-  total_salary       decimal(12,2) [not null]
-  total_extrawork    decimal(12,2) [not null]
-  total_cost         decimal(12,2) [not null]
-  total_hidden_cost  decimal(12,2) [not null]
-  total_bills        decimal(12,2) [not null]
-  total_paid_bills   decimal(12,2) [not null]
-  profit             decimal(12,2) [not null]
-  floor_breakdown    jsonb         [not null, note: 'per-floor contract vs billed snapshot']
+  id                       bigint        [pk]
+  site_id                  bigint        [ref: - site.id, not null, unique]
+  total_present            decimal(12,2) [not null]
+  total_salary             decimal(12,2) [not null]
+  total_extrawork          decimal(12,2) [not null]
+  total_cost               decimal(12,2) [not null]
+  total_hidden_cost        decimal(12,2) [not null]
+  total_bills              decimal(12,2) [not null]
+  total_paid_bills         decimal(12,2) [not null]
+  profit                   decimal(12,2) [not null]
+  billing_category_breakdown jsonb       [not null, note: 'per-billing_category contract vs billed snapshot']
 
   Note: 'Immutable snapshot built at close (F6.3). Deleted on reopen (F6.4).'
+}
+
+// ============================================================
+// F12 / F13 / F14 — Per-ledger, per-site categories (F3.4)
+// ============================================================
+
+Table sitecost_category {
+  id            bigint  [pk]
+  company_id    bigint  [ref: > company.id, not null]
+  site_id       bigint  [ref: > site.id, not null]
+  name          varchar [not null]
+  display_order int     [not null, default: 0]
+  is_active     boolean [not null, default: true, note: 'deactivate => hidden from new-entry dropdowns; existing rows keep their link']
+
+  Note: 'Per-site category for site_cost (F12.1). Referenced (nullable) by site_cost; null = Generalized.'
+
+  Indexes {
+    (site_id, name) [unique]
+  }
+}
+
+Table hiddencost_category {
+  id            bigint  [pk]
+  company_id    bigint  [ref: > company.id, not null]
+  site_id       bigint  [ref: > site.id, not null]
+  name          varchar [not null]
+  display_order int     [not null, default: 0]
+  is_active     boolean [not null, default: true]
+
+  Note: 'Per-site category for hidden_cost (F12.2). Referenced (nullable) by hidden_cost; null = Generalized.'
+
+  Indexes {
+    (site_id, name) [unique]
+  }
+}
+
+Table sitecash_category {
+  id            bigint  [pk]
+  company_id    bigint  [ref: > company.id, not null]
+  site_id       bigint  [ref: > site.id, not null]
+  name          varchar [not null]
+  display_order int     [not null, default: 0]
+  is_active     boolean [not null, default: true]
+
+  Note: 'Per-site category for site_cash (F13.1). Referenced (nullable) by site_cash; null = Uncategorized.'
+
+  Indexes {
+    (site_id, name) [unique]
+  }
+}
+
+Table sitecashreturn_category {
+  id            bigint  [pk]
+  company_id    bigint  [ref: > company.id, not null]
+  site_id       bigint  [ref: > site.id, not null]
+  name          varchar [not null]
+  display_order int     [not null, default: 0]
+  is_active     boolean [not null, default: true]
+
+  Note: 'Per-site category for site_cash_return (F13.2). Referenced (nullable) by site_cash_return; null = Uncategorized.'
+
+  Indexes {
+    (site_id, name) [unique]
+  }
+}
+
+Table sitebill_category {
+  id            bigint  [pk]
+  company_id    bigint  [ref: > company.id, not null]
+  site_id       bigint  [ref: > site.id, not null]
+  name          varchar [not null]
+  display_order int     [not null, default: 0]
+  is_active     boolean [not null, default: true]
+
+  Note: 'Per-site category for site_bill (F14.1). Referenced (nullable) by site_bill; null = Uncategorized.'
+
+  Indexes {
+    (site_id, name) [unique]
+  }
 }
 
 // ============================================================
@@ -413,22 +498,22 @@ Table daily_attendance {
   company_id          bigint        [not null]
   labour_id           bigint        [ref: > labour.id, not null]
   site_id             bigint        [ref: > site.id, not null]
-  floor_id            bigint        [ref: > floor.id, not null, note: 'required — earnings attribute to floor costing']
+  billing_category_id bigint        [ref: > billing_category.id, not null, note: 'required — earnings attribute to billing-category costing']
   work_session_id     bigint        [ref: > labour_work_session.id, null, note: 'set when sealed']
   date                date          [not null]
   present             decimal(12,2) [not null, note: 'validated against attendance_present_choices']
   salary              decimal(12,2) [not null, note: 'snapshot; seeded from labour.default_salary']
   site_total_present  decimal(12,2) [not null]
   site_total_salary   decimal(12,2) [not null]
-  floor_total_present decimal(12,2) [not null]
-  floor_total_salary  decimal(12,2) [not null]
+  billing_total_present decimal(12,2) [not null, note: 'per-billing_category cumulative']
+  billing_total_salary  decimal(12,2) [not null, note: 'per-billing_category cumulative']
   editable            boolean       [not null, default: true]
   deleted_at          timestamp     [null, note: 'soft-delete']
 
-  Note: 'Grain = labour/floor/day (F11.1). Gated by attendance_create_window + attendance_per_day_limit.'
+  Note: 'Grain = labour/billing_category/day (F11.1). Gated by attendance_create_window + attendance_per_day_limit.'
 
   Indexes {
-    (labour_id, floor_id, date) [unique]
+    (labour_id, billing_category_id, date) [unique]
   }
 }
 
@@ -437,13 +522,13 @@ Table labour_extra_work {
   company_id         bigint        [not null]
   labour_id          bigint        [ref: > labour.id, not null]
   site_id            bigint        [ref: > site.id, not null]
-  floor_id           bigint        [ref: > floor.id, not null]
+  billing_category_id bigint       [ref: > billing_category.id, not null]
   work_session_id    bigint        [ref: > labour_work_session.id, null]
   date               date          [not null]
   amount             decimal(12,2) [not null]
   note               varchar       [null]
   site_total_amount  decimal(12,2) [not null]
-  floor_total_amount decimal(12,2) [not null]
+  billing_total_amount decimal(12,2) [not null, note: 'per-billing_category cumulative']
   editable           boolean       [not null, default: true]
   deleted_at         timestamp     [null]
 
@@ -507,33 +592,35 @@ Table labour_return {
 // ============================================================
 
 Table site_cost {
-  id                  bigint        [pk]
-  company_id          bigint        [not null]
-  site_id             bigint        [ref: > site.id, not null]
-  floor_id            bigint        [ref: > floor.id, not null]
-  expense_category_id bigint        [ref: > expense_category.id, null, note: 'null = Generalized expense']
-  date                date          [not null]
-  amount              decimal(12,2) [not null]
-  note                varchar       [null]
-  site_total          decimal(12,2) [not null]
-  floor_total         decimal(12,2) [not null]
-  editable            boolean       [not null, default: true]
-  deleted_at          timestamp     [null]
+  id                   bigint        [pk]
+  company_id           bigint        [not null]
+  site_id              bigint        [ref: > site.id, not null]
+  billing_category_id  bigint        [ref: > billing_category.id, not null]
+  sitecost_category_id bigint        [ref: > sitecost_category.id, null, note: 'null = Generalized expense']
+  date                 date          [not null]
+  amount               decimal(12,2) [not null]
+  note                 varchar       [null]
+  site_total           decimal(12,2) [not null]
+  billing_total        decimal(12,2) [not null, note: 'per-billing_category cumulative']
+  editable             boolean       [not null, default: true]
+  deleted_at           timestamp     [null]
 
   Note: 'Construction cost (F12.1). Paid from site cash — draws down balance.'
 }
 
 Table hidden_cost {
-  id                  bigint        [pk]
-  company_id          bigint        [not null]
-  site_id             bigint        [ref: > site.id, not null]
-  floor_id            bigint        [ref: > floor.id, null, note: 'null = site-general (not pro-rated, F15.8)']
-  expense_category_id bigint        [ref: > expense_category.id, null, note: 'null = Generalized expense']
-  date                date          [not null]
-  amount              decimal(12,2) [not null]
-  note                varchar       [null]
-  editable            boolean       [not null, default: true]
-  deleted_at          timestamp     [null]
+  id                     bigint        [pk]
+  company_id             bigint        [not null]
+  site_id                bigint        [ref: > site.id, not null]
+  billing_category_id    bigint        [ref: > billing_category.id, not null, note: 'null = site-general (not pro-rated, F15.8)']
+  hiddencost_category_id bigint        [ref: > hiddencost_category.id, null, note: 'null = Generalized expense']
+  date                   date          [not null]
+  amount                 decimal(12,2) [not null]
+  note                   varchar       [null]
+  site_total           decimal(12,2) [not null]
+  billing_total        decimal(12,2) [null, note: 'per-billing_category cumulative']
+  editable               boolean       [not null, default: true]
+  deleted_at             timestamp     [null]
 
   Note: 'Paid by company admin, NOT from site cash (F12.2). Used for profit/revenue, not cash balance.'
 }
@@ -543,29 +630,31 @@ Table hidden_cost {
 // ============================================================
 
 Table site_cash {
-  id          bigint        [pk]
-  company_id  bigint        [not null]
-  site_id     bigint        [ref: > site.id, not null]
-  date        date          [not null]
-  amount      decimal(12,2) [not null]
-  note        varchar       [null]
-  site_total  decimal(12,2) [not null]
-  editable    boolean       [not null, default: true]
-  deleted_at  timestamp     [null]
+  id                   bigint        [pk]
+  company_id           bigint        [not null]
+  site_id              bigint        [ref: > site.id, not null]
+  sitecash_category_id bigint        [ref: > sitecash_category.id, null, note: 'null = Uncategorized']
+  date                 date          [not null]
+  amount               decimal(12,2) [not null]
+  note                 varchar       [null]
+  site_total           decimal(12,2) [not null]
+  editable             boolean       [not null, default: true]
+  deleted_at           timestamp     [null]
 
   Note: 'Incoming cash deposit (F13.1). Increases cash balance.'
 }
 
 Table site_cash_return {
-  id          bigint        [pk]
-  company_id  bigint        [not null]
-  site_id     bigint        [ref: > site.id, not null]
-  date        date          [not null]
-  amount      decimal(12,2) [not null]
-  note        varchar       [null]
-  site_total  decimal(12,2) [not null]
-  editable    boolean       [not null, default: true]
-  deleted_at  timestamp     [null]
+  id                         bigint        [pk]
+  company_id                 bigint        [not null]
+  site_id                    bigint        [ref: > site.id, not null]
+  sitecashreturn_category_id bigint        [ref: > sitecashreturn_category.id, null, note: 'null = Uncategorized']
+  date                       date          [not null]
+  amount                     decimal(12,2) [not null]
+  note                       varchar       [null]
+  site_total                 decimal(12,2) [not null]
+  editable                   boolean       [not null, default: true]
+  deleted_at                 timestamp     [null]
 
   Note: 'Outgoing cash / withdrawal (F13.2). Cannot drive balance below zero.'
 }
@@ -575,17 +664,18 @@ Table site_cash_return {
 // ============================================================
 
 Table site_bill {
-  id          bigint        [pk]
-  company_id  bigint        [not null]
-  site_id     bigint        [ref: > site.id, not null]
-  floor_id    bigint        [ref: > floor.id, not null, note: 'required — accumulates against floor contract value']
-  date        date          [not null]
-  amount      decimal(12,2) [not null]
-  note        varchar       [null]
-  site_total  decimal(12,2) [not null]
-  floor_total decimal(12,2) [not null]
-  editable    boolean       [not null, default: true]
-  deleted_at  timestamp     [null]
+  id                   bigint        [pk]
+  company_id           bigint        [not null]
+  site_id              bigint        [ref: > site.id, not null]
+  billing_category_id  bigint        [ref: > billing_category.id, not null, note: 'required — accumulates against billing-category contract value']
+  sitebill_category_id bigint        [ref: > sitebill_category.id, null, note: 'null = Uncategorized']
+  date                 date          [not null]
+  amount               decimal(12,2) [not null]
+  note                 varchar       [null]
+  site_total           decimal(12,2) [not null]
+  billing_total        decimal(12,2) [not null, note: 'per-billing_category cumulative']
+  editable             boolean       [not null, default: true]
+  deleted_at           timestamp     [null]
 
   Note: 'Revenue billed (F14.1). Gated by sitebill_*_window (default -1).'
 }
@@ -632,18 +722,26 @@ TableGroup platform {
 
 TableGroup company_and_subscription {
   company
-  expense_category
   company_config
   plan
   subscription
   payment
 }
 
-TableGroup sites_and_floors {
+TableGroup sites_and_billing {
   site
   site_config
-  floor
+  billing_category
+  billing_category_details
   site_closure_summary
+}
+
+TableGroup ledger_categories {
+  sitecost_category
+  hiddencost_category
+  sitecash_category
+  sitecashreturn_category
+  sitebill_category
 }
 
 TableGroup labour_group {

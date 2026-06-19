@@ -2,7 +2,7 @@
 
 ## Conventions
 - **Tenant isolation** — every tenant row carries `company_id`; See **Access Control & User Model**.
-- **Running totals** — ledger rows store cumulative fields (`site_total`, `floor_total` etc). Need to update all later rows after update or delete any rows.
+- **Running totals** — ledger rows store cumulative fields (`site_total`, `billing_total` etc — the `billing_total*` fields are the per-**billing-category** running totals). Need to update all later rows after update or delete any rows.
 - **`editable` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `editable = true`.
 - **Direct edit + audit** — authorized users edit/delete directly; the system auto-writes an audit entry (actor, time, before/after, note) and bumps `updated_at` / `deleted_at` (F16). Ledger rows are **soft-deleted**.
 - **Future dates blocked** — no record's `date` may be in the future, for every date-bearing entity.
@@ -131,7 +131,7 @@ A low-frequency support action for clients who tested the app on a real account 
 2. An authorized **System user** opens the company, hits **Reset**, and types the **company name** to confirm.
 3. System sends a **single-use, short-expiry OTP to the Company Admin's phone** (shared OTP service, F1.1) — this proves the company consents.
 4. The Company Admin relays the OTP to the system user, who enters it; the system **validates** it.
-5. On a valid OTP, in **one transaction** the system **hard-deletes** all tenant data (FK-safe order): sites, floors, labours, work sessions, every ledger (attendance, extra work, advance, fooding, return, cash, cost, bill), expense categories, all **non-admin** users (+ `UserSite` links), and the company's **audit logs**. `CompanyConfig` returns to built-in defaults; all `SiteConfig` rows are gone with their sites.
+5. On a valid OTP, in **one transaction** the system **hard-deletes** all tenant data (FK-safe order): sites, billing categories, labours, work sessions, every ledger (attendance, extra work, advance, fooding, return, cash, cost, bill), all per-ledger categories, all **non-admin** users (+ `UserSite` links), and the company's **audit logs**. `CompanyConfig` returns to built-in defaults; all `SiteConfig` rows are gone with their sites.
 6. **Kept:** the Company record, **all Company Admin** accounts, and the active subscription (`plan`, `paid_until` untouched) — the company is now like new with zero entities.
 7. The system writes a **platform-level reset log** (system user, company id, timestamp, OTP-verified) stored system-side — it survives the wipe (the company-side audit cannot, per step 5).
 ---
@@ -150,11 +150,11 @@ A low-frequency support action for clients who tested the app on a real account 
 - Company Admin edits company name and profile fields.
 - System saves and records the change in the audit trail.
 
-### F3.4 — Manage expense categories
-- **Company-level** master data: Admin creates/edits expense categories (name, display order, active flag).
-- Shared by **all sites** of the company — every SiteCost (F12.1) and HiddenCost (F12.2) row references the same category set, so cross-site reporting stays consistent.
+### F3.4 — Manage ledger categories
+- **Per-site** master data: each financial ledger has its **own** category set — `sitecost_category` (F12.1), `hiddencost_category` (F12.2), `sitecash_category` (F13.1), `sitecashreturn_category` (F13.2), `sitebill_category` (F14.1). Admin creates/edits each (name, display order, active flag).
+- Each ledger row references **only its own** category type, and the FK is **nullable**.
 - **Deactivate** — hidden from new-entry dropdowns; no new row may reference it, existing rows keep their link.
-- **Delete** — all referencing rows get `null`, treated as "Generalized expense".
+- **Delete / unset** — a row whose category FK is `null` is treated as **"Generalized / Uncategorized"**.
 
 ### F3.5 — Manage company configuration
 - Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 with its own built-in defaults).
@@ -283,7 +283,7 @@ Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with s
 |---|---|
 | `-1` | Unlimited |
 | `0` | Blocked — no rows that day |
-| `N ≥ 1` | At most `N` rows per labour per date (across floors). The (labour, floor, date) uniqueness already blocks duplicate site+floor rows. |
+| `N ≥ 1` | At most `N` rows per labour per date (across billing categories). The (labour, billing_category, date) uniqueness already blocks duplicate rows. |
 
 **Cross-site, same date** — there is no separate multisite flag. By default a labour has one record per date; to record the same labour/date at a **different** site, first free the existing row (remove it) or transfer the labour to the new site (F7.2). To genuinely allow both sites on the same date, raise the relevant `*_per_day_limit`.
 
@@ -330,7 +330,7 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
    - balance < 0 → cover the deficit via a SiteCash deposit (F13.1).
    - Close is blocked until the site cash balance = 0.
 2. **Set `closed_at = now()`** (a null `closed_at` = open, non-null = closed). Closed sites do not count toward the plan's open-site limit.
-3. **Build the closure summary** (immutable snapshot): totals from SiteCost, HiddenCost, SiteBill, DailyAttendance (total present, total salary), LabourExtraWork totals, total cost, total bills, total paid bills, profit, floor contract vs billed — everything the admin needs after the detail is gone.
+3. **Build the closure summary** (immutable snapshot): totals from SiteCost, HiddenCost, SiteBill, DailyAttendance (total present, total salary), LabourExtraWork totals, total cost, total bills, total paid bills, profit, billing-category contract vs billed — everything the admin needs after the detail is gone.
 4. **Access changes immediately** — authorized users now see **only the summary**; the detail rows stay in the same DB but are hidden from the company side.
 5. **Cron purge** — a scheduled job deletes the detail rows of any site whose `closed_at` is **more than 30 days** old, **except** rows still `editable = true`. Those belong to an unsealed `LabourWorkSession`; they are kept until the next session seals them (`editable = false`), after which a later cron run may delete them.
 
@@ -352,26 +352,26 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 
 ### F6.8 — View site Report
 - Shows current cash balance (per Conventions: `deposits − returns − site cost − advance pay − fooding pay`).
-- Shows site revenue (bills vs floor contract).
+- Shows site revenue (bills vs billing-category contract).
 - Show site total attendance count and total salary.
 - Show site total cost.
 - Show site labour payouts (advance + fooding).
-- Floor breakdown line: per-floor contract value, billed, cost and profit (detail in F15.8).
+- Billing-category breakdown line: per-billing-category contract value, billed, cost and profit (detail in F15.8).
 
-### F6.9 — Manage site floors
-- Site-level master data: Admin defines the site's floors — name (e.g. Basement, Floor-1, Floor-2, Floor-2-Extra), display order (serial), measurement (`sqft`), and `rate_per_sqft`.
-- Derived `contract_value = sqft × rate` is the floor's revenue target.
-- Floor list feeds the floor dropdown on attendance (F11.1), extra work (F11.2), site cost (F12.1), hidden cost (F12.2), and bill (F14.1) entries.
-- Editable while the site is open; a floor cannot be deleted once any record references it.
-- Expense categories are company-level (F3.4), not defined here.
+### F6.9 — Manage billing categories
+- Site-level master data: Admin defines the site's **billing categories** — header row `billing_category` (`id`, `company_id`, `site_id`, `name` e.g. Basement / Floor-1 / Floor-2-Extra, `display_order`, `is_active`).
+- Measurement lives in a **1:1 `billing_category_details`** row: `sqft`, `rate_per_sqft`, `bill_sqft`, `custom_bill`.
+- Billing-category list feeds the dropdown on attendance (F11.1), extra work (F11.2), site cost (F12.1), hidden cost (F12.2), and bill (F14.1) entries.
+- Editable while the site is open; a billing category cannot be deleted once any record references it.
+- Ledger categories are **per-site, per-ledger** (F3.4), not defined here.
 
-### F6.10 — Deactivate/Activate site floors
-- Floor may activate or deactivate. Deactivate means no new records allow to create under this floor execpt the SiteBill. But, historic data is accessable.
+### F6.10 — Deactivate/Activate billing categories
+- A billing category may activate or deactivate. Deactivate means no new records allow to create under this billing category execpt the SiteBill. But, historic data is accessable.
 
-### F6.11 — Mark floor as done
-- This floor work is done, no need new expense or work.
-- Floor will deactivate.
-- To activate the floor again need to unmark as done first.
+### F6.11 — Mark billing category as done
+- This billing category's work is done, no need new expense or work.
+- Billing category will deactivate (`is_done = true`).
+- To activate the billing category again need to unmark as done first.
 
 ### F6.12 — Manage site configuration
 - Company Admin views/edits the site's `SiteConfig` (one row per site, auto-created at F6.1 with the defaults above).
@@ -416,7 +416,7 @@ Salary is stored on each DailyAttendance row. `labour.default_salary` is used on
 1. Open the labour's attendance page.
 2. Select a **single cell** (one row) or a **date range** or **particular site** of rows to re-price.
 3. Enter the new salary (must be within the site's `salary_min` / `salary_max`).
-4. System updates `salary` on each selected (`editable = true`) row and recomputes the running `site_total_salary` and `floor_total_salary` of those and all later rows.
+4. System updates `salary` on each selected (`editable = true`) row and recomputes the running `site_total_salary` and `billing_total_salary` of those and all later rows.
 - Rows already sealed (`editable = false`) cannot be re-priced.
 - `attendance_update_window` applies to the `present` field only — salary may be re-priced on any still-editable row regardless of the window.
 - No audit logs need for salary change of dailyattendence.
@@ -500,29 +500,29 @@ Rules:
 ## F11 — Manage Daily Attendance & Extra Work
 
 ### F11.1 — Record daily attendance
-- Grain is **labour / floor / day**: Site Manager picks date, floor (from the site's floor list, F6.9), `present` units (full/half/overtime), and `salary` (seeded from the labour default, editable per row).
-- A labour may have **multiple attendance rows on the same day** when he works on different floors — uniqueness is **(labour, floor, date)**, not (labour, date).
-- Floor is required so the earnings attribute to floor costing.
-- Validations: labour active and assigned to this site, site active, floor active, one row per (labour, floor, date), and the site config gates (`attendance_create_window`, `attendance_per_day_limit` — F6.12). New row is `editable = true`.
-- Row stores the salary snapshot and running totals: `site_total_present`, `site_total_salary`, `floor_total_present`, `floor_total_salary`.
+- Grain is **labour / billing category / day**: Site Manager picks date, billing category (from the site's billing-category list, F6.9), `present` units (full/half/overtime), and `salary` (seeded from the labour default, editable per row).
+- A labour may have **multiple attendance rows on the same day** when he works on different billing categories — uniqueness is **(labour, billing_category, date)**, not (labour, date).
+- Billing category is required so the earnings attribute to billing-category costing.
+- Validations: labour active and assigned to this site, site active, billing category active, one row per (labour, billing_category, date), and the site config gates (`attendance_create_window`, `attendance_per_day_limit` — F6.12). New row is `editable = true`.
+- Row stores the salary snapshot and running totals: `site_total_present`, `site_total_salary`, `billing_total_present`, `billing_total_salary` (the `billing_total*` fields are per-billing-category).
 > **Creatable dates are governed by the site's `attendance_create_window`** (default today + yesterday), must be **≥ the last work session end date**, and **never in the future**. The same pattern (each entity's own `*_create_window` / `*_update_window` / `*_delete_window`, and for labour entities `*_per_day_limit`) applies to extra work, advance, fooding, return, site cost, hidden cost, site cash, site cash return, and site bill. See **Site Configuration** (F6) and F6.12.
 
 ### F11.2 — Record extra work
-- Separate ledger (`Labour ExtraWork`): site, floor (F6.9), labour, date, amount, note; `editable = true`.
+- Separate ledger (`Labour ExtraWork`): site, billing category (F6.9), labour, date, amount, note; `editable = true`.
 - Kept apart from attendance so ad-hoc extra earnings are tracked on their own.
-- Running `site_total_amount` and `floor_total_amount`. Adds to the labour's earnings.
+- Running `site_total_amount` and `billing_total_amount` (per-billing-category). Adds to the labour's earnings.
 
 ### F11.3 — View attendance & extra work history
-- Filter by labour, site, floor, or date range; shows daily rows + running totals.
+- Filter by labour, site, billing category, or date range; shows daily rows + running totals.
 
 ---
 
 ## F12 — Manage Site Expense
 
 ### F12.1 — Record site construction cost (SiteCost)
-- Manager enters site, date, **floor (required, F6.9)**, **expense category (company-level — F3.4)**, amount, note.
-- Row computes running `site_total` and `floor_total` from the previous cost row.
-- **Expense category is nullable**: null = "Generalized expense".
+- Manager enters site, date, **billing category (required, F6.9)**, **sitecost category (per-site — F3.4)**, amount, note.
+- Row computes running `site_total` and `billing_total` (per-billing-category) from the previous cost row.
+- **Sitecost category is nullable**: null = "Generalized expense".
 - Paid from site cash (draws down the cash balance).
 
 ### F12.2 — Record hidden cost (HiddenCost)
@@ -530,22 +530,22 @@ Rules:
 - It is not paid from site cash; it is paid directly by the company admin.
 - Gated by `hiddencost_create_window` / `hiddencost_update_window` / `hiddencost_delete_window` (default `-1` = any date — admin enters hidden costs late); see F6.12.
 - It is used to calculate the **profit/revenue** of a site, not the cash balance.
-- **Floor is nullable**: set → cost allocates to that floor; null → site-general (not tied to any floor).
-- **Expense category is nullable**: null = "Generalized expense".
+- **Billing category is nullable**: set → cost allocates to that billing category; null → site-general (not tied to any billing category).
+- **Hiddencost category is nullable**: null = "Generalized expense".
 
 ### F12.3 — View cost history
-- Ledger per site, filterable by floor, expense category, record type (site cost / hidden cost), date range.
+- Ledger per site, filterable by billing category, category (sitecost / hiddencost), record type (site cost / hidden cost), date range.
 
 ---
 
 ## F13 — Manage Site Cash
 
 ### F13.1 — Record cash deposit
-- Manager records incoming cash with notes (`SiteCash`).
+- Manager records incoming cash with notes (`SiteCash`); optional **sitecash category** (per-site — F3.4; nullable = Uncategorized).
 - Running site cash total increases.
 
 ### F13.2 — Record cash return / withdrawal
-- Outgoing cash: return to owner or other source with note (`SiteCashReturn`). This is not a site cost — a withdrawal.
+- Outgoing cash: return to owner or other source with note (`SiteCashReturn`); optional **sitecashreturn category** (per-site — F3.4; nullable = Uncategorized). This is not a site cost — a withdrawal.
 - Cannot go below zero — insufficient balance is rejected.
 - Running site return total increases.
 
@@ -557,12 +557,12 @@ Rules:
 ## F14 — Manage Site Bills
 
 ### F14.1 — Create site bill
-- Authorized user records a bill: site, date, **floor (required, F6.9)**, amount, note.
-- Running `site_total` and `floor_total` per bill row; floor bills accumulate against that floor's contract value (sqft × rate, F6.9).
+- Authorized user records a bill: site, date, **billing category (required, F6.9)**, optional **sitebill category** (per-site — F3.4; nullable = Uncategorized), amount, note.
+- Running `site_total` and `billing_total` (per-billing-category) per bill row; bills accumulate against that billing category's contract value (sqft × rate, F6.9).
 - Gated by `sitebill_create_window` / `sitebill_update_window` / `sitebill_delete_window` (default `-1` = any date, so the admin/office can record bills anytime); see F6.12.
 
 ### F14.2 — View bill history
-- Ledger per site, filterable by floor, date range; shows billed vs floor contract value vs remaining receivable.
+- Ledger per site, filterable by billing category, date range; shows billed vs billing-category contract value vs remaining receivable.
 
 ---
 
@@ -574,21 +574,21 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 - Per labour: earnings (attendance salary + extra work), advance, fooding, returns, net balance. Read from latest running totals / carried balance.
 
 ### F15.2 — Site expense report
-- Costs grouped by company expense category / floor for a site and date range (SiteCost and HiddenCost shown separately).
+- Costs grouped by ledger category (sitecost / hiddencost) / billing category for a site and date range (SiteCost and HiddenCost shown separately).
 
 ### F15.3 — Site balance report
 - `deposits − returns − site cost total − advance pay total − fooding pay total` per site — current spendable cash (matches F6.8; hidden cost excluded).
 
 ### F15.4 — Site profit report
 - Profit per site: `bills − (labour cost + site cost + hidden cost)`, where labour cost = attendance salary + extra work (payouts are cash, not cost).
-- Profit per floor of site: `bills of floor − (labour cost of floor + site cost of floor + hidden cost of floor)`.
+- Profit per billing category of site: `bills of category − (labour cost of category + site cost of category + hidden cost of category)`.
 
 ### F15.5 — Site labour cost report
-- Attendance salary per site / date / floor.
-- Extra work per site / date / floor.
+- Attendance salary per site / date / billing category.
+- Extra work per site / date / billing category.
 - Advance pay and fooding pay per site / date.
 - Labour cost per site: `latest attendance site_total_salary` + extra work total.
-- Labour cost per floor of site.
+- Labour cost per billing category of site.
 
 ### F15.6 — Summary for a date range
 - Company-level roll-up between two dates: cash in/out, costs, bills, labour cost, per-site rows.
@@ -597,10 +597,10 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 ### F15.7 — Company dashboard
 - Open sites overview, balances, subscription expiry alert, recent edits (from audit trail), recent activity.
 
-### F15.8 — Floor costing & revenue report
-- Per floor of a site: `sqft`, `rate`, contract value (sqft × rate), billed, remaining receivable (contract − billed), labour cost, construction cost, allocated hidden cost, total cost, profit (billed − total cost), cost per sqft.
-- Site-general hidden cost (floor = null) is shown as its own row, **not** pro-rated across floors.
-- Reconciles to site profit: `site profit = (Σ floor profit) − general hidden cost`, which equals `bills − (labour + site cost + all hidden cost)`.
+### F15.8 — Billing-category costing & revenue report
+- Per billing category of a site: `sqft`, `rate_per_sqft`, contract value (sqft × rate, or `custom_bill`), billed, remaining receivable (contract − billed), labour cost, construction cost, allocated hidden cost, total cost, profit (billed − total cost), cost per sqft.
+- Site-general hidden cost (billing_category = null) is shown as its own row, **not** pro-rated across billing categories.
+- Reconciles to site profit: `site profit = (Σ billing-category profit) − general hidden cost`, which equals `bills − (labour + site cost + all hidden cost)`.
 
 ---
 
@@ -615,7 +615,7 @@ Edits happen directly; the `editable` flag is the hard lock, and the audit log m
   1. Applies the change (financial/ledger rows are **soft-deleted**, not hard-deleted).
   2. Writes an **audit log entry**: company, actor, timestamp, target record type + id, action (update/delete), **before snapshot**, **after snapshot**, and a **note (required for update/delete of financial records)**.
   3. Bumps the record's `updated_at`.
-  4. Recalculates running totals of all later rows in the same ledger (per floor and per site) so the chain stays consistent.
+  4. Recalculates running totals of all later rows in the same ledger (per billing category and per site) so the chain stays consistent.
 
 ### F16.2 — View audit trail
 - Any authorized user views the log, filtered by record, site, user, action, or date range.
