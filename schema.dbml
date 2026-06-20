@@ -39,6 +39,18 @@ Project SiteMan {
     recomputes the chain for all later rows (F16.1, F7.4).
   - NOTE: `billing_total*` columns are the per-`billing_category` running totals.
 
+  ## Money vs present units
+  - Money is whole-taka integer (no paisa in this domain). Type split:
+    - `int`    — per-row single money (a price, payment, daily salary, one
+                 advance/fooding/return/cost/bill amount, a validation min/max, one contract
+                 amount). Well under int's ~214 crore cap; saves storage on huge ledgers.
+    - `bigint` — cumulative / aggregate money: every running `site_total*` / `billing_total*`,
+                 carried `balance` / `last_balance`, work-session rollups, closure-summary
+                 totals. These sum over a ~2-yr site and can exceed the int cap.
+  - `present` (attendance work-unit) and everything derived from it stay `decimal(12,2)`
+    because present is fractional (0.5, 1.5, 2, 2.3). `sqft` / `rate_per_sqft` also stay
+    decimal (physical area / revenue rate).
+
   ## Categories (F3.4, F12–F14)
   - Each financial ledger has its OWN per-site category
     table: sitecost_category, hiddencost_category, sitecash_category, sitecashreturn_category,
@@ -172,9 +184,9 @@ Table company {
   name            varchar   [not null]
   is_active       boolean   [not null, default: true, note: 'deactivated => all users blocked from login (F2.3)']
   // --- subscription cache (denormalized from active subscription for fast checks) ---
-  max_open_sites  int       [not null, default: 1,  note: 'cache; -1 = no limit']
-  max_users       int       [not null, default: -1, note: 'cache; -1 = no limit']
-  max_labour      int       [not null, default: -1, note: 'cache; -1 = no limit']
+  open_site_limit  int       [not null, default: 1,  note: 'cache; -1 = no limit']
+  active_user_limit       int       [not null, default: -1, note: 'cache; -1 = no limit']
+  active_labour_limit      int       [not null, default: -1, note: 'cache; -1 = no limit']
   valid_until     date      [null, note: 'cache of active subscription paid_until (F4.6)']
   deleted_at      timestamp [null, note: 'purge target after deactivation window']
 
@@ -199,13 +211,25 @@ Table plan {
   open_site_limit     int           [not null, note: '-1 = no limit']
   active_user_limit   int           [not null, default: -1]
   active_labour_limit int           [not null, default: -1]
-  rate_1_month        decimal(12,2) [null, note: 'per-month rate; NULL for negotiated/custom']
-  rate_6_month        decimal(12,2) [null]
-  rate_12_month       decimal(12,2) [null]
   is_custom           boolean       [not null, default: false]
   is_active           boolean       [not null, default: true]
 
-  Note: 'Plan template (F2.4). Price edits apply to new purchases/renewals only — running subs keep their snapshot.'
+  Note: 'Plan template (F2.4). Per-duration prices live in plan_price. Price edits apply to new purchases/renewals only — running subs keep their snapshot.'
+}
+
+Table plan_price {
+  id              bigint        [pk]
+  plan_id         bigint        [ref: > plan.id, not null]
+  duration int           [not null, note: 'any duration — 30, 120, 360']
+  price  int           [not null ]
+  discount_price  int           [not null, note: 'final price after discount' ]
+  is_active       boolean       [not null, default: true]
+
+  Note: 'Per-duration price for a plan (F2.4). New duration = new row, no schema change. Custom plans may have none (negotiated per subscription).'
+
+  Indexes {
+    (plan_id, duration) [unique]
+  }
 }
 
 Table subscription {
@@ -216,9 +240,9 @@ Table subscription {
   open_site_limit     int                 [not null]
   active_user_limit   int                 [not null]
   active_labour_limit int                 [not null]
-  duration_months     int                 [not null, note: '1 / 6 / 12']
-  rate_snapshot       decimal(12,2)       [not null, note: 'per-month rate locked at purchase']
-  amount              decimal(12,2)       [not null, note: 'total paid for this term']
+  duration     int                 [not null, note: 'chosen from plan_price.duration']
+  price       int                 [not null, note: 'price locked from chosen plan_price.price']
+  discount_price              int                 [not null, note: 'total paid for this term, chosen plan_price.discount_price']
   start_date          date                [not null, note: 'activation date']
   paid_until          date                [not null, note: 'extended from activation (F4.2)']
   status              subscription_status [not null, default: 'active']
@@ -236,7 +260,7 @@ Table payment {
   subscription_id bigint         [ref: > subscription.id, not null]
   company_id      bigint         [not null, note: 'denormalized for tenant filtering']
   method          payment_method [not null]
-  amount          decimal(12,2)  [not null]
+  amount          int            [not null]
   status          payment_status [not null, default: 'pending']
   transaction_id  varchar        [null, note: 'gateway txn id; NULL for manual']
   recorded_by     bigint         [ref: > user.id, null, note: 'system user who logged a manual payment (F2.4)']
@@ -307,12 +331,12 @@ Table site_config {
 
   // --- validation ranges (per-site) ---
   attendance_present_choices jsonb         [not null, note: 'allowed present set, e.g. [0,0.5,1,1.5,2,3]']
-  salary_min                 decimal(12,2) [not null]
-  salary_max                 decimal(12,2) [not null]
-  fooding_min                decimal(12,2) [not null]
-  fooding_max                decimal(12,2) [not null]
-  advance_min                decimal(12,2) [not null]
-  advance_max                decimal(12,2) [not null]
+  salary_min                 int           [not null]
+  salary_max                 int           [not null]
+  fooding_min                int           [not null]
+  fooding_max                int           [not null]
+  advance_min                int           [not null]
+  advance_max                int           [not null]
 
   Note: 'Per-site create/update/delete windows + per-day quotas + validation ranges (F6.12). Resettable to defaults.'
 }
@@ -338,7 +362,7 @@ Table billing_category_details {
   billing_category_id bigint        [ref: - billing_category.id, not null, unique, note: '1:1 with billing_category']
   sqft                decimal(12,2) [not null, note: 'physical area']
   rate_per_sqft       decimal(12,2) [not null, note: 'revenue rate per sqft']
-  custom_amount         decimal(12,2) [null, note: 'ASSUMPTION: flat contract amount; overrides sqft x rate_per_sqft when set. Confirm meaning.']
+  custom_amount         int           [null, note: 'ASSUMPTION: flat contract amount; overrides sqft x rate_per_sqft when set. Confirm meaning.']
 
   Note: '1:1 detail for billing_category. contract_value = sqft x rate_per_sqft (or custom_bill if set), F6.9 / F15.8.'
 }
@@ -347,13 +371,13 @@ Table site_closure_summary {
   id                       bigint        [pk]
   site_id                  bigint        [ref: - site.id, not null, unique]
   total_present            decimal(12,2) [not null]
-  total_salary             decimal(12,2) [not null]
-  total_extrawork          decimal(12,2) [not null]
-  total_cost               decimal(12,2) [not null]
-  total_hidden_cost        decimal(12,2) [not null]
-  total_bills              decimal(12,2) [not null]
-  total_paid_bills         decimal(12,2) [not null]
-  profit                   decimal(12,2) [not null]
+  total_salary             bigint        [not null]
+  total_extrawork          bigint        [not null]
+  total_cost               bigint        [not null]
+  total_hidden_cost        bigint        [not null]
+  total_bills              bigint        [not null]
+  total_paid_bills         bigint        [not null]
+  profit                   bigint        [not null]
   billing_category_breakdown jsonb       [not null, note: 'per-billing_category contract vs billed snapshot']
 
   Note: 'Immutable snapshot built at close (F6.3). Deleted on reopen (F6.4).'
@@ -447,10 +471,10 @@ Table labour {
   company_id      bigint        [ref: > company.id, not null]
   current_site_id bigint        [ref: > site.id, null, note: 'one site at a time; reassign = move (F7.2)']
   name            varchar       [not null]
-  default_salary  decimal(12,2) [not null]
+  default_salary  int           [not null]
   default_present decimal(12,2) [not null]
-  default_fooding decimal(12,2) [not null]
-  balance         decimal(12,2) [not null, default: 0, note: 'carried running balance (F8.3)']
+  default_fooding int           [not null]
+  balance         bigint        [not null, default: 0, note: 'carried running balance (F8.3)']
   is_active       boolean       [not null, default: true, note: 'sealed work session auto-deactivates (F7.3 / F10)']
   deleted_at      timestamp     [null, note: 'delete requires zero balance (F7.6)']
 
@@ -468,8 +492,8 @@ Table labour_work_session {
   labour_id    bigint        [ref: > labour.id, not null]
   start_date   date          [not null, note: 'first record after previous session end']
   end_date     date          [not null, note: 'last sealed record date']
-  last_balance decimal(12,2) [not null, note: 'balance carried in']
-  balance      decimal(12,2) [not null, note: 'balance carried out']
+  last_balance bigint        [not null, note: 'balance carried in']
+  balance      bigint        [not null, note: 'balance carried out']
 
   Note: 'Period between two vacations (F10.1). Sealing sets editable=false on all rolled-in rows.'
 }
@@ -479,12 +503,12 @@ Table labour_site_work_session {
   work_session_id bigint        [ref: > labour_work_session.id, not null]
   site_id         bigint        [ref: > site.id, not null]
   present         decimal(12,2) [not null]
-  extrawork       decimal(12,2) [not null]
-  fooding         decimal(12,2) [not null]
-  advance         decimal(12,2) [not null]
-  salary          decimal(12,2) [not null]
-  earnings        decimal(12,2) [not null]
-  payable         decimal(12,2) [not null]
+  extrawork       bigint        [not null]
+  fooding         bigint        [not null]
+  advance         bigint        [not null]
+  salary          bigint        [not null]
+  earnings        bigint        [not null]
+  payable         bigint        [not null]
 
   Note: 'Per-site rollup within a work session (F10.1 step 3).'
 }
@@ -502,11 +526,11 @@ Table daily_attendance {
   work_session_id     bigint        [ref: > labour_work_session.id, null, note: 'set when sealed']
   date                date          [not null]
   present             decimal(12,2) [not null, note: 'validated against attendance_present_choices']
-  salary              decimal(12,2) [not null, note: 'snapshot; seeded from labour.default_salary']
+  salary              int           [not null, note: 'snapshot; seeded from labour.default_salary']
   site_total_present  decimal(12,2) [not null]
-  site_total_salary   decimal(12,2) [not null]
+  site_total_salary   bigint        [not null]
   billing_total_present decimal(12,2) [not null, note: 'per-billing_category cumulative']
-  billing_total_salary  decimal(12,2) [not null, note: 'per-billing_category cumulative']
+  billing_total_salary  bigint        [not null, note: 'per-billing_category cumulative']
   editable            boolean       [not null, default: true]
   deleted_at          timestamp     [null, note: 'soft-delete']
 
@@ -525,10 +549,10 @@ Table labour_extra_work {
   billing_category_id bigint       [ref: > billing_category.id, not null]
   work_session_id    bigint        [ref: > labour_work_session.id, null]
   date               date          [not null]
-  amount             decimal(12,2) [not null]
+  amount             int           [not null]
   note               varchar       [null]
-  site_total_amount  decimal(12,2) [not null]
-  billing_total_amount decimal(12,2) [not null, note: 'per-billing_category cumulative']
+  site_total_amount  bigint        [not null]
+  billing_total_amount bigint      [not null, note: 'per-billing_category cumulative']
   editable           boolean       [not null, default: true]
   deleted_at         timestamp     [null]
 
@@ -546,9 +570,9 @@ Table labour_advance_pay {
   site_id         bigint        [ref: > site.id, not null]
   work_session_id bigint        [ref: > labour_work_session.id, null]
   date            date          [not null]
-  amount          decimal(12,2) [not null, note: 'validated against advance_min/max']
+  amount          int           [not null, note: 'validated against advance_min/max']
   note            varchar       [null]
-  site_total      decimal(12,2) [not null]
+  site_total      bigint        [not null]
   editable        boolean       [not null, default: true]
   deleted_at      timestamp     [null]
 
@@ -562,9 +586,9 @@ Table labour_fooding_pay {
   site_id         bigint        [ref: > site.id, not null]
   work_session_id bigint        [ref: > labour_work_session.id, null]
   date            date          [not null]
-  amount          decimal(12,2) [not null, note: 'seeded from default_fooding; validated against fooding_min/max']
+  amount          int           [not null, note: 'seeded from default_fooding; validated against fooding_min/max']
   note            varchar       [null]
-  site_total      decimal(12,2) [not null]
+  site_total      bigint        [not null]
   editable        boolean       [not null, default: true]
   deleted_at      timestamp     [null]
 
@@ -578,9 +602,9 @@ Table labour_return {
   site_id         bigint        [ref: > site.id, not null]
   work_session_id bigint        [ref: > labour_work_session.id, null]
   date            date          [not null]
-  amount          decimal(12,2) [not null]
+  amount          int           [not null]
   note            varchar       [null]
-  site_total      decimal(12,2) [not null]
+  site_total      bigint        [not null]
   editable        boolean       [not null, default: true]
   deleted_at      timestamp     [null]
 
@@ -598,10 +622,10 @@ Table site_cost {
   billing_category_id  bigint        [ref: > billing_category.id, not null]
   sitecost_category_id bigint        [ref: > sitecost_category.id, null, note: 'null = Generalized expense']
   date                 date          [not null]
-  amount               decimal(12,2) [not null]
+  amount               int           [not null]
   note                 varchar       [null]
-  site_total           decimal(12,2) [not null]
-  billing_total        decimal(12,2) [not null, note: 'per-billing_category cumulative']
+  site_total           bigint        [not null]
+  billing_total        bigint        [not null, note: 'per-billing_category cumulative']
   editable             boolean       [not null, default: true]
   deleted_at           timestamp     [null]
 
@@ -615,10 +639,10 @@ Table hidden_cost {
   billing_category_id    bigint        [ref: > billing_category.id, not null, note: 'null = site-general (not pro-rated, F15.8)']
   hiddencost_category_id bigint        [ref: > hiddencost_category.id, null, note: 'null = Generalized expense']
   date                   date          [not null]
-  amount                 decimal(12,2) [not null]
+  amount                 int           [not null]
   note                   varchar       [null]
-  site_total           decimal(12,2) [not null]
-  billing_total        decimal(12,2) [null, note: 'per-billing_category cumulative']
+  site_total           bigint        [not null]
+  billing_total        bigint        [null, note: 'per-billing_category cumulative']
   editable               boolean       [not null, default: true]
   deleted_at             timestamp     [null]
 
@@ -635,9 +659,9 @@ Table site_cash {
   site_id              bigint        [ref: > site.id, not null]
   sitecash_category_id bigint        [ref: > sitecash_category.id, null, note: 'null = Uncategorized']
   date                 date          [not null]
-  amount               decimal(12,2) [not null]
+  amount               int           [not null]
   note                 varchar       [null]
-  site_total           decimal(12,2) [not null]
+  site_total           bigint        [not null]
   editable             boolean       [not null, default: true]
   deleted_at           timestamp     [null]
 
@@ -650,9 +674,9 @@ Table site_cash_return {
   site_id                    bigint        [ref: > site.id, not null]
   sitecashreturn_category_id bigint        [ref: > sitecashreturn_category.id, null, note: 'null = Uncategorized']
   date                       date          [not null]
-  amount                     decimal(12,2) [not null]
+  amount                     int           [not null]
   note                       varchar       [null]
-  site_total                 decimal(12,2) [not null]
+  site_total                 bigint        [not null]
   editable                   boolean       [not null, default: true]
   deleted_at                 timestamp     [null]
 
@@ -670,10 +694,10 @@ Table site_bill {
   billing_category_id  bigint        [ref: > billing_category.id, not null, note: 'required — accumulates against billing-category contract value']
   sitebill_category_id bigint        [ref: > sitebill_category.id, null, note: 'null = Uncategorized']
   date                 date          [not null]
-  amount               decimal(12,2) [not null]
+  amount               int           [not null]
   note                 varchar       [null]
-  site_total           decimal(12,2) [not null]
-  billing_total        decimal(12,2) [not null, note: 'per-billing_category cumulative']
+  site_total           bigint        [not null]
+  billing_total        bigint        [not null, note: 'per-billing_category cumulative']
   editable             boolean       [not null, default: true]
   deleted_at           timestamp     [null]
 

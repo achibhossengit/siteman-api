@@ -88,7 +88,7 @@ System-level users; not tied to any company.
 - Deactivated company: all its users blocked from login; data retained.
 
 ### F2.4 — Manage subscription plans
-- System Admin creates/edits plan tiers: **open-site limit**, **active-user limit**, **active-labour limit**, per-month rate per duration (1/6/12 months). Each limit `-1` = no limit; `N` = cap.
+- System Admin creates/edits plan tiers: **open-site limit**, **active-user limit**, **active-labour limit**, and one or more **durations** — each duration (any month count, e.g. 1 / 3 / 6 / 12 / 24) with its own **per-month rate**. Durations are stored as `plan_price` rows (not fixed columns), so adding a new duration needs **no schema change**. Each limit `-1` = no limit; `N` = cap.
 - Price changes apply to new purchases/renewals only; running subscriptions keep their rate snapshot.
 - Custom plan: limits and price negotiated and set manually per company.
 - **Manual payment** — a System user can record a subscription payment that bypasses the gateway (offline / bank / cash, or after a gateway failure) for any company.
@@ -170,7 +170,7 @@ A low-frequency support action for clients who tested the app on a real account 
 - Company Admin sees current plan, expiry date, payment history, and **usage vs limit** for each capped resource: open sites, active users, active labour.
 
 ### F4.2 — Pay for plan
-- Admin picks a plan tier and duration (1 / 6 / 12 months).
+- Admin picks a plan tier and one of its offered durations (any `plan_price` for the tier).
 - Admin starts payment → system creates a payment attempt and redirects to the payment gateway.
 - Gateway sends confirmation (IPN/webhook); system verifies signature and amount.
 - On success: subscription record saved (plan, duration, amount, transaction id), `paid_until` extended from the activation date.
@@ -199,7 +199,7 @@ A low-frequency support action for clients who tested the app on a real account 
 - Reminder log kept so the same reminder is not repeated.
 
 ### Subscription Model (reference)
-Pricing is driven by **open site count**; the user and labour caps default to `-1` (no limit) today and exist so a tier can be tightened later without a schema change. Longer durations get a **per-month discount**. Prices in BDT.
+Pricing is driven by **open site count**; the user and labour caps default to `-1` (no limit) today and exist so a tier can be tightened later without a schema change. Longer durations get a **per-month discount**. Prices in BDT. The durations below (1 / 6 / 12 months) are the **current offering** only — they are `plan_price` rows, not fixed by schema, so any duration can be added as data.
 
 | Plan | Open Sites | Active Users | Active Labour | 1 Month | 6 Months | 1 Year |
 |---|---|---|---|---|---|---|
