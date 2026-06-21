@@ -33,6 +33,7 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F1.3 | Reset forgotten password |
 | F1.4 | Change password |
 | F1.5 | Logout |
+| F1.6 | Manage profile |
 
 ### F2 → Manage Platform
 | # | Feature |
@@ -55,7 +56,7 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F3.1 | Create company |
 | F3.2 | View company profile & status |
 | F3.3 | Edit company details |
-| F3.4 | Manage expense categories |
+| F3.4 | Manage custom categories |
 | F3.5 | Manage company configuration |
 
 ### F4 → Manage Company Subscription
@@ -97,7 +98,7 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F6.12 | Manage site configuration |
 | F6.13 | View site activity log |
 | F6.14 | Admin records on a site |
-| F6.15 | Merge site floors (same-site) |
+| F6.15 | Remove a billing category (delete or merge) |
 
 ### F7 → Manage Labour Accounts
 | # | Feature |

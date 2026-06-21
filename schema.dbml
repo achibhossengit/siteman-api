@@ -1,91 +1,5 @@
-// =============================================================
-// SiteMan — Database Schema (DBML)
-// Source of truth for ERD + Django model planning.
-// Paste into https://dbdiagram.io to render the ERD.
-// Derived from feature-details.md (F1–F16).
-// =============================================================
-
 Project SiteMan {
   database_type: 'PostgreSQL'
-  Note: '''
-  # SiteMan schema conventions
-
-  Construction-site labour & cost management — multi-tenant SaaS.
-  One `user` table, two scopes: `system` (platform staff) / `tenant` (company user).
-
-  ## Shared columns (assumed on EVERY table, not repeated below)
-  - `id`            PK, bigint, auto.
-  - `created_at`    timestamp, auto-set on insert.
-  - `created_by`    -> user.id, nullable, ON DELETE SET NULL.
-  - `updated_at`    timestamp, bumped ONLY when a user explicitly edits a field value
-                    (paired with an activity_log entry). A category MERGE does NOT bump it.
-  - (No `updated_by` — the actor of any change is read from activity_log.actor_id, F16.)
-
-  ## Merge timestamps (F3.4 / F6.15 category merge)
-  - `billing_merged_at`  timestamp, nullable — on rows that FK billing_category
-    (daily_attendance, labour_extra_work, site_cost, hidden_cost, site_bill). Set ONLY when a
-    billing_category merge re-points / merges this row. `updated_at` stays untouched.
-  - `merged_at`          timestamp, nullable — on rows that FK a ledger category
-    (site_cost, hidden_cost, site_cash, site_cash_return, site_bill). Set ONLY when that
-    ledger-category merge re-points this row.
-
-  ## Tenant isolation (Conventions)
-  - Every TENANT row carries `company_id` (denormalized on ledgers for fast tenant filtering).
-    To keep the ERD readable, only the primary aggregates draw an explicit ref to `company`;
-    ledger tables list `company_id` as a plain column (reach company via their `site`/`labour`).
-
-  ## Soft-delete (Conventions, F16)
-  - Ledger / financial rows + user + labour carry `deleted_at` (nullable). Soft-deleted, not
-    hard-deleted, in normal operation. A cron purges rows past their retention window; on purge
-    the DB-level ON DELETE SET NULL cascades clear FK refs (F5.6, F7.6).
-
-  ## editable flag (Conventions, F10)
-  - Every labour-linked row (attendance, extra work, advance, fooding, return) starts
-    `editable = true`. Sealing a labour_work_session sets `editable = false` -> immutable.
-
-  ## Running totals (Conventions)
-  - Ledger rows store a per-SITE cumulative `site_total*` only. Editing/deleting a row
-    recomputes the site chain for all later rows (F16.1, F7.4).
-  - There is NO stored per-billing_category running total — per-category figures (F15.8) are
-    computed by aggregation. So a category MERGE only re-points rows; no running-total
-    recompute needed (F6.15).
-
-  ## Money vs present units
-  - Money is whole-taka integer (no paisa in this domain). Type split:
-    - `int`    — per-row single money (a price, payment, daily salary, one
-                 advance/fooding/return/cost/bill amount, a validation min/max, one contract
-                 amount). Well under int's ~214 crore cap; saves storage on huge ledgers.
-    - `bigint` — cumulative / aggregate money: every running `site_total*`, carried
-                 `balance` / `last_balance`, work-session rollups, closure-summary totals.
-                 These sum over a ~2-yr site and can exceed the int cap.
-  - `present` (attendance work-unit) and everything derived from it stay `decimal(12,2)`
-    because present is fractional (0.5, 1.5, 2, 2.3). `sqft` / `rate_per_sqft` also stay
-    decimal (physical area / revenue rate).
-
-  ## Categories (F3.4, F12–F14)
-  - Each financial ledger has its OWN per-site category
-    table: sitecost_category, hiddencost_category, sitecash_category, sitecashreturn_category,
-    sitebill_category. Each is scoped to a site, referenced (NOT NULL — every ledger row must
-    pick a category; there is NO "Generalized / Uncategorized"). Categories carry no running
-    totals, and are MERGEABLE into one another within a site (F3.4 / F6.15). FK is
-    ON DELETE RESTRICT — a referenced category cannot be deleted; merge it away first.
-
-  ## Billing category (F6.9, renamed from "floor")
-  - `billing_category` = the floor-like revenue/costing unit (e.g. Basement, Floor-1). Master data
-    per site. Measurement lives in `billing_category_details` (1:1). Profit is computed per
-    billing_category (F15.8). Mergeable within a site (F6.15).
-
-  ## Scales
-  - Plan / Company limits:  `-1` = no limit, `N >= 0` = hard cap.
-  - SiteConfig *_window:     `-1` = any date <= today, `0` = disabled, `N >= 1` = last N days incl. today.
-  - SiteConfig *_per_day_limit: `-1` = unlimited, `0` = blocked, `N >= 1` = N rows / labour / date.
-  - Future dates are ALWAYS rejected, regardless of window.
-
-  ## Capability / permissions
-  - Capability = Django Group (System Admin/Manager; Company Admin/Manager; Site Manager) — see group/user_group.
-  - Fine-grained permissions (F2.8, F5.4) use Django's built-in auth_permission / user_user_permissions (not modeled here).
-  - Site scope = `user_site` (which sites a tenant user may act on).
-  '''
 }
 
 // ---------------- Enums ----------------
@@ -95,9 +9,14 @@ Enum user_scope {
   tenant
 }
 
+Enum otp_channel {
+  sms
+  email
+}
+
 Enum payment_method {
   gateway
-  manual   // recorded by a System user (offline / bank / cash / gateway failure) — F2.4
+  manual
 }
 
 Enum payment_status {
@@ -112,11 +31,19 @@ Enum subscription_status {
   cancelled
 }
 
+Enum custom_category_scope {
+  sitecost
+  hiddencost
+  sitecash
+  sitecashreturn
+  sitebill
+}
+
 Enum activity_action {
   create
   update
   delete
-  merge    // category merge (F3.4 / F6.15) — before holds all source rows (A,B,C), after the survivor
+  merge
 }
 
 // ============================================================
@@ -124,30 +51,34 @@ Enum activity_action {
 // ============================================================
 
 Table user {
-  id            bigint      [pk]
-  scope         user_scope  [not null, note: 'system => company_id NULL; tenant => company_id set']
-  company_id    bigint      [ref: > company.id, null, note: 'NULL for system users']
-  name          varchar     [not null]
-  phone_number  varchar     [not null, unique, note: 'BD phone, normalized +8801XXXXXXXXX (F1.1)']
-  email         varchar     [null]
-  password      varchar     [not null, note: 'hashed']
-  is_active     boolean     [not null, default: true]
-  deleted_at    timestamp   [null, note: 'soft-delete; purged after retention (F5.6)']
+  id                    bigint      [pk]
+  scope                 user_scope  [not null, note: 'system => company_id NULL; tenant => company_id set']
+  company_id            bigint      [ref: > company.id, null, note: 'NULL for system users']
+  name                  varchar     [not null]
+  phone_number          varchar     [not null, unique, note: 'BD phone, normalized +8801XXXXXXXXX (F1.1)']
+  email                 varchar     [null]
+  email_verified        boolean     [not null, default: false, note: 'email change confirmed via OTP (F1)']
+  password              varchar     [not null, note: 'hashed']
+  is_active             boolean     [not null, default: true]
+  created_at            timestamp   [not null]
+  created_by            bigint      [ref: > user.id, not null]
+  updated_at            timestamp   [not null]
+  deleted_at            timestamp   [null, note: 'deactivate only; hard-delete blocked while any created_by/actor ref exists (RESTRICT) — purge effectively never (F5.6)']
 
-  Note: 'One phone = one account. Auth = OTP + JWT via shared service (F1.1 / F2.1).'
+  Indexes {
+    (name, company_id) [unique]
+  }
 }
 
 Table group {
   id    bigint  [pk]
-  name  varchar [not null, unique, note: 'System Admin / System Manager / Company Admin / Company Manager / Site Manager']
-  Note: 'Django auth_group. Capability layer — global within scope, never per-site.'
+  name  varchar [not null, unique, note: 'Django auth_group — System/Company/Site roles']
 }
 
 Table user_group {
   id        bigint [pk]
   user_id   bigint [ref: > user.id, not null]
   group_id  bigint [ref: > group.id, not null]
-  Note: 'Django auth_user_groups (m2m).'
 
   Indexes {
     (user_id, group_id) [unique]
@@ -155,10 +86,12 @@ Table user_group {
 }
 
 Table user_site {
-  id       bigint [pk]
-  user_id  bigint [ref: > user.id, not null]
-  site_id  bigint [ref: > site.id, not null]
-  Note: 'F5.3 scope link. A site has many managers; a user many sites. Company Admin self-assigns here to record (F6.14).'
+  id          bigint    [pk]
+  user_id     bigint    [ref: > user.id, not null]
+  site_id     bigint    [ref: > site.id, not null]
+  created_at  timestamp [not null]
+  created_by  bigint    [ref: > user.id, not null]
+  updated_at  timestamp [not null]
 
   Indexes {
     (user_id, site_id) [unique]
@@ -170,23 +103,21 @@ Table user_site {
 // ============================================================
 
 Table system_config {
-  id                              bigint   [pk, note: 'Singleton — single global row (django-solo), F2.10']
-  maintenance_mode                boolean  [not null, default: false]
-  subscription_renew_notification int      [not null, default: 5,  note: 'days BEFORE valid_until to start reminders (F4.7)']
-  company_deactivate_after_expiry int      [not null, default: 10, note: 'days AFTER expiry to auto-deactivate (F4.6)']
-  delete_deactivated_company      int      [not null, default: 60, note: 'days deactivated before data purge']
-
-  Note: 'Threshold knobs read at runtime by fixed-schedule crons (F2.10).'
+  id                              bigint    [pk, note: 'Singleton (django-solo), F2.10']
+  maintenance_mode                boolean   [not null, default: false]
+  subscription_renew_notification int       [not null, default: 5,  note: 'days BEFORE valid_until (F4.7)']
+  company_deactivate_after_expiry int       [not null, default: 10, note: 'days AFTER expiry to deactivate (F4.6)']
+  delete_deactivated_company      int       [not null, default: 60, note: 'days deactivated before purge']
+  created_at                      timestamp [not null]
+  updated_at                      timestamp [not null]
 }
 
 Table company_reset_log {
   id              bigint    [pk]
-  system_user_id  bigint    [ref: > user.id, null, note: 'actor (system scope)']
-  company_id      bigint    [not null, note: 'plain column — survives the wipe; company-side activity log cannot (F2.11)']
+  company_id      bigint    [ref: > company.id, not null, note: 'plain column — survives the wipe (F2.11)']
   reset_at        timestamp [not null]
+  reset_by  bigint    [ref: > user.id, not null, note: 'actor (system scope)']
   otp_verified    boolean   [not null, default: true]
-
-  Note: 'Platform-level log of a company reset (F2.11). Stored system-side; persists after tenant data is hard-deleted.'
 }
 
 // ============================================================
@@ -194,25 +125,23 @@ Table company_reset_log {
 // ============================================================
 
 Table company {
-  id              bigint    [pk]
-  name            varchar   [not null]
-  is_active       boolean   [not null, default: true, note: 'deactivated => all users blocked from login (F2.3)']
-  // --- subscription cache (denormalized from active subscription for fast checks) ---
-  open_site_limit  int       [not null, default: 1,  note: 'cache; -1 = no limit']
-  active_user_limit       int       [not null, default: -1, note: 'cache; -1 = no limit']
-  active_labour_limit      int       [not null, default: -1, note: 'cache; -1 = no limit']
-  valid_until     date      [null, note: 'cache of active subscription paid_until (F4.6)']
-  deleted_at      timestamp [null, note: 'purge target after deactivation window']
-
-  Note: 'Tenant root. Created inside registration (F1.2 / F3.1).'
+  id                  bigint    [pk]
+  name                varchar   [not null]
+  is_active           boolean   [not null, default: true, note: 'deactivated => logins blocked (F2.3)']
+  open_site_limit     int       [not null, default: 1,  note: 'cache; -1 = no limit']
+  active_user_limit   int       [not null, default: -1, note: 'cache; -1 = no limit']
+  active_labour_limit int       [not null, default: -1, note: 'cache; -1 = no limit']
+  valid_until         date      [null, note: 'cache of active subscription paid_until (F4.6)']
+  created_at          timestamp [not null]
+  updated_at          timestamp [not null]
+  deleted_at          timestamp [null, note: 'purge target after deactivation window']
 }
 
 Table company_config {
-  id                    bigint  [pk]
-  company_id            bigint  [ref: - company.id, not null, unique, note: 'one-to-one']
-  allow_labour_transfer boolean [not null, default: true, note: 'false => block moving labour between sites company-wide (F7.2)']
-
-  Note: 'Per-tenant feature flags (F3.5). Auto-created with defaults at F3.1. Resettable to defaults.'
+  id                    bigint    [pk]
+  company_id            bigint    [ref: - company.id, not null, unique, note: 'one-to-one']
+  allow_labour_transfer boolean   [not null, default: true, note: 'false => block labour transfer company-wide (F7.2)']
+  updated_at            timestamp [not null]
 }
 
 // ============================================================
@@ -220,26 +149,28 @@ Table company_config {
 // ============================================================
 
 Table plan {
-  id                  bigint        [pk]
-  name                varchar       [not null, note: 'Free / Basic / Popular / Business / Custom']
-  open_site_limit     int           [not null, note: '-1 = no limit']
-  active_user_limit   int           [not null, default: -1]
-  active_labour_limit int           [not null, default: -1]
-  is_custom           boolean       [not null, default: false]
-  is_active           boolean       [not null, default: true]
-
-  Note: 'Plan template (F2.4). Per-duration prices live in plan_price. Price edits apply to new purchases/renewals only — running subs keep their snapshot.'
+  id                  bigint    [pk]
+  name                varchar   [not null, note: 'Free / Basic / Popular / Business / Custom']
+  open_site_limit     int       [not null, note: '-1 = no limit']
+  active_user_limit   int       [not null, default: -1]
+  active_labour_limit int       [not null, default: -1]
+  is_custom           boolean   [not null, default: false]
+  is_active           boolean   [not null, default: true]
+  created_at          timestamp [not null]
+  created_by          bigint    [ref: > user.id, not null]
+  updated_at          timestamp [not null]
 }
 
 Table plan_price {
-  id              bigint        [pk]
-  plan_id         bigint        [ref: > plan.id, not null]
-  duration int           [not null, note: 'any duration — 30, 120, 360']
-  price  int           [not null ]
-  discount_price  int           [not null, note: 'final price after discount' ]
-  is_active       boolean       [not null, default: true]
-
-  Note: 'Per-duration price for a plan (F2.4). New duration = new row, no schema change. Custom plans may have none (negotiated per subscription).'
+  id             bigint    [pk]
+  plan_id        bigint    [ref: > plan.id, not null]
+  duration       int       [not null, note: 'any duration — 30, 120, 360']
+  price          int       [not null]
+  discount_price int       [not null, note: 'final price after discount']
+  is_active      boolean   [not null, default: true]
+  created_at     timestamp [not null]
+  created_by     bigint    [ref: > user.id, not null]
+  updated_at     timestamp [not null]
 
   Indexes {
     (plan_id, duration) [unique]
@@ -250,19 +181,19 @@ Table subscription {
   id                  bigint              [pk]
   company_id          bigint              [ref: > company.id, not null]
   plan_id             bigint              [ref: > plan.id, null, note: 'NULL allowed for fully custom']
-  // --- snapshot taken at purchase (immune to later plan edits) ---
-  open_site_limit     int                 [not null]
+  open_site_limit     int                 [not null, note: 'snapshot at purchase']
   active_user_limit   int                 [not null]
   active_labour_limit int                 [not null]
-  duration     int                 [not null, note: 'chosen from plan_price.duration']
-  price       int                 [not null, note: 'price locked from chosen plan_price.price']
-  discount_price              int                 [not null, note: 'total paid for this term, chosen plan_price.discount_price']
+  duration            int                 [not null, note: 'chosen from plan_price.duration']
+  price               int                 [not null, note: 'locked from plan_price.price']
+  discount_price      int                 [not null, note: 'total paid this term']
   start_date          date                [not null, note: 'activation date']
   paid_until          date                [not null, note: 'extended from activation (F4.2)']
   status              subscription_status [not null, default: 'active']
   is_custom           boolean             [not null, default: false]
-
-  Note: 'Per-term snapshot + paid_until (F4). Company cache fields mirror the active row.'
+  created_at          timestamp           [not null]
+  created_by          bigint              [ref: > user.id, not null]
+  updated_at          timestamp           [not null]
 
   Indexes {
     company_id
@@ -277,11 +208,12 @@ Table payment {
   amount          int            [not null]
   status          payment_status [not null, default: 'pending']
   transaction_id  varchar        [null, note: 'gateway txn id; NULL for manual']
-  recorded_by     bigint         [ref: > user.id, null, note: 'system user who logged a manual payment (F2.4)']
+  recorded_by     bigint         [ref: > user.id, not null, note: 'system user who logged a manual payment (F2.4)']
   paid_at         timestamp      [null]
-  gateway_payload jsonb          [null, note: 'raw IPN/webhook for audit']
-
-  Note: 'Payment attempt/record (F4.2, F2.4 manual).'
+  gateway_payload jsonb          [null, note: 'raw IPN/webhook']
+  created_at      timestamp      [not null]
+  created_by      bigint         [ref: > user.id, not null]
+  updated_at      timestamp      [not null]
 }
 
 // ============================================================
@@ -292,10 +224,11 @@ Table site {
   id          bigint    [pk]
   company_id  bigint    [ref: > company.id, not null]
   name        varchar   [not null]
-  is_active   boolean   [not null, default: true, note: 'inactive => no new data; old data readable (F6.2)']
-  closed_at   timestamp [null, note: 'NULL = open (counts toward plan limit); set = closed permanently (F6.3)']
-
-  Note: 'Two independent state axes: closed_at (open/closed) and is_active (active/inactive).'
+  is_active   boolean   [not null, default: true, note: 'inactive => no new data (F6.2)']
+  closed_at   timestamp [null, note: 'NULL = open; set = closed permanently (F6.3)']
+  created_at  timestamp [not null]
+  created_by  bigint    [ref: > user.id, not null]
+  updated_at  timestamp [not null]
 
   Indexes {
     company_id
@@ -306,7 +239,6 @@ Table site_config {
   id      bigint [pk]
   site_id bigint [ref: - site.id, not null, unique, note: 'one-to-one (F6.12)']
 
-  // --- *_create_window / *_update_window / *_delete_window (window scale) ---
   attendance_create_window     int [not null, default: 1]
   attendance_update_window     int [not null, default: 1]
   attendance_delete_window     int [not null, default: 1]
@@ -338,33 +270,32 @@ Table site_config {
   sitebill_update_window       int [not null, default: -1]
   sitebill_delete_window       int [not null, default: -1]
 
-  // --- *_per_day_limit (labour-scoped only; quota scale) ---
-  attendance_per_day_limit int [not null, default: 1]
+  attendance_per_day_limit int [not null, default: 1, note: 'gates NEW attendance rows per labour/date (F11.1); existing rows unaffected']
   fooding_per_day_limit    int [not null, default: 1]
   advance_per_day_limit    int [not null, default: -1]
 
-  // --- validation ranges (per-site) ---
-  attendance_present_choices jsonb         [not null, note: 'allowed present set, e.g. [0,0.5,1,1.5,2,3]']
-  salary_min                 int           [not null]
-  salary_max                 int           [not null]
-  fooding_min                int           [not null]
-  fooding_max                int           [not null]
-  advance_min                int           [not null]
-  advance_max                int           [not null]
+  attendance_present_choices jsonb [not null, note: 'allowed present set, e.g. [0,0.5,1,1.5,2,3]']
+  salary_min                 int   [not null]
+  salary_max                 int   [not null]
+  fooding_min                int   [not null]
+  fooding_max                int   [not null]
+  advance_min                int   [not null]
+  advance_max                int   [not null]
 
-  Note: 'Per-site create/update/delete windows + per-day quotas + validation ranges (F6.12). Resettable to defaults.'
+  updated_at timestamp [not null]
 }
 
 Table billing_category {
-  id            bigint  [pk]
-  company_id    bigint  [ref: > company.id, not null]
-  site_id       bigint  [ref: > site.id, not null]
-  name          varchar [not null, note: 'e.g. Basement, Floor-1, Floor-2-Extra (F6.9)']
-  display_order int     [not null, default: 0]
-  is_active     boolean [not null, default: true]
-  is_done       boolean [not null, default: false, note: 'mark as done => deactivates (F6.11).']
-
-  Note: 'Site-level master data (renamed from floor, F6.9). Cannot delete once referenced — consolidate via merge instead (F6.15). Measurement in billing_category_details (1:1).'
+  id            bigint    [pk]
+  company_id    bigint    [ref: > company.id, not null]
+  site_id       bigint    [ref: > site.id, not null]
+  name          varchar   [not null, note: 'e.g. Basement, Floor-1 (F6.9)']
+  display_order int       [not null, default: 0]
+  is_active     boolean   [not null, default: true]
+  is_done       boolean   [not null, default: false, note: 'mark as done => deactivates (F6.11)']
+  created_at    timestamp [not null]
+  created_by    bigint    [ref: > user.id, not null]
+  updated_at    timestamp [not null]
 
   Indexes {
     (site_id, name) [unique]
@@ -373,106 +304,51 @@ Table billing_category {
 
 Table billing_category_details {
   id                  bigint        [pk]
-  billing_category_id bigint        [ref: - billing_category.id, not null, unique, delete: cascade, note: '1:1 with billing_category; cascades when the category is deleted post-merge']
+  billing_id bigint        [not null, unique, note: '1:1 with billing_category; cascades when its billing_category is deleted']
   sqft                decimal(12,2) [not null, note: 'physical area']
   rate_per_sqft       decimal(12,2) [not null, note: 'revenue rate per sqft']
-  custom_amount         int           [null, note: 'ASSUMPTION: flat contract amount; overrides sqft x rate_per_sqft when set. Confirm meaning.']
-
-  Note: '1:1 detail for billing_category. contract_value = sqft x rate_per_sqft (or custom_bill if set), F6.9 / F15.8.'
+  custom_amount       int           [null, note: 'flat contract amount; overrides sqft x rate_per_sqft when set']
+  created_at          timestamp     [not null]
+  created_by          bigint        [ref: > user.id, not null]
+  updated_at          timestamp     [not null]
 }
 
 Table site_closure_summary {
-  id                       bigint        [pk]
-  site_id                  bigint        [ref: - site.id, not null, unique]
-  total_present            decimal(12,2) [not null]
-  total_salary             bigint        [not null]
-  total_extrawork          bigint        [not null]
-  total_cost               bigint        [not null]
-  total_hidden_cost        bigint        [not null]
-  total_bills              bigint        [not null]
-  total_paid_bills         bigint        [not null]
-  profit                   bigint        [not null]
-  billing_category_breakdown jsonb       [not null, note: 'per-billing_category contract vs billed snapshot']
-
-  Note: 'Immutable snapshot built at close (F6.3). Deleted on reopen (F6.4).'
+  id                         bigint        [pk]
+  site_id                    bigint        [ref: - site.id, not null, unique]
+  total_present              decimal(12,2) [not null]
+  total_salary               bigint        [not null]
+  total_extrawork            bigint        [not null]
+  total_cost                 bigint        [not null]
+  total_hidden_cost          bigint        [not null]
+  total_bills                bigint        [not null]
+  total_paid_bills           bigint        [not null]
+  profit                     bigint        [not null]
+  billing_category_breakdown jsonb         [not null, note: 'per-billing_category contract vs billed snapshot']
+  created_at                 timestamp     [not null]
+  created_by                 bigint        [ref: > user.id, not null]
+  updated_at                 timestamp     [not null]
 }
 
 // ============================================================
-// F12 / F13 / F14 — Per-ledger, per-site categories (F3.4)
+// F3.4 — Custom category (company-scoped; per-ledger via scope)
 // ============================================================
 
-Table sitecost_category {
-  id            bigint  [pk]
-  company_id    bigint  [ref: > company.id, not null]
-  site_id       bigint  [ref: > site.id, not null]
-  name          varchar [not null]
-  display_order int     [not null, default: 0]
-  is_active     boolean [not null, default: true, note: 'deactivate => hidden from new-entry dropdowns; existing rows keep their link']
-
-  Note: 'Per-site category for site_cost (F12.1). Referenced (NOT NULL, ON DELETE RESTRICT) by site_cost — merge before delete. Mergeable (F3.4 / F6.15).'
-
-  Indexes {
-    (site_id, name) [unique]
-  }
-}
-
-Table hiddencost_category {
-  id            bigint  [pk]
-  company_id    bigint  [ref: > company.id, not null]
-  site_id       bigint  [ref: > site.id, not null]
-  name          varchar [not null]
-  display_order int     [not null, default: 0]
-  is_active     boolean [not null, default: true]
-
-  Note: 'Per-site category for hidden_cost (F12.2). Referenced (NOT NULL, ON DELETE RESTRICT) by hidden_cost — merge before delete. Mergeable (F3.4 / F6.15).'
+Table custom_category {
+  id            bigint                [pk]
+  company_id    bigint                [ref: > company.id, not null]
+  site_id       bigint    [ref: > site.id, not null]
+  scope         custom_category_scope [not null, note: 'which ledger it serves (F3.4)']
+  name          varchar               [not null]
+  note          varchar               [null]
+  display_order int                   [not null, default: 0]
+  is_active     boolean               [not null, default: true]
+  created_at    timestamp             [not null]
+  created_by    bigint                [ref: > user.id, not null]
+  updated_at    timestamp             [not null]
 
   Indexes {
-    (site_id, name) [unique]
-  }
-}
-
-Table sitecash_category {
-  id            bigint  [pk]
-  company_id    bigint  [ref: > company.id, not null]
-  site_id       bigint  [ref: > site.id, not null]
-  name          varchar [not null]
-  display_order int     [not null, default: 0]
-  is_active     boolean [not null, default: true]
-
-  Note: 'Per-site category for site_cash (F13.1). Referenced (NOT NULL, ON DELETE RESTRICT) by site_cash — merge before delete. Mergeable (F3.4 / F6.15).'
-
-  Indexes {
-    (site_id, name) [unique]
-  }
-}
-
-Table sitecashreturn_category {
-  id            bigint  [pk]
-  company_id    bigint  [ref: > company.id, not null]
-  site_id       bigint  [ref: > site.id, not null]
-  name          varchar [not null]
-  display_order int     [not null, default: 0]
-  is_active     boolean [not null, default: true]
-
-  Note: 'Per-site category for site_cash_return (F13.2). Referenced (NOT NULL, ON DELETE RESTRICT) by site_cash_return — merge before delete. Mergeable (F3.4 / F6.15).'
-
-  Indexes {
-    (site_id, name) [unique]
-  }
-}
-
-Table sitebill_category {
-  id            bigint  [pk]
-  company_id    bigint  [ref: > company.id, not null]
-  site_id       bigint  [ref: > site.id, not null]
-  name          varchar [not null]
-  display_order int     [not null, default: 0]
-  is_active     boolean [not null, default: true]
-
-  Note: 'Per-site category for site_bill (F14.1). Referenced (NOT NULL, ON DELETE RESTRICT) by site_bill — merge before delete. Mergeable (F3.4 / F6.15).'
-
-  Indexes {
-    (site_id, name) [unique]
+    (company_id, scope, name) [unique]
   }
 }
 
@@ -489,8 +365,11 @@ Table labour {
   default_present decimal(12,2) [not null]
   default_fooding int           [not null]
   balance         bigint        [not null, default: 0, note: 'carried running balance (F8.3)']
-  is_active       boolean       [not null, default: true, note: 'sealed work session auto-deactivates (F7.3 / F10)']
-  deleted_at      timestamp     [null, note: 'delete requires zero balance (F7.6)']
+  is_active       boolean       [not null, default: true, note: 'sealed work session auto-deactivates (F7.3)']
+  created_at      timestamp     [not null]
+  created_by      bigint        [ref: > user.id, not null]
+  updated_at      timestamp     [not null]
+  deleted_at      timestamp     [null, note: 'delete requires zero balance + no refs (RESTRICT); deactivate otherwise (F7.6)']
 
   Indexes {
     (company_id, name) [unique]
@@ -502,14 +381,20 @@ Table labour {
 // ============================================================
 
 Table labour_work_session {
-  id           bigint        [pk]
-  labour_id    bigint        [ref: > labour.id, not null]
-  start_date   date          [not null, note: 'first record after previous session end']
-  end_date     date          [not null, note: 'last sealed record date']
-  last_balance bigint        [not null, note: 'balance carried in']
-  balance      bigint        [not null, note: 'balance carried out']
+  id           bigint    [pk]
+  labour_id    bigint    [ref: > labour.id, not null]
+  start_date   date      [not null, note: 'first record after previous session end']
+  end_date     date      [not null, note: 'last sealed record date']
 
-  Note: 'Period between two vacations (F10.1). Sealing sets editable=false on all rolled-in rows.'
+  total_present      decimal(12,2) [not null, note: 'intotal present days carried']
+  total_salary       bigint    [not null, note: 'intotal salary carried']
+  total_extrawork    decimal(12,2) [not null, note: 'intotal extra work days carried']
+  total_earnings     bigint    [not null, note: 'intotal earnings carried']
+  total_taken        bigint    [not null, note: 'intotal taken carried']
+  balance            bigint    [not null, note: 'balance carried forward to next session']
+  created_at         timestamp [not null]
+  created_by         bigint    [ref: > user.id, not null]
+  updated_at         timestamp [not null]
 }
 
 Table labour_site_work_session {
@@ -523,8 +408,9 @@ Table labour_site_work_session {
   salary          bigint        [not null]
   earnings        bigint        [not null]
   payable         bigint        [not null]
-
-  Note: 'Per-site rollup within a work session (F10.1 step 3).'
+  created_at      timestamp     [not null]
+  created_by      bigint        [ref: > user.id, not null]
+  updated_at      timestamp     [not null]
 }
 
 // ============================================================
@@ -536,96 +422,89 @@ Table daily_attendance {
   company_id          bigint        [not null]
   labour_id           bigint        [ref: > labour.id, not null]
   site_id             bigint        [ref: > site.id, not null]
-  billing_category_id bigint        [ref: > billing_category.id, not null, delete: restrict, note: 'required — earnings attribute to billing-category costing; merge before delete (F6.15)']
-  work_session_id     bigint        [ref: > labour_work_session.id, null, note: 'set when sealed']
+  billing_id          bigint        [null, note: 'optional billing category; site may run without categories (F6.9)']
   date                date          [not null]
   present             decimal(12,2) [not null, note: 'validated against attendance_present_choices']
   salary              int           [not null, note: 'snapshot; seeded from labour.default_salary']
   site_total_present  decimal(12,2) [not null]
   site_total_salary   bigint        [not null]
+  created_at          timestamp     [not null]
+  created_by          bigint        [ref: > user.id, null]
+  updated_at          timestamp     [not null]
   editable            boolean       [not null, default: true]
-  billing_merged_at   timestamp     [null, note: 'set when a billing_category merge re-points/sums this row (F6.15); updated_at untouched']
-  deleted_at          timestamp     [null, note: 'soft-delete']
-
-  Note: 'Grain = labour/billing_category/day (F11.1). Hard rule: (labour, billing_category, date) unique. A floor merge that would collide sums the colliding rows into one (F6.15).'
-
+  
   Indexes {
-    (labour_id, billing_category_id, date) [unique]
+    (labour_id, date) [note: 'non-unique; multiple rows per labour/date allowed, gated by attendance_per_day_limit (F11.1)']
   }
 }
 
 Table labour_extra_work {
-  id                 bigint        [pk]
-  company_id         bigint        [not null]
-  labour_id          bigint        [ref: > labour.id, not null]
-  site_id            bigint        [ref: > site.id, not null]
-  billing_category_id bigint       [ref: > billing_category.id, not null, delete: restrict]
-  work_session_id    bigint        [ref: > labour_work_session.id, null]
-  date               date          [not null]
-  amount             int           [not null]
-  note               varchar       [null]
-  site_total_amount  bigint        [not null]
-  editable           boolean       [not null, default: true]
-  billing_merged_at  timestamp     [null, note: 'set when a billing_category merge re-points/sums this row (F6.15)']
-  deleted_at         timestamp     [null]
-
-  Note: 'Ad-hoc extra earnings, separate ledger (F11.2). Hard rule: (labour, billing_category, date) unique. A floor merge that would collide sums the colliding rows (F6.15).'
+  id                  bigint    [pk]
+  company_id          bigint    [not null]
+  labour_id           bigint    [ref: > labour.id, not null]
+  site_id             bigint    [ref: > site.id, not null]
+  billing_id          bigint    [null, note: 'optional billing category (F6.9)']
+  date                date      [not null]
+  amount              int       [not null]
+  note                varchar   [null]
+  site_total_amount   bigint    [not null]
+  created_at          timestamp [not null]
+  created_by          bigint    [ref: > user.id, not null]
+  updated_at          timestamp [not null]
+  editable            boolean   [not null, default: true]
 
   Indexes {
-    (labour_id, billing_category_id, date) [unique]
+    (labour_id, date)
   }
 }
 
 // ============================================================
-// F8 / F9 — Advance, fooding, return ledgers (floorless cash)
+// F8 / F9 — Advance, fooding, return ledgers (categoryless cash)
 // ============================================================
 
 Table labour_advance_pay {
-  id              bigint        [pk]
-  company_id      bigint        [not null]
-  labour_id       bigint        [ref: > labour.id, not null]
-  site_id         bigint        [ref: > site.id, not null]
-  work_session_id bigint        [ref: > labour_work_session.id, null]
-  date            date          [not null]
-  amount          int           [not null, note: 'validated against advance_min/max']
-  note            varchar       [null]
-  site_total      bigint        [not null]
-  editable        boolean       [not null, default: true]
-  deleted_at      timestamp     [null]
-
-  Note: 'Cash advance payout (F8.1). No billing_category. Draws site cash, reduces labour balance.'
+  id              bigint    [pk]
+  company_id      bigint    [not null]
+  labour_id       bigint    [ref: > labour.id, not null]
+  site_id         bigint    [ref: > site.id, not null]
+  date            date      [not null]
+  amount          int       [not null, note: 'validated against advance_min/max']
+  note            varchar   [null]
+  site_total      bigint    [not null]
+  created_at      timestamp [not null]
+  created_by      bigint    [ref: > user.id, not null]
+  updated_at      timestamp [not null]
+  editable        boolean   [not null, default: true]
 }
 
 Table labour_fooding_pay {
-  id              bigint        [pk]
-  company_id      bigint        [not null]
-  labour_id       bigint        [ref: > labour.id, not null]
-  site_id         bigint        [ref: > site.id, not null]
-  work_session_id bigint        [ref: > labour_work_session.id, null]
-  date            date          [not null]
-  amount          int           [not null, note: 'seeded from default_fooding; validated against fooding_min/max']
-  note            varchar       [null]
-  site_total      bigint        [not null]
-  editable        boolean       [not null, default: true]
-  deleted_at      timestamp     [null]
-
-  Note: 'Meal-allowance payout (F8.2). No billing_category.'
+  id              bigint    [pk]
+  company_id      bigint    [not null]
+  labour_id       bigint    [ref: > labour.id, not null]
+  site_id         bigint    [ref: > site.id, not null]
+  date            date      [not null]
+  amount          int       [not null, note: 'seeded from default_fooding; validated against fooding_min/max']
+  note            varchar   [null]
+  site_total      bigint    [not null]
+  created_at      timestamp [not null]
+  created_by      bigint    [ref: > user.id, null]
+  updated_at      timestamp [not null]
+  editable        boolean   [not null, default: true]
 }
 
 Table labour_return {
-  id              bigint        [pk]
-  company_id      bigint        [not null]
-  labour_id       bigint        [ref: > labour.id, not null]
-  site_id         bigint        [ref: > site.id, not null]
-  work_session_id bigint        [ref: > labour_work_session.id, null]
-  date            date          [not null]
-  amount          int           [not null]
-  note            varchar       [null]
-  site_total      bigint        [not null]
-  editable        boolean       [not null, default: true]
-  deleted_at      timestamp     [null]
-
-  Note: 'Labour returns overpaid money (F9.1). No billing_category. Increases labour balance.'
+  id              bigint    [pk]
+  company_id      bigint    [not null]
+  labour_id       bigint    [ref: > labour.id, not null]
+  site_id         bigint    [ref: > site.id, not null]
+  date            date      [not null]
+  amount          int       [not null]
+  note            varchar   [null]
+  site_total      bigint    [not null]
+  created_at      timestamp [not null]
+  created_by      bigint    [ref: > user.id, not null]
+  updated_at      timestamp [not null]
+  editable        boolean   [not null, default: true]
 }
 
 // ============================================================
@@ -633,39 +512,33 @@ Table labour_return {
 // ============================================================
 
 Table site_cost {
-  id                   bigint        [pk]
-  company_id           bigint        [not null]
-  site_id              bigint        [ref: > site.id, not null]
-  billing_category_id  bigint        [ref: > billing_category.id, not null, delete: restrict]
-  sitecost_category_id bigint        [ref: > sitecost_category.id, not null, delete: restrict, note: 'required (no Generalized); merge before delete (F3.4)']
-  date                 date          [not null]
-  amount               int           [not null]
-  note                 varchar       [null]
-  site_total           bigint        [not null]
-  editable             boolean       [not null, default: true]
-  billing_merged_at    timestamp     [null, note: 'set on billing_category merge (F6.15)']
-  merged_at            timestamp     [null, note: 'set on sitecost_category merge (F3.4 / F6.15)']
-  deleted_at           timestamp     [null]
-
-  Note: 'Construction cost (F12.1). Paid from site cash — draws down balance. No per-row unique => floor merge is a plain re-point (no collision).'
+  id                  bigint    [pk]
+  company_id          bigint    [not null]
+  site_id             bigint    [ref: > site.id, not null]
+  billing_id          bigint    [null, note: 'optional billing category (F6.9)']
+  custom_category_id  bigint    [null, note: 'optional sitecost category; prompt when scope count > 0 (F3.4)']
+  date                date      [not null]
+  amount              int       [not null]
+  note                varchar   [null]
+  site_total          bigint    [not null]
+  created_at          timestamp [not null]
+  created_by          bigint    [ref: > user.id, not null]
+  updated_at          timestamp [not null]
 }
 
 Table hidden_cost {
-  id                     bigint        [pk]
-  company_id             bigint        [not null]
-  site_id                bigint        [ref: > site.id, not null]
-  billing_category_id    bigint        [ref: > billing_category.id, not null, delete: restrict, note: 'null = site-general (not pro-rated, F15.8); merge before delete (F6.15)']
-  hiddencost_category_id bigint        [ref: > hiddencost_category.id, not null, delete: restrict, note: 'required (no Generalized); merge before delete (F3.4)']
-  date                   date          [not null]
-  amount                 int           [not null]
-  note                   varchar       [null]
-  site_total           bigint        [not null]
-  editable               boolean       [not null, default: true]
-  billing_merged_at      timestamp     [null, note: 'set on billing_category merge (F6.15)']
-  merged_at              timestamp     [null, note: 'set on hiddencost_category merge (F3.4 / F6.15)']
-  deleted_at             timestamp     [null]
-
-  Note: 'Paid by company admin, NOT from site cash (F12.2). Used for profit/revenue, not cash balance. Floor merge is a plain re-point (no collision).'
+  id                  bigint    [pk]
+  company_id          bigint    [not null]
+  site_id             bigint    [ref: > site.id, not null]
+  billing_id          bigint    [null, note: 'null => site-general (not pro-rated, F15.8); optional (F6.9)']
+  custom_category_id  bigint    [null, note: 'optional hiddencost category (F3.4)']
+  date                date      [not null]
+  amount              int       [not null]
+  note                varchar   [null]
+  site_total          bigint    [not null]
+  created_at          timestamp [not null]
+  created_by          bigint    [ref: > user.id, not null]
+  updated_at          timestamp [not null]
 }
 
 // ============================================================
@@ -673,35 +546,31 @@ Table hidden_cost {
 // ============================================================
 
 Table site_cash {
-  id                   bigint        [pk]
-  company_id           bigint        [not null]
-  site_id              bigint        [ref: > site.id, not null]
-  sitecash_category_id bigint        [ref: > sitecash_category.id, not null, delete: restrict, note: 'required (no Uncategorized); merge before delete (F3.4)']
-  date                 date          [not null]
-  amount               int           [not null]
-  note                 varchar       [null]
-  site_total           bigint        [not null]
-  editable             boolean       [not null, default: true]
-  merged_at            timestamp     [null, note: 'set on sitecash_category merge (F3.4 / F6.15)']
-  deleted_at           timestamp     [null]
-
-  Note: 'Incoming cash deposit (F13.1). Increases cash balance.'
+  id                  bigint    [pk]
+  company_id          bigint    [not null]
+  site_id             bigint    [ref: > site.id, not null]
+  custom_category_id  bigint    [null, note: 'optional sitecash category (F3.4)']
+  date                date      [not null]
+  amount              int       [not null]
+  note                varchar   [null]
+  site_total          bigint    [not null]
+  created_at          timestamp [not null]
+  created_by          bigint    [ref: > user.id, not null]
+  updated_at          timestamp [not null]
 }
 
 Table site_cash_return {
-  id                         bigint        [pk]
-  company_id                 bigint        [not null]
-  site_id                    bigint        [ref: > site.id, not null]
-  sitecashreturn_category_id bigint        [ref: > sitecashreturn_category.id, not null, delete: restrict, note: 'required (no Uncategorized); merge before delete (F3.4)']
-  date                       date          [not null]
-  amount                     int           [not null]
-  note                       varchar       [null]
-  site_total                 bigint        [not null]
-  editable                   boolean       [not null, default: true]
-  merged_at                  timestamp     [null, note: 'set on sitecashreturn_category merge (F3.4 / F6.15)']
-  deleted_at                 timestamp     [null]
-
-  Note: 'Outgoing cash / withdrawal (F13.2). Cannot drive balance below zero.'
+  id                  bigint    [pk]
+  company_id          bigint    [not null]
+  site_id             bigint    [ref: > site.id, not null]
+  custom_category_id  bigint    [null, note: 'optional sitecashreturn category (F3.4)']
+  date                date      [not null]
+  amount              int       [not null]
+  note                varchar   [null]
+  site_total          bigint    [not null]
+  created_at          timestamp [not null]
+  created_by          bigint    [ref: > user.id, not null]
+  updated_at          timestamp [not null]
 }
 
 // ============================================================
@@ -709,46 +578,62 @@ Table site_cash_return {
 // ============================================================
 
 Table site_bill {
-  id                   bigint        [pk]
-  company_id           bigint        [not null]
-  site_id              bigint        [ref: > site.id, not null]
-  billing_category_id  bigint        [ref: > billing_category.id, not null, delete: restrict, note: 'required — accumulates against billing-category contract value; merge before delete (F6.15)']
-  sitebill_category_id bigint        [ref: > sitebill_category.id, not null, delete: restrict, note: 'required (no Uncategorized); merge before delete (F3.4)']
-  date                 date          [not null]
-  amount               int           [not null]
-  note                 varchar       [null]
-  site_total           bigint        [not null]
-  editable             boolean       [not null, default: true]
-  billing_merged_at    timestamp     [null, note: 'set on billing_category merge (F6.15)']
-  merged_at            timestamp     [null, note: 'set on sitebill_category merge (F3.4 / F6.15)']
-  deleted_at           timestamp     [null]
-
-  Note: 'Revenue billed (F14.1). Gated by sitebill_*_window (default -1). Floor merge is a plain re-point (no collision).'
+  id                  bigint    [pk]
+  company_id          bigint    [not null]
+  site_id             bigint    [ref: > site.id, not null]
+  billing_id          bigint    [null, note: 'optional billing category (F6.9)']
+  custom_category_id  bigint    [null, note: 'optional sitebill category (F3.4)']
+  date                date      [not null]
+  amount              int       [not null]
+  note                varchar   [null]
+  site_total          bigint    [not null]
+  created_at          timestamp [not null]
+  created_by          bigint    [ref: > user.id, not null]
+  updated_at          timestamp [not null]
 }
 
 // ============================================================
-// F16 — Activity log (permanent, undeletable)
+// F16 — Activity log (permanent, immutable)
 // ============================================================
 
 Table activity_log {
   id           bigint          [pk]
   company_id   bigint          [ref: > company.id, not null]
-  actor_id     bigint          [ref: > user.id, null, note: 'who acted — replaces per-row updated_by']
+  actor_id     bigint          [ref: > user.id, not null, note: 'who acted — the creator; no created_by/updated_at, logs are immutable (F16)']
   target_type  varchar         [not null, note: 'model name of the changed record']
   target_id    bigint          [not null]
-  action       activity_action [not null, note: 'create / update / delete / merge']
-  before       jsonb           [null, note: 'snapshot before update/delete/merge (merge holds all source rows e.g. A,B,C)']
-  after        jsonb           [null, note: 'snapshot after create/update/merge (merge => surviving row)']
+  action       activity_action [not null]
+  before       jsonb           [null, note: 'snapshot before update/delete/merge']
+  after        jsonb           [null, note: 'snapshot after create/update/merge']
   note         varchar         [null, note: 'required for update/delete of financial records']
-  is_sensitive boolean         [not null, default: false, note: 'true for hidden_cost + company-level events; hidden from site / non-admin users (F16.2)']
-
-  Note: 'Permanent activity log (F16). No one — not even Company Admin — can edit or delete an entry; only a company reset (F2.11) hard-deletes them system-side. Replaces former audit_log + per-row updated_by. No deleted_at (never soft-deleted).'
+  is_sensitive boolean         [not null, default: false, note: 'true for hidden_cost + company-level events (F16.2)']
+  created_at   timestamp       [not null, note: 'event time; never updated or deleted (F16.3)']
 
   Indexes {
     (company_id, target_type, target_id)
     (company_id, action)
   }
 }
+
+// ============================================================
+// FK delete actions (standalone — inline refs cannot carry delete:)
+// Category FKs are SET NULL: deleting a category nulls the FK on its rows;
+// to consolidate instead, re-point rows to another category first (F3.4 / F6.15).
+// ============================================================
+
+Ref: billing_category_details.billing_id - billing_category.id [delete: cascade]
+
+Ref: daily_attendance.billing_id  > billing_category.id   [delete: set null]
+Ref: labour_extra_work.billing_id > billing_category.id   [delete: set null]
+Ref: site_cost.billing_id         > billing_category.id   [delete: set null]
+Ref: hidden_cost.billing_id       > billing_category.id   [delete: set null]
+Ref: site_bill.billing_id         > billing_category.id   [delete: set null]
+
+Ref: site_cost.custom_category_id        > custom_category.id  [delete: set null]
+Ref: hidden_cost.custom_category_id      > custom_category.id  [delete: set null]
+Ref: site_cash.custom_category_id        > custom_category.id  [delete: set null]
+Ref: site_cash_return.custom_category_id > custom_category.id  [delete: set null]
+Ref: site_bill.custom_category_id        > custom_category.id  [delete: set null]
 
 // ============================================================
 // Table groups (visual grouping in dbdiagram.io)
@@ -770,6 +655,7 @@ TableGroup company_and_subscription {
   company
   company_config
   plan
+  plan_price
   subscription
   payment
 }
@@ -779,15 +665,8 @@ TableGroup sites_and_billing {
   site_config
   billing_category
   billing_category_details
+  custom_category
   site_closure_summary
-}
-
-TableGroup ledger_categories {
-  sitecost_category
-  hiddencost_category
-  sitecash_category
-  sitecashreturn_category
-  sitebill_category
 }
 
 TableGroup labour_group {
@@ -811,4 +690,26 @@ TableGroup ledgers {
 
 TableGroup activity {
   activity_log
+}
+
+
+DiagramView Default {
+  Tables {
+    billing_category
+    daily_attendance
+    labour_extra_work
+    site_cost
+    hidden_cost
+    site_cash
+    site_cash_return
+    site_bill
+    activity_log
+    custom_category
+    labour_advance_pay
+    labour_fooding_pay
+    labour_work_session
+    labour_return
+    labour_site_work_session
+  }
+  Notes { * }
 }
