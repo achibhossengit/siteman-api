@@ -2,9 +2,11 @@
 
 ## Conventions
 - **Tenant isolation** — every tenant row carries `company_id`; See **Access Control & User Model**.
-- **Running totals** — ledger rows store cumulative fields (`site_total`, `billing_total` etc — the `billing_total*` fields are the per-**billing-category** running totals). Need to update all later rows after update or delete any rows.
+- **Running totals** — ledger rows store a **per-site** cumulative `site_total*` only. Update all later rows' `site_total*` after relevent update/delete.
 - **`editable` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `editable = true`.
-- **Direct edit + audit** — authorized users edit/delete directly; the system auto-writes an audit entry (actor, time, before/after, note) and bumps `updated_at` / `deleted_at` (F16). Ledger rows are **soft-deleted**.
+- **Direct edit + activity log** — authorized users edit/delete directly; the system auto-writes an **activity log** entry (actor, time, before/after, note). Ledger rows are **soft-deleted**. Activity logs are **permanent** — no one, not even Company Admin, can edit or delete them (F16.3).
+- every model keeps `created_at`, `created_by`, `updated_at`
+- **Merge timestamps** — a **category merge** stamps `billing_merged_at` (rows that FK `billing_category`) or `merged_at` (rows that FK a ledger category) on the touched rows and does **not** bump `updated_at`. A normal user edit of a category bumps `updated_at` + writes a log; a merge updates only the relevant `*merged_at` (F3.4 / F6.15).
 - **Future dates blocked** — no record's `date` may be in the future, for every date-bearing entity.
 - **Configuration tiers**
   - **System config** (`SystemConfig`, single global row, System Admin) — Governs platform behaviour only. See **System Configuration** under F2.
@@ -15,7 +17,7 @@
 - **System Admin** — manages all companies and subscriptions.
 - **System Manager** — monitors subscriptions and payments (assigned permissions).
 - **Company Admin** — full control of one company: users, sites, labour, subscription.
-- **Company Manager** — manages assigned sites and reviews the audit trail for them.
+- **Company Manager** — manages assigned sites and reviews the activity log for them.
 - **Site Manager** — records attendance, cash, and cost for permitted sites; edits are logged.
 
 ## Access Control & User Model
@@ -82,7 +84,7 @@ System-level users; not tied to any company.
 - Separate login for platform staff (no company context); same OTP + JWT pattern.
 
 ### F2.2 — View and search all companies
-- List with open site count, billing status, activity, audit logs.
+- List with open site count, billing status, activity, and activity logs.
 
 ### F2.3 — Activate / deactivate a company
 - Deactivated company: all its users blocked from login; data retained.
@@ -131,9 +133,9 @@ A low-frequency support action for clients who tested the app on a real account 
 2. An authorized **System user** opens the company, hits **Reset**, and types the **company name** to confirm.
 3. System sends a **single-use, short-expiry OTP to the Company Admin's phone** (shared OTP service, F1.1) — this proves the company consents.
 4. The Company Admin relays the OTP to the system user, who enters it; the system **validates** it.
-5. On a valid OTP, in **one transaction** the system **hard-deletes** all tenant data (FK-safe order): sites, billing categories, labours, work sessions, every ledger (attendance, extra work, advance, fooding, return, cash, cost, bill), all per-ledger categories, all **non-admin** users (+ `UserSite` links), and the company's **audit logs**. `CompanyConfig` returns to built-in defaults; all `SiteConfig` rows are gone with their sites.
+5. On a valid OTP, in **one transaction** the system **hard-deletes** all tenant data (FK-safe order): sites, billing categories, labours, work sessions, every ledger (attendance, extra work, advance, fooding, return, cash, cost, bill), all per-ledger categories, all **non-admin** users (+ `UserSite` links), and the company's **activity logs**. `CompanyConfig` returns to built-in defaults; all `SiteConfig` rows are gone with their sites.
 6. **Kept:** the Company record, **all Company Admin** accounts, and the active subscription (`plan`, `paid_until` untouched) — the company is now like new with zero entities.
-7. The system writes a **platform-level reset log** (system user, company id, timestamp, OTP-verified) stored system-side — it survives the wipe (the company-side audit cannot, per step 5).
+7. The system writes a **platform-level reset log** (system user, company id, timestamp, OTP-verified) stored system-side — it survives the wipe (the company-side activity log cannot, per step 5).
 ---
 
 ## F3 — Manage Company
@@ -148,19 +150,20 @@ A low-frequency support action for clients who tested the app on a real account 
 
 ### F3.3 — Edit company details
 - Company Admin edits company name and profile fields.
-- System saves and records the change in the audit trail.
+- System saves and records the change in the activity log.
 
 ### F3.4 — Manage ledger categories
 - **Per-site** master data: each financial ledger has its **own** category set — `sitecost_category` (F12.1), `hiddencost_category` (F12.2), `sitecash_category` (F13.1), `sitecashreturn_category` (F13.2), `sitebill_category` (F14.1). Admin creates/edits each (name, display order, active flag).
-- Each ledger row references **only its own** category type, and the FK is **nullable**.
+- Each ledger row references **its own** category type, and the FK is **required (not nullable)**
 - **Deactivate** — hidden from new-entry dropdowns; no new row may reference it, existing rows keep their link.
-- **Delete / unset** — a row whose category FK is `null` is treated as **"Generalized / Uncategorized"**.
+- **Delete = RESTRICT** — a category referenced by any row **cannot be deleted** (DB `ON DELETE RESTRICT`). To remove **merge** it into another first (F6.15); once it has zero rows it becomes deletable.
+- **Merge (F6.15)** — consolidate category **B into A** within the **same site**: re-point every ledger row from B → A, stamp each touched row's `merged_at` (not `updated_at`), then remove B. No collision is possible (many rows may share one category on a date) and categories carry no running totals, so nothing is recomputed. The merge writes **one** activity log entry (`action = merge`, `before` = B's affected rows count). Applies to every ledger category type (sitecost / hiddencost / sitecash / sitecashreturn / sitebill).
 
 ### F3.5 — Manage company configuration
 - Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 with its own built-in defaults).
-- Tenant-wide feature flags that apply to every site of the company. The change is audit-logged.
+- Tenant-wide feature flags that apply to every site of the company. The change is activity-logged.
 - Example: **`allow_labour_transfer`** (bool, default `true`) — when `false`, moving a labour from one site to another (F7.2) is blocked company-wide; a labour stays on its original site for its whole lifecycle. Existing assignments are untouched.
-- **Reset to defaults** — Company Admin can reset `CompanyConfig` back to its built-in defaults in one action; config-only (no entity data touched), audit-logged.
+- **Reset to defaults** — Company Admin can reset `CompanyConfig` back to its built-in defaults in one action; config-only (no entity data touched), activity-logged.
 
 ---
 
@@ -240,7 +243,7 @@ Pricing is driven by **open site count**; the user and labour caps default to `-
 - Reactivation restores access; history is untouched.
 
 ### F5.6 — Delete user
-1. Set `user.deleted_at = now()`, disable account; write to audit log
+1. Set `user.deleted_at = now()`, disable account; write to activity log
 2. Admin can view and restore deleted users within a configurable retention window (default: 30 days)
 3. Scheduled job permanently purges users whose `deleted_at` exceeds the retention threshold
 4. On purge, database-level `ON DELETE SET NULL` cascades handle all foreign key references automatically
@@ -287,7 +290,7 @@ Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with s
 
 **Cross-site, same date** — there is no separate multisite flag. By default a labour has one record per date; to record the same labour/date at a **different** site, first free the existing row (remove it) or transfer the labour to the new site (F7.2). To genuinely allow both sites on the same date, raise the relevant `*_per_day_limit`.
 
-**Out-of-window override (manual)** — there is no per-row verification. To touch a date outside the current window, a manager asks the admin; the admin widens the matching window (a temporary `N` covering the date, or `-1` to allow any past date), the manager creates/edits/deletes, and the admin reviews the result via the date based activity / audit trail (F16.2). If misused, the admin asks the manager to correct it — no system-enforced approval step.
+**Out-of-window override (manual)** — there is no per-row verification. To touch a date outside the current window, a manager asks the admin; the admin widens the matching window (a temporary `N` covering the date, or `-1` to allow any past date), the manager creates/edits/deletes, and the admin reviews the result via the date-based activity log (F16.2). If misused, the admin asks the manager to correct it — no system-enforced approval step.
 
 **Fields by entity** (field name pattern `<entity>_<axis>`, e.g. `attendance_create_window`, `sitecost_update_window`, `advance_delete_window`, `fooding_per_day_limit`):
 
@@ -362,8 +365,7 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - Site-level master data: Admin defines the site's **billing categories** — header row `billing_category` (`id`, `company_id`, `site_id`, `name` e.g. Basement / Floor-1 / Floor-2-Extra, `display_order`, `is_active`).
 - Measurement lives in a **1:1 `billing_category_details`** row: `sqft`, `rate_per_sqft`, `bill_sqft`, `custom_bill`.
 - Billing-category list feeds the dropdown on attendance (F11.1), extra work (F11.2), site cost (F12.1), hidden cost (F12.2), and bill (F14.1) entries.
-- Editable while the site is open; a billing category cannot be deleted once any record references it.
-- Ledger categories are **per-site, per-ledger** (F3.4), not defined here.
+- Editable while the site is open; a billing category referenced by any record **cannot be deleted** (DB `ON DELETE RESTRICT`) — to consolidate an ambiguous/duplicate one, **merge** it into another first (F6.15), after which it can be deleted.
 
 ### F6.10 — Deactivate/Activate billing categories
 - A billing category may activate or deactivate. Deactivate means no new records allow to create under this billing category execpt the SiteBill. But, historic data is accessable.
@@ -376,20 +378,34 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 ### F6.12 — Manage site configuration
 - Company Admin views/edits the site's `SiteConfig` (one row per site, auto-created at F6.1 with the defaults above).
 - Controls, per entity type: create window, update window, delete window, and per-day quota (see **Site Configuration** above).
-- Changes apply to **future** create / edit checks only — existing rows are untouched. Every change is audit-logged (F16).
+- Changes apply to **future** create / edit checks only — existing rows are untouched. Every change is activity-logged (F16).
 - Setting a `*_create_window = 0` freezes new entries of that type at the site without deactivating the whole site.
-- **Reset to defaults** — Company Admin can reset this site's `SiteConfig` back to its built-in defaults in one action; config-only (no entity data touched), applies to future checks only, audit-logged.
-- **Out-of-window override (manual)** — a manager requests the admin to widen a window (temporary `N` covering the date, or `-1` for any past date); the admin grants it, the manager acts, and the admin reviews via the activity / audit trail (F16.2), asking for a fix if misused. No system-enforced approval step.
+- **Reset to defaults** — Company Admin can reset this site's `SiteConfig` back to its built-in defaults in one action; config-only (no entity data touched), applies to future checks only, activity-logged.
+- **Out-of-window override (manual)** — a manager requests the admin to widen a window (temporary `N` covering the date, or `-1` for any past date); the admin grants it, the manager acts, and the admin reviews via the activity log (F16.2), asking for a fix if misused. No system-enforced approval step.
 
-### F6.13 — View site activity & audit history
-- Site-scoped view of the audit trail (F16.2) and activity feed (F16.4): labour transfers (F7.2) and all create / update / delete events for this site, filterable by user, entity type, and date.
-- View only — audit entries are never edited here; removal is authorized user.
+### F6.13 — View site activity log
+- Site-scoped view of the **activity log** (F16.2 / F16.4): labour transfers (F7.2), category merges (F6.15), and all create / update / delete events for this site, filterable by user, entity type, and date.
+- **View only** — activity entries are **never** edited or deleted (F16.3). Sensitive events (hidden cost, company-level) are hidden from site / non-admin users (F16.2).
 
 ### F6.14 — Admin records on a site
 - By default the Company Admin has config + read access to **all** sites and need not be assigned to any site.
 - To **record** on a site, the admin assigns himself to that site (`UserSite`) and joins the **Site Manager** group — he then belongs to both Company Admin and Site Manager (for the self-assigned sites), and the normal write rule (Access Control) applies.
-- Reversible any time — the admin can unassign himself or leave the Site Manager group; the change is audit-logged.
-- No extra security concern: every row keeps `created_by` / `updated_by`, so who created or changed it is always traceable — if the admin created it, he acted as that site's manager.
+- Reversible any time — the admin can unassign himself or leave the Site Manager group; the change is activity-logged.
+- No extra security concern: every row keeps `created_by`, and every change is in the **activity log** (`actor_id`), so who created or changed it is always traceable — if the admin created it, he acted as that site's manager.
+
+### F6.15 — Merge billing categories (same-site)
+Lets the admin clean up an ambiguous / duplicate / mistaken billing category that already has records — the only way to remove one, since a referenced category cannot be deleted (F6.9).
+
+**Guarantee:** a merge happens **only inside one site** (A and B belong to the same site). Cross-site merge is impossible.
+
+1. Admin picks a **source** B (or several: B, C, …) and a **target** A in the same site.
+2. For every ledger that FKs `billing_category` (attendance, extra work, site cost, hidden cost, site bill), the rows pointing at B are re-pointed to A and stamped `billing_merged_at = now()` — **`updated_at` is untouched** (this is a merge, not a user edit). No `billing_total*` recompute exists to run (per-category figures are aggregated, Conventions); `site_total*` is unaffected because the site never changes.
+3. **Collision (hard rule `entity / date / site / floor` unique).** `DailyAttendance` and `LabourExtraWork` are unique on **(labour, billing_category, date)**. Merging B (and C) into A on a date where A already has a row would break this. So when A, B, C exist for the same labour+date, the system **sums them into one**: `A = A + B + C` (present, salary, amount), writes **one** activity log holding the **previous state of A, B and C** (`before`), updates A and stamps `A.billing_merged_at`, then **removes** the B and C rows. Later anyone can open that log to see why the merged row looks the way it does.
+   - No collision on that date → just re-point B's row to A and stamp `billing_merged_at`.
+4. The **other** floor ledgers (site cost, hidden cost, site bill) have **no** per-row unique, so multiple rows may share a floor on a date — they **never collide**; the merge is a plain re-point + `billing_merged_at`.
+5. After all rows are moved, **remove B** (now unreferenced — direct delete is otherwise blocked by `ON DELETE RESTRICT`; `billing_category_details` cascades away with B). One merge writes one activity log per affected entity type (`action = merge`); merges are **permanent and visible** in the activity log (F16).
+
+> Ledger-category merges (sitecost / sitecash / hiddencost / sitecashreturn / sitebill categories) follow the same shape but **never collide** (no per-row category uniqueness) and use `merged_at` — see **F3.4**.
 
 ---
 
@@ -416,10 +432,10 @@ Salary is stored on each DailyAttendance row. `labour.default_salary` is used on
 1. Open the labour's attendance page.
 2. Select a **single cell** (one row) or a **date range** or **particular site** of rows to re-price.
 3. Enter the new salary (must be within the site's `salary_min` / `salary_max`).
-4. System updates `salary` on each selected (`editable = true`) row and recomputes the running `site_total_salary` and `billing_total_salary` of those and all later rows.
+4. System updates `salary` on each selected (`editable = true`) row and recomputes the running `site_total_salary` of those and all later rows.
 - Rows already sealed (`editable = false`) cannot be re-priced.
 - `attendance_update_window` applies to the `present` field only — salary may be re-priced on any still-editable row regardless of the window.
-- No audit logs need for salary change of dailyattendence.
+- No activity log needed for salary change of daily attendance.
 
 ### F7.5 — View and search labourers
 - Filter by site, active status; search by name. Shows current site, salary, balance.
@@ -429,7 +445,7 @@ Many labourers work short engagements and never return; their accounts accumulat
 
 **Pre-condition:** Labour balance must be zero before deletion is allowed.
 
-1. Set `labour.deleted_at = now()` — labour hidden from all active views; write to audit log
+1. Set `labour.deleted_at = now()` — labour hidden from all active views; write to activity log
 2. Admin can view and restore deleted labourers within a configurable retention window (default: 30 days)
 3. Scheduled job permanently purges labourers whose `deleted_at` exceeds the retention threshold
 4. On purge, database-level `ON DELETE SET NULL` cascades handle all foreign key references automatically
@@ -504,13 +520,15 @@ Rules:
 - A labour may have **multiple attendance rows on the same day** when he works on different billing categories — uniqueness is **(labour, billing_category, date)**, not (labour, date).
 - Billing category is required so the earnings attribute to billing-category costing.
 - Validations: labour active and assigned to this site, site active, billing category active, one row per (labour, billing_category, date), and the site config gates (`attendance_create_window`, `attendance_per_day_limit` — F6.12). New row is `editable = true`.
-- Row stores the salary snapshot and running totals: `site_total_present`, `site_total_salary`, `billing_total_present`, `billing_total_salary` (the `billing_total*` fields are per-billing-category).
+- Row stores the salary snapshot and **per-site** running totals: `site_total_present`, `site_total_salary`. Per-billing-category figures are aggregated on read (no stored `billing_total*`).
+- **Hard rule:** `(labour, billing_category, date)` is **unique** (site is implied by the billing category). A billing-category **merge** (F6.15) that would collide on this key **sums** the colliding rows into one and stamps `billing_merged_at`.
 > **Creatable dates are governed by the site's `attendance_create_window`** (default today + yesterday), must be **≥ the last work session end date**, and **never in the future**. The same pattern (each entity's own `*_create_window` / `*_update_window` / `*_delete_window`, and for labour entities `*_per_day_limit`) applies to extra work, advance, fooding, return, site cost, hidden cost, site cash, site cash return, and site bill. See **Site Configuration** (F6) and F6.12.
 
 ### F11.2 — Record extra work
 - Separate ledger (`Labour ExtraWork`): site, billing category (F6.9), labour, date, amount, note; `editable = true`.
 - Kept apart from attendance so ad-hoc extra earnings are tracked on their own.
-- Running `site_total_amount` and `billing_total_amount` (per-billing-category). Adds to the labour's earnings.
+- Running per-site `site_total_amount` (per-billing-category aggregated on read; no stored `billing_total*`). Adds to the labour's earnings.
+- **Hard rule:** `(labour, billing_category, date)` is **unique** for extra work too — a billing-category **merge** (F6.15) that collides **sums** the rows and stamps `billing_merged_at`.
 
 ### F11.3 — View attendance & extra work history
 - Filter by labour, site, billing category, or date range; shows daily rows + running totals.
@@ -521,8 +539,8 @@ Rules:
 
 ### F12.1 — Record site construction cost (SiteCost)
 - Manager enters site, date, **billing category (required, F6.9)**, **sitecost category (per-site — F3.4)**, amount, note.
-- Row computes running `site_total` and `billing_total` (per-billing-category) from the previous cost row.
-- **Sitecost category is nullable**: null = "Generalized expense".
+- Row computes running per-site `site_total` from the previous cost row (per-billing-category aggregated on read; no stored `billing_total`).
+- **Sitecost category is required** (not nullable; no "Generalized"). A referenced category cannot be deleted — merge first (F3.4 / F6.15).
 - Paid from site cash (draws down the cash balance).
 
 ### F12.2 — Record hidden cost (HiddenCost)
@@ -531,7 +549,7 @@ Rules:
 - Gated by `hiddencost_create_window` / `hiddencost_update_window` / `hiddencost_delete_window` (default `-1` = any date — admin enters hidden costs late); see F6.12.
 - It is used to calculate the **profit/revenue** of a site, not the cash balance.
 - **Billing category is nullable**: set → cost allocates to that billing category; null → site-general (not tied to any billing category).
-- **Hiddencost category is nullable**: null = "Generalized expense".
+- **Hiddencost category is required** (not nullable; no "Generalized"). A referenced category cannot be deleted — merge first (F3.4 / F6.15).
 
 ### F12.3 — View cost history
 - Ledger per site, filterable by billing category, category (sitecost / hiddencost), record type (site cost / hidden cost), date range.
@@ -541,11 +559,11 @@ Rules:
 ## F13 — Manage Site Cash
 
 ### F13.1 — Record cash deposit
-- Manager records incoming cash with notes (`SiteCash`); optional **sitecash category** (per-site — F3.4; nullable = Uncategorized).
+- Manager records incoming cash with notes (`SiteCash`); **sitecash category required** (per-site — F3.4; no Uncategorized).
 - Running site cash total increases.
 
 ### F13.2 — Record cash return / withdrawal
-- Outgoing cash: return to owner or other source with note (`SiteCashReturn`); optional **sitecashreturn category** (per-site — F3.4; nullable = Uncategorized). This is not a site cost — a withdrawal.
+- Outgoing cash: return to owner or other source with note (`SiteCashReturn`); **sitecashreturn category required** (per-site — F3.4; no Uncategorized). This is not a site cost — a withdrawal.
 - Cannot go below zero — insufficient balance is rejected.
 - Running site return total increases.
 
@@ -557,8 +575,8 @@ Rules:
 ## F14 — Manage Site Bills
 
 ### F14.1 — Create site bill
-- Authorized user records a bill: site, date, **billing category (required, F6.9)**, optional **sitebill category** (per-site — F3.4; nullable = Uncategorized), amount, note.
-- Running `site_total` and `billing_total` (per-billing-category) per bill row; bills accumulate against that billing category's contract value (sqft × rate, F6.9).
+- Authorized user records a bill: site, date, **billing category (required, F6.9)**, **sitebill category (required, per-site — F3.4; no Uncategorized)**, amount, note.
+- Running per-site `site_total` per bill row (per-billing-category aggregated on read; no stored `billing_total`); bills accumulate against that billing category's contract value (sqft × rate, F6.9).
 - Gated by `sitebill_create_window` / `sitebill_update_window` / `sitebill_delete_window` (default `-1` = any date, so the admin/office can record bills anytime); see F6.12.
 
 ### F14.2 — View bill history
@@ -595,7 +613,7 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 - Site-level summary.
 
 ### F15.7 — Company dashboard
-- Open sites overview, balances, subscription expiry alert, recent edits (from audit trail), recent activity.
+- Open sites overview, balances, subscription expiry alert, recent edits (from activity log), recent activity.
 
 ### F15.8 — Billing-category costing & revenue report
 - Per billing category of a site: `sqft`, `rate_per_sqft`, contract value (sqft × rate, or `custom_bill`), billed, remaining receivable (contract − billed), labour cost, construction cost, allocated hidden cost, total cost, profit (billed − total cost), cost per sqft.
@@ -604,29 +622,31 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 
 ---
 
-## F16 — Record Edits & Audit Trail
+## F16 — Record Edits & Activity Log
 
-Edits happen directly; the `editable` flag is the hard lock, and the audit log makes every live edit accountable.
+Edits happen directly; the `editable` flag is the hard lock, and the **activity log** makes every live edit accountable. The activity log replaces the old per-row `updated_by` — the actor lives on `activity_log.actor_id`.
 
-### F16.1 — Edit / delete a record (direct, with auto audit)
+### F16.1 — Edit / delete a record (direct, with auto activity log)
 - Allowed only on rows that are still `editable = true` (sealed rows are immutable — see F10) **and** whose date is inside the site's `*_update_window` (for edits) or `*_delete_window` (for deletes) — F6.12. Sealed always blocks; otherwise the stricter of the two limits wins.
 - An authorized user edits or deletes a record from its own module (attendance F11, extra work F11, advance/fooding F8, return F9, cash F13, cost/hidden cost F12, bill F14, plus master data).
 - In one transaction the system:
   1. Applies the change (financial/ledger rows are **soft-deleted**, not hard-deleted).
-  2. Writes an **audit log entry**: company, actor, timestamp, target record type + id, action (update/delete), **before snapshot**, **after snapshot**, and a **note (required for update/delete of financial records)**.
-  3. Bumps the record's `updated_at`.
-  4. Recalculates running totals of all later rows in the same ledger (per billing category and per site) so the chain stays consistent.
+  2. Writes an **activity log entry**: company, actor, timestamp, target record type + id, action (`create` / `update` / `delete` / `merge`), **before snapshot**, **after snapshot**, and a **note (required for update/delete of financial records)**.
+  3. Bumps the record's `updated_at` — **only** for an explicit user field edit. A **category merge** (F6.15) instead stamps `billing_merged_at` / `merged_at` and leaves `updated_at` untouched.
+  4. Recalculates the per-**site** running totals (`site_total*`) of all later rows in the same ledger so the chain stays consistent. (Per-billing-category figures are aggregated on read — nothing to recompute.)
 
-### F16.2 — View audit trail
+### F16.2 — View the activity log
 - Any authorized user views the log, filtered by record, site, user, action, or date range.
 - Each entry shows who changed what, when, the before/after values, and the note.
+- **Visibility** — a Site Manager / Company Manager sees all activity for their **authorized sites**, **except sensitive entries**: hidden cost (admin-only, F12.2) and company-level events. Those are shown to the Company Admin only.
 
-### F16.3 — Remove audit log entries
-- Only Admin (or an explicitly authorized user) can **soft delete** audit entries. No one can **edit** an entry. The company then loses access to that data — only the system can see and manage it; if a company removes audit logs accidentally, the system can restore them via support. A scheduled cron permanently deletes soft-deleted audit logs after a retention period.
-- Even after removal, the affected record's `updated_at` still shows it was modified — tamper-evident backstop.
+### F16.3 — Activity logs are permanent
+- Activity entries can **never** be edited or deleted — **not even by the Company Admin**. There is no soft-delete and no removal action on the tenant side.
+- The only way they leave the database is a full **company reset** (F2.11), which hard-deletes them system-side under OTP dual-control.
+- This makes the log a tamper-evident backstop: the affected record's `updated_at` and the permanent entry together always show that, and how, it was modified.
 
 ### F16.4 — Activity view (admin oversight)
-- The admin reviews an **activity feed** built from the audit trail (F16.2): all records created / updated / deleted, filterable by site, user, entity type, and date.
-- This is the verification mechanism — instead of a per-row `verified` flag, the admin watches activity (especially after granting an out-of-window override, F6.12) and manually asks a manager to correct anything wrong.
+- The admin reviews the **activity log** (F16.2): all records created / updated / deleted / merged, filterable by site, user, entity type, and date.
+- This is the verification mechanism — instead of a per-row `verified` flag, the admin watches activity (especially after granting an out-of-window override, F6.12, or running a merge, F6.15) and manually asks a manager to correct anything wrong.
 
 > **Note** — there is intentionally no admin override to edit a **sealed** (`editable = false`) record. The seal is the hard boundary; if a settled session truly needs a fix, the correction is done by a system user (F2.9), not a normal edit.
