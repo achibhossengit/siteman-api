@@ -3,7 +3,7 @@
 ## Conventions
 - **Tenant isolation** — every tenant row carries `company_id`; See **Access Control & User Model**.
 - **Running totals** — ledger rows store a **per-site** cumulative `site_total*` only; **per-billing-category figures are aggregated on read (no stored `billing_total*`)**. Update all later rows' `site_total*` after a relevant update/delete.
-- **`editable` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `editable = true`.
+- **`is_sealed` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `is_sealed = false` (editable); a work-session seal (F10) sets `is_sealed = true` (immutable).
 - **Direct edit + activity log** — authorized users edit/delete directly; the system auto-writes an **activity log** entry (actor, time, before/after, note). Ledger rows are **soft-deleted**. Activity logs are **permanent** — no one, not even Company Admin, can edit or delete them (F16.3).
 - every model keeps `created_at`, `created_by`, `updated_at`
 - **Removing a category** — `billing_category` / `custom_category` are nullable. Deleting one prompts the admin to either (a) **delete & set the FK null** on all its rows (`ON DELETE SET NULL`), or (b) **merge** — re-point its rows to another same-scope category, then delete it. The action is **activity-logged and not undoable**; the admin must confirm first. `updated_at` is untouched (it is not a per-row user edit). See F3.4 / F6.9 / F6.15.
@@ -34,7 +34,7 @@
 ### Who can do what — two independent layers:
 - **Capability** (*what*) — a Django **Group**: System Admin / System Manager; Company Admin / Company Manager / Site Manager. Global within its scope, never per-site.
 - **Scope** (*which sites*) — **`UserSite`** links a tenant user to sites. A site can have many managers; a user many sites.
-- A **write** is allowed when: capability (Group) **+** assigned to the site (`UserSite`) **+** inside the entity's window (F6.12) **+** the row is `editable`. The Company Admin manages all sites by default, but to **record** on a site must self-assign and join the Site Manager group (F6.14) — the same write rule then applies.
+- A **write** is allowed when: capability (Group) **+** assigned to the site (`UserSite`) **+** inside the entity's window (F6.12) **+** the row is **unsealed** (`is_sealed = false`). The Company Admin manages all sites by default, but to **record** on a site must self-assign and join the Site Manager group (F6.14) — the same write rule then applies.
 ---
 
 ## F1 — Manage Authentication
@@ -113,7 +113,7 @@ System-level users; not tied to any company.
 - Fine-grained platform permissions per staff user (e.g., System Manager: monitor only).
 
 ### F2.9 — Data correction on sealed/closed data
-- Only a system user can correct a sealed (`editable=false`) row or restore/repair a closed site's data on support request — the company side has no such override.
+- Only a system user can correct a sealed (`is_sealed = true`) row or restore/repair a closed site's data on support request — the company side has no such override.
 
 ### F2.10 — Manage system configuration
 - System Admin views/edits `SystemConfig` (single global row, auto-created with defaults).
@@ -158,11 +158,11 @@ A low-frequency support action for clients who tested the app on a real account 
 - System saves and records the change in the activity log.
 
 ### F3.4 — Manage custom categories
-- **One company-scoped model** `custom_category` (`name`, `note`, `scope`, `display_order`, `is_active`) replaces the old per-ledger type tables. `scope` (enum) ties a category to one ledger: `sitecost` (F12.1), `hiddencost` (F12.2), `sitecash` (F13.1), `sitecashreturn` (F13.2), `sitebill` (F14.1). Admin creates/edits each.
-- **Company-scoped, not per-site** — shared across all of the company's sites (the ledger dropdown filters by `scope`). A company may start with **zero** categories or some defaults.
-- **Optional on the ledger** — each ledger's `custom_category_id` is **nullable**. On create the user is prompted to pick one **only when** `count(scope) > 0`; otherwise (or by choice) it stays null.
+- **One model** `custom_category` (`site_id`, `scope`, `name`, `note`, `display_order`, `is_active`) replaces the old per-ledger type tables. `scope` (enum) ties a category to one ledger: `sitecost` (F12.1), `hiddencost` (F12.2), `sitecash` (F13.1), `sitecashreturn` (F13.2), `sitebill` (F14.1). Admin creates/edits each.
+- **Site-scoped** — each **site** owns its own category set; the ledger dropdown filters by **(site, scope)**. A site may start with **zero** categories or some defaults.
+- **Optional on the ledger** — each ledger's `custom_category_id` is **nullable**. On create the user is prompted to pick one **only when** that site has `count(scope) > 0`; otherwise (or by choice) it stays null.
 - **Deactivate** — hidden from new-entry dropdowns; existing rows keep their link.
-- **Remove (delete or merge)** — deleting a category prompts the admin to choose: **(a) set null** — the FK on every referencing row becomes null (`ON DELETE SET NULL`); or **(b) merge** — re-point its rows to another same-`scope` category (plain `UPDATE`), then delete the emptied one. One activity log entry is written (`action = delete` or `merge`). The action is **not undoable** — the admin must confirm first.
+- **Remove (delete or merge)** — deleting a category prompts the admin to choose: **(a) set null** — the FK on every referencing row becomes null (`ON DELETE SET NULL`); or **(b) merge** — re-point its rows to another same-site, same-`scope` category (plain `UPDATE`), then delete the emptied one. One activity log entry is written (`action = delete` or `merge`). The action is **not undoable** — the admin must confirm first.
 
 ### F3.5 — Manage company configuration
 - Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 with its own built-in defaults).
@@ -266,7 +266,7 @@ Two independent state axes for a site:
 | Field | Value | Meaning |
 |---|---|---|
 | `closed_at` | `null` | **Open** — site is ongoing. Counts toward the plan's open-site limit. |
-| `closed_at` | timestamp | **Closed** — work permanently done. Company users see only the closure summary; detail rows stay in the same DB but are hidden, then a cron purges them 30 days after `closed_at` (except `editable=true` rows). Does not count toward the plan limit. Reopen possible until purge. |
+| `closed_at` | timestamp | **Closed** — work permanently done. Company users see only the closure summary; detail rows stay in the same DB but are hidden, then a cron purges them 30 days after `closed_at` (except `is_sealed = false` rows). Does not count toward the plan limit. Reopen possible until purge. |
 | `is_active` | `True` | **Active** — new data (attendance, cash, cost) can be recorded. |
 | `is_active` | `False` | **Inactive** — temporarily paused. No new data can be created. Old data remains accessible. Can be reactivated at any time. |
 
@@ -338,9 +338,9 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
    - balance < 0 → cover the deficit via a SiteCash deposit (F13.1).
    - Close is blocked until the site cash balance = 0.
 2. **Set `closed_at = now()`** (a null `closed_at` = open, non-null = closed). Closed sites do not count toward the plan's open-site limit.
-3. **Build the closure summary** (immutable snapshot): totals from SiteCost, HiddenCost, SiteBill, DailyAttendance (total present, total salary), LabourExtraWork totals, total cost, total bills, total paid bills, profit, billing-category contract vs billed — everything the admin needs after the detail is gone.
+3. **Build the closure summary** (immutable snapshot): totals from SiteCost, HiddenCost, SiteBill, DailyAttendance (total present, total salary), ExtraWork totals, total cost, total bills, total paid bills, profit, billing-category contract vs billed — everything the admin needs after the detail is gone.
 4. **Access changes immediately** — authorized users now see **only the summary**; the detail rows stay in the same DB but are hidden from the company side.
-5. **Cron purge** — a scheduled job deletes the detail rows of any site whose `closed_at` is **more than 30 days** old, **except** rows still `editable = true`. Those belong to an unsealed `LabourWorkSession`; they are kept until the next session seals them (`editable = false`), after which a later cron run may delete them.
+5. **Cron purge** — a scheduled job deletes the detail rows of any site whose `closed_at` is **more than 30 days** old, **except** rows still `is_sealed = false`. Those belong to an as-yet-unsealed period; they are kept until the next session seals them (`is_sealed = true`), after which a later cron run may delete them.
 
 ### F6.4 — Reopen a closed site
 - Admin requests reopen.
@@ -427,16 +427,16 @@ One activity log entry records the action (`action = delete` or `merge`, with af
 
 ### F7.3 — Activate / deactivate labour account
 - Inactive labour: no new attendance, extra work, or payments; history stays.
-- A sealed `LabourWorkSession` (vacation) deactivates the account automatically; returning from vacation requires reactivation **before** any new record (F10.1).
+- A sealed `LabourSession` (vacation) deactivates the account automatically; returning from vacation requires reactivation **before** any new record (F10.1).
 
 ### F7.4 — Update labour salary for a date range
 Salary is stored on each DailyAttendance row. `labour.default_salary` is used only when creating new attendance records.
 1. Open the labour's attendance page.
 2. Select a **single cell** (one row) or a **date range** or **particular site** of rows to re-price.
 3. Enter the new salary (must be within the site's `salary_min` / `salary_max`).
-4. System updates `salary` on each selected (`editable = true`) row and recomputes the running `site_total_salary` of those and all later rows.
-- Rows already sealed (`editable = false`) cannot be re-priced.
-- `attendance_update_window` applies to the `present` field only — salary may be re-priced on any still-editable row regardless of the window.
+4. System updates `salary` on each selected (`is_sealed = false`) row and recomputes the running `site_total_salary` of those and all later rows.
+- Rows already sealed (`is_sealed = true`) cannot be re-priced.
+- `attendance_update_window` applies to the `present` field only — salary may be re-priced on any still-unsealed row regardless of the window.
 - No activity log needed for salary change of daily attendance.
 
 ### F7.5 — View and search labourers
@@ -458,17 +458,17 @@ Many labourers work short engagements and never return; their accounts accumulat
 A labour is paid through two ledgers — **advance pay** (cash advances) and **fooding pay** (meal allowance). Both are payouts that draw down site cash and reduce the labour's balance.
 
 ### F8.1 — Issue advance pay
-- Manager picks labour, enters amount, note, date → creates a `LabourAdvancePay` row (`editable = true`).
+- Manager picks labour, enters amount, note, date → creates a `LabourAdvancePay` row (`is_sealed = false`).
 - Blocked if labour is inactive.
 - Running `site_total` (site's cumulative advance) computed from the previous row.
 
 ### F8.2 — Issue fooding pay
-- Manager picks labour, enters amount (seeded from `default_fooding`), note, date → creates a `LabourFoodingPay` row (`editable = true`).
+- Manager picks labour, enters amount (seeded from `default_fooding`), note, date → creates a `LabourFoodingPay` row (`is_sealed = false`).
 - Blocked if labour is inactive.
 - Running `site_total` (site's cumulative fooding) computed from the previous row.
 
 ### F8.3 — Track labour balance
-- `balance = balance (from last work session) + earnings from dailyattendence(editable=true) − advance(editable=true) − fooding(editable=true) + returns(editable=true)`.
+- `balance = balance (from last work session) + earnings from dailyattendence(is_sealed=false) − advance(is_sealed=false) − fooding(is_sealed=false) + returns(is_sealed=false)`.
 - Read from the latest carried balance / running totals — no full scan needed.
 
 ### F8.4 — View payment history
@@ -479,7 +479,7 @@ A labour is paid through two ledgers — **advance pay** (cash advances) and **f
 ## F9 — Manage Labour Return
 
 ### F9.1 — Record labour return
-- Labour may return overpaid money. Manager creates a `LabourReturn` (amount, note, date; `editable = true`).
+- Labour may return overpaid money. Manager creates a `LabourReturn` (amount, note, date; `is_sealed = false`).
 - Running `site_total` computed from the previous row; increases the labour's balance.
 
 ### F9.2 — View return history
@@ -489,28 +489,33 @@ A labour is paid through two ledgers — **advance pay** (cash advances) and **f
 
 ## F10 — Manage Labour Work Session
 
-A labour works continuously — moving site to site — then takes a vacation. The **period** between two vacations is one work session, recorded as a `LabourWorkSession` plus one `LabourSiteWorkSession` per site touched.
+A labour works continuously — moving site to site — then takes a vacation. The **period** between two vacations is one work session, recorded as a `LabourSession` plus one `LabourSiteSession` per site touched. Ledger rows belong to a session by **date range + labour** (`[start_date … end_date]`), not a per-row FK.
 
 ### F10.1 — Create / seal a labour work session (vacation flow)
 Triggered when the labour wants to go on vacation:
-1. **Review** — all still-`editable` rows (attendance, extra work, advance, fooding, return) are reviewed; any correction is applied now, while they are still editable.
+1. **Review** — all still-**unsealed** (`is_sealed = false`) rows (attendance, extra work, advance, fooding, return) are reviewed; any correction is applied now, while they are still unsealed.
 2. **Settle** — a final payment is made based on the current balance (pay out the payable, or collect an overpayment) so the balance reflects reality.
-3. **Per-site rollup** — for each site the labour touched this session, create a `LabourSiteWorkSession` aggregating that site's `present`, `extrawork`, `fooding`, `advance`, `salary`, `earnings`, `payable`.
-4. **Session record** — create one `LabourWorkSession` linking all its LabourSiteWorkSessions, with:
-   - `start_date` = date of the first record after the previous session's end,
-   - `end_date` = date of the **last** record in this session,
-   - `last_balance` = balance carried in, `balance` = balance carried out.
-5. **Seal** — set `editable = false` on every row rolled into the session (now immutable).
+3. **Per-site rollup** — for each site the labour touched this session, create a `LabourSiteSession` aggregating that site's `present`, `extrawork`, `fooding`, `advance`, `salary`, `earnings`, `payable`.
+4. **Session record** — create one `LabourSession` (links its LabourSiteSessions), with:
+   - `start_date` = the **first** (earliest) entity date in this session, `end_date` = the **last** (latest) entity date;
+   - carried totals `total_present`, `total_salary`, `total_extrawork`, `total_earnings`, `total_taken`, and `balance` (carried forward to the next session);
+   - both `start_date` and `end_date` must be **after** the previous session's `created_at` date.
+5. **Seal** — set `is_sealed = true` on every one of this labour's rows whose `date` falls in `[start_date … end_date]` (rows bind to the session by **date range + labour**, not a stored FK).
 6. **Deactivate** the labour account → vacation.
 
 Rules:
+- **One session per labour per day** — a labour may have at most one `LabourSession` created on a given day (`(labour, created_at::date)` unique).
+- **New record date gate** — any new ledger entity's `date` must be **> the last work session's `created_at` date** (and never in the future).
+- **Amend a sealed day** — to create a record after a session was already made the same day, **delete that session** (F10.3), create the record, then create the session again.
 - Records created after sealing belong to the **next** session.
-- The session `end_date` is the latest sealed record's date.
-- Any new record's date must be **≥ the last work session's end_date**.
 - After returning from vacation, the account must be **reactivated first** (F7.3) before creating any record.
 
 ### F10.2 — View session history
-- Timeline of sessions per labour with per-site breakdown (present, earnings, payouts), start/end dates, and carried balances.
+- Timeline of sessions per labour with per-site breakdown (present, earnings, payouts), start/end dates, and carried totals/balance.
+
+### F10.3 — Delete a work session (unseal)
+- Deleting a `LabourSession` **unseals** it: every one of this labour's rows with `date` in `[start_date … end_date]` is set back to `is_sealed = false`, then the session row (and its `LabourSiteSession` rollups) is deleted. One activity log entry is written.
+- Use when an already-sealed day must be amended: **delete the session → create/correct the entity → create the session again** (re-seal).
 
 ---
 
@@ -520,12 +525,12 @@ Rules:
 - Grain is **labour / day** (optionally split by billing category): Site Manager picks date, optional billing category (from the site's list, F6.9), `present` units (full/half/overtime), and `salary` (seeded from the labour default, editable per row).
 - **No DB uniqueness** on (labour, billing_category, date) — a labour may have **multiple attendance rows on the same date** (different billing categories, or the same one). New rows per labour/date are gated by **`attendance_per_day_limit`** (config affects **new** rows only; existing rows untouched).
 - Billing category is **optional**; when set, the earnings attribute to billing-category costing. When the site has none it stays null.
-- Validations: labour active and assigned to this site, site active, billing category active (if chosen), and the site config gates (`attendance_create_window`, `attendance_per_day_limit` — F6.12). New row is `editable = true`.
+- Validations: labour active and assigned to this site, site active, billing category active (if chosen), and the site config gates (`attendance_create_window`, `attendance_per_day_limit` — F6.12). New row is `is_sealed = false`.
 - Row stores the salary snapshot and **per-site** running totals: `site_total_present`, `site_total_salary`.
-> Create/update/delete windows + `*_per_day_limit` gate every ledger entity — see **Site Configuration** (F6) / F6.12. A creatable date must additionally be **≥ the last work session end date** and **never in the future**.
+> Create/update/delete windows + `*_per_day_limit` gate every ledger entity — see **Site Configuration** (F6) / F6.12. A creatable date must additionally be **> the last work session's `created_at` date** and **never in the future** (F10).
 
 ### F11.2 — Record extra work
-- Separate ledger (`Labour ExtraWork`): site, **optional** billing category (F6.9), labour, date, amount, note; `editable = true`.
+- Separate ledger (`ExtraWork`): site, **optional** billing category (F6.9), labour, date, amount, note; `is_sealed = false`.
 - Kept apart from attendance so ad-hoc extra earnings are tracked on their own.
 - Running per-site `site_total_amount`. Adds to the labour's earnings.
 - **No DB uniqueness** — multiple extra-work rows per labour/date are allowed (gated by config).
@@ -540,7 +545,7 @@ Rules:
 ### F12.1 — Record site construction cost (SiteCost)
 - Manager enters site, date, **optional billing category (F6.9)**, **optional sitecost category** (`custom_category`, `scope = sitecost` — F3.4), amount, note.
 - Row computes running per-site `site_total` from the previous cost row.
-- Both categories are **optional** — prompted only when entries exist (billing categories for the site, or `custom_category` of that scope > 0); else null.
+- Both categories are **optional** — prompted only when entries exist (billing categories for the site, or `custom_category` of that scope for this site); else null.
 - Paid from site cash (draws down the cash balance).
 
 ### F12.2 — Record hidden cost (HiddenCost)
@@ -624,10 +629,10 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 
 ## F16 — Record Edits & Activity Log
 
-Edits happen directly; the `editable` flag is the hard lock, and the **activity log** makes every live edit accountable. The activity log replaces the old per-row `updated_by` — the actor lives on `activity_log.actor_id`.
+Edits happen directly; the `is_sealed` flag is the hard lock, and the **activity log** makes every live edit accountable. The activity log replaces the old per-row `updated_by` — the actor lives on `activity_log.actor_id`.
 
 ### F16.1 — Edit / delete a record (direct, with auto activity log)
-- Allowed only on rows that are still `editable = true` (sealed rows are immutable — see F10) **and** whose date is inside the site's `*_update_window` (for edits) or `*_delete_window` (for deletes) — F6.12. Sealed always blocks; otherwise the stricter of the two limits wins.
+- Allowed only on rows that are still **unsealed** (`is_sealed = false`; sealed rows are immutable — see F10) **and** whose date is inside the site's `*_update_window` (for edits) or `*_delete_window` (for deletes) — F6.12. Sealed always blocks; otherwise the stricter of the two limits wins.
 - An authorized user edits or deletes a record from its own module (attendance F11, extra work F11, advance/fooding F8, return F9, cash F13, cost/hidden cost F12, bill F14, plus master data).
 - In one transaction the system:
   1. Applies the change (financial/ledger rows are **soft-deleted**, not hard-deleted).
@@ -649,4 +654,4 @@ Edits happen directly; the `editable` flag is the hard lock, and the **activity 
 - The admin reviews the **activity log** (F16.2): all records created / updated / deleted / merged, filterable by site, user, entity type, and date.
 - This is the verification mechanism — instead of a per-row `verified` flag, the admin watches activity (especially after granting an out-of-window override, F6.12, or running a merge, F6.15) and manually asks a manager to correct anything wrong.
 
-> **Note** — there is intentionally no admin override to edit a **sealed** (`editable = false`) record. The seal is the hard boundary; if a settled session truly needs a fix, the correction is done by a system user (F2.9), not a normal edit.
+> **Note** — there is intentionally no admin override to edit a **sealed** (`is_sealed = true`) record. The seal is the hard boundary; if a settled session truly needs a fix, the correction is done by a system user (F2.9), not a normal edit.

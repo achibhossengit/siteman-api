@@ -129,6 +129,7 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 |---|---|
 | F10.1 | Create / seal a labour work session |
 | F10.2 | View session history |
+| F10.3 | Delete a work session (unseal) |
 
 ### F11 → Manage Daily Attendance & Extra Work
 | # | Feature |

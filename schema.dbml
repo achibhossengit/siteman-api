@@ -331,7 +331,7 @@ Table site_closure_summary {
 }
 
 // ============================================================
-// F3.4 — Custom category (company-scoped; per-ledger via scope)
+// F3.4 — Custom category
 // ============================================================
 
 Table custom_category {
@@ -348,7 +348,7 @@ Table custom_category {
   updated_at    timestamp             [not null]
 
   Indexes {
-    (company_id, scope, name) [unique]
+    (site_id, scope, name) [unique]
   }
 }
 
@@ -380,26 +380,31 @@ Table labour {
 // F10 — Labour work session
 // ============================================================
 
-Table labour_work_session {
+Table labour_session {
   id           bigint    [pk]
+  company_id   bigint        [ref: > company.id, not null]
   labour_id    bigint    [ref: > labour.id, not null]
   start_date   date      [not null, note: 'first record after previous session end']
   end_date     date      [not null, note: 'last sealed record date']
 
   total_present      decimal(12,2) [not null, note: 'intotal present days carried']
   total_salary       bigint    [not null, note: 'intotal salary carried']
-  total_extrawork    decimal(12,2) [not null, note: 'intotal extra work days carried']
+  total_extrawork    bigint    [not null, note: 'intotal extra work days carried']
   total_earnings     bigint    [not null, note: 'intotal earnings carried']
   total_taken        bigint    [not null, note: 'intotal taken carried']
   balance            bigint    [not null, note: 'balance carried forward to next session']
-  created_at         timestamp [not null]
+  created_at         timestamp [not null, note: 'index will use created_at::date for session uniqueness']
   created_by         bigint    [ref: > user.id, not null]
   updated_at         timestamp [not null]
+
+  Indexes {
+    (labour_id, created_at) [unique]
+  }
 }
 
-Table labour_site_work_session {
+Table labour_site_session {
   id              bigint        [pk]
-  work_session_id bigint        [ref: > labour_work_session.id, not null]
+  work_session_id bigint        [ref: > labour_session.id, not null]
   site_id         bigint        [ref: > site.id, not null]
   present         decimal(12,2) [not null]
   extrawork       bigint        [not null]
@@ -431,14 +436,14 @@ Table daily_attendance {
   created_at          timestamp     [not null]
   created_by          bigint        [ref: > user.id, null]
   updated_at          timestamp     [not null]
-  editable            boolean       [not null, default: true]
+  is_sealed           boolean       [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
   
   Indexes {
     (labour_id, date) [note: 'non-unique; multiple rows per labour/date allowed, gated by attendance_per_day_limit (F11.1)']
   }
 }
 
-Table labour_extra_work {
+Table extra_work {
   id                  bigint    [pk]
   company_id          bigint    [not null]
   labour_id           bigint    [ref: > labour.id, not null]
@@ -451,7 +456,7 @@ Table labour_extra_work {
   created_at          timestamp [not null]
   created_by          bigint    [ref: > user.id, not null]
   updated_at          timestamp [not null]
-  editable            boolean   [not null, default: true]
+  is_sealed           boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
 
   Indexes {
     (labour_id, date)
@@ -474,7 +479,7 @@ Table labour_advance_pay {
   created_at      timestamp [not null]
   created_by      bigint    [ref: > user.id, not null]
   updated_at      timestamp [not null]
-  editable        boolean   [not null, default: true]
+  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
 }
 
 Table labour_fooding_pay {
@@ -489,7 +494,7 @@ Table labour_fooding_pay {
   created_at      timestamp [not null]
   created_by      bigint    [ref: > user.id, null]
   updated_at      timestamp [not null]
-  editable        boolean   [not null, default: true]
+  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
 }
 
 Table labour_return {
@@ -504,7 +509,7 @@ Table labour_return {
   created_at      timestamp [not null]
   created_by      bigint    [ref: > user.id, not null]
   updated_at      timestamp [not null]
-  editable        boolean   [not null, default: true]
+  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
 }
 
 // ============================================================
@@ -624,7 +629,7 @@ Table activity_log {
 Ref: billing_category_details.billing_id - billing_category.id [delete: cascade]
 
 Ref: daily_attendance.billing_id  > billing_category.id   [delete: set null]
-Ref: labour_extra_work.billing_id > billing_category.id   [delete: set null]
+Ref: extra_work.billing_id > billing_category.id   [delete: set null]
 Ref: site_cost.billing_id         > billing_category.id   [delete: set null]
 Ref: hidden_cost.billing_id       > billing_category.id   [delete: set null]
 Ref: site_bill.billing_id         > billing_category.id   [delete: set null]
@@ -671,13 +676,13 @@ TableGroup sites_and_billing {
 
 TableGroup labour_group {
   labour
-  labour_work_session
-  labour_site_work_session
+  labour_session
+  labour_site_session
 }
 
 TableGroup ledgers {
   daily_attendance
-  labour_extra_work
+  extra_work
   labour_advance_pay
   labour_fooding_pay
   labour_return
@@ -697,7 +702,7 @@ DiagramView Default {
   Tables {
     billing_category
     daily_attendance
-    labour_extra_work
+    extra_work
     site_cost
     hidden_cost
     site_cash
@@ -707,9 +712,9 @@ DiagramView Default {
     custom_category
     labour_advance_pay
     labour_fooding_pay
-    labour_work_session
+    labour_session
     labour_return
-    labour_site_work_session
+    labour_site_session
   }
   Notes { * }
 }
