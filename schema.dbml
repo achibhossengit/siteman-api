@@ -237,42 +237,19 @@ Table site {
 
 Table site_config {
   id      bigint [pk]
+  company_id  bigint    [ref: > company.id, not null]
   site_id bigint [ref: - site.id, not null, unique, note: 'one-to-one (F6.12)']
 
-  attendance_create_window     int [not null, default: 1]
-  attendance_update_window     int [not null, default: 1]
-  attendance_delete_window     int [not null, default: 1]
-  fooding_create_window        int [not null, default: 1]
-  fooding_update_window        int [not null, default: 1]
-  fooding_delete_window        int [not null, default: 1]
-  advance_create_window        int [not null, default: 1]
-  advance_update_window        int [not null, default: 1]
-  advance_delete_window        int [not null, default: 1]
-  return_create_window         int [not null, default: 1]
-  return_update_window         int [not null, default: 1]
-  return_delete_window         int [not null, default: 1]
-  extrawork_create_window      int [not null, default: 1]
-  extrawork_update_window      int [not null, default: 1]
-  extrawork_delete_window      int [not null, default: 1]
-  sitecost_create_window       int [not null, default: 1]
-  sitecost_update_window       int [not null, default: 1]
-  sitecost_delete_window       int [not null, default: 1]
-  hiddencost_create_window     int [not null, default: -1]
-  hiddencost_update_window     int [not null, default: -1]
-  hiddencost_delete_window     int [not null, default: -1]
-  sitecash_create_window       int [not null, default: 1]
-  sitecash_update_window       int [not null, default: 1]
-  sitecash_delete_window       int [not null, default: 1]
-  sitecashreturn_create_window int [not null, default: 1]
-  sitecashreturn_update_window int [not null, default: 1]
-  sitecashreturn_delete_window int [not null, default: 1]
-  sitebill_create_window       int [not null, default: -1]
-  sitebill_update_window       int [not null, default: -1]
-  sitebill_delete_window       int [not null, default: -1]
+  // these are affected on sitecost, sitecash, sitecashreturn, dailyattendance, extrawork, labouradvancepay, labourfoodingpay, labourreturn.
 
-  attendance_per_day_limit int [not null, default: 1, note: 'gates NEW attendance rows per labour/date (F11.1); existing rows unaffected']
-  fooding_per_day_limit    int [not null, default: 1]
-  advance_per_day_limit    int [not null, default: -1]
+  daily_record_create_window     int [not null, default: 1]
+  daily_record_update_window     int [not null, default: 1]
+  daily_record_delete_window     int [not null, default: 1]
+
+
+  attendance_per_labour_per_day_limit int [not null, default: 1, note: 'gates NEW attendance rows per labour/date (F11.1); existing rows unaffected']
+  fooding_per_labour_per_day_limit    int [not null, default: 1]
+  advance_per_labour_per_day_limit    int [not null, default: -1]
 
   attendance_present_choices jsonb [not null, note: 'allowed present set, e.g. [0,0.5,1,1.5,2,3]']
   salary_min                 int   [not null]
@@ -364,7 +341,6 @@ Table labour {
   default_salary  int           [not null]
   default_present decimal(12,2) [not null]
   default_fooding int           [not null]
-  balance         bigint        [not null, default: 0, note: 'carried running balance (F8.3)']
   is_active       boolean       [not null, default: true, note: 'sealed work session auto-deactivates (F7.3)']
   created_at      timestamp     [not null]
   created_by      bigint        [ref: > user.id, not null]
@@ -439,7 +415,7 @@ Table daily_attendance {
   is_sealed           boolean       [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
   
   Indexes {
-    (labour_id, date) [note: 'non-unique; multiple rows per labour/date allowed, gated by attendance_per_day_limit (F11.1)']
+    (labour_id, date) [note: 'non-unique; multiple rows per labour/date allowed, gated by attendance_per_labour_per_day_limit (F11.1)']
   }
 }
 

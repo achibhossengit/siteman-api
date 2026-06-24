@@ -11,7 +11,7 @@
 - **Configuration tiers**
   - **System config** (`SystemConfig`, single global row, System Admin) — Governs platform behaviour only. See **System Configuration** under F2.
   - **Company config** (`CompanyConfig`, one per company, Company Admin) — per-tenant feature flags, e.g. `allow_labour_transfer` (default `true`); created with its **own built-in defaults** at registration. See **Company Configuration** under F3.
-  - **Site config** (`SiteConfig`, one per site, Company Admin) — per-site create/update/delete windows + per-day quotas. See **Site Configuration** under F6.
+  - **Site config** (`SiteConfig`, one per site, Company Admin) — one shared daily-record create/update/delete window + per-labour/day quotas. See **Site Configuration** under F6.
 
 ## Roles
 - **System Admin** — manages all companies and subscriptions.
@@ -275,17 +275,18 @@ Two independent state axes for a site:
 ### Site Configuration (reference)
 Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with sensible defaults and editable by the Company Admin. It lets each site tune how strictly records may be created and edited — without code changes.
 
-**Window scale** — used by `*_create_window`, `*_update_window` and `*_delete_window`:
+**Daily-record window** — one shared triplet `daily_record_create_window` / `daily_record_update_window` / `daily_record_delete_window` (default `1` each) gates **all eight daily ledgers**: daily attendance, extra work, advance pay, fooding pay, return, site cost, site cash, site cash return. Scale:
 
 | Value | Meaning |
 |---|---|
 | `-1` | Any date ≤ today (no lower bound) |
-| `0` | Disabled — no date qualifies (turns that action off for the entity) |
+| `0` | Disabled — no date qualifies (turns that action off) |
 | `N ≥ 1` | Last `N` days including today, i.e. `[today − (N−1) … today]` (1 = today only, 2 = today + yesterday, 3 = today + 2 days back, …) |
 
 > Future dates are **always** rejected, regardless of any window.
+> **Hidden cost** and **site bill** are **not** window-gated — they are admin/office records, allowed on any date ≤ today (late entries expected).
 
-**Per-day quota scale** — `*_per_day_limit` (labour-scoped entities only):
+**Per-labour/day quota** — `attendance_per_labour_per_day_limit`, `fooding_per_labour_per_day_limit`, `advance_per_labour_per_day_limit`:
 
 | Value | Meaning |
 |---|---|
@@ -293,30 +294,17 @@ Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with s
 | `0` | Blocked — no rows that day |
 | `N ≥ 1` | At most `N` rows per labour per date (across billing categories). Applies to **new** rows only; there is no DB uniqueness (F11.1). |
 
-**Cross-site, same date** — there is no separate multisite flag. By default a labour has one record per date; to record the same labour/date at a **different** site, first free the existing row (remove it) or transfer the labour to the new site (F7.2). To genuinely allow both sites on the same date, raise the relevant `*_per_day_limit`.
+Defaults: attendance `1`, fooding `1`, advance `-1`.
 
-**Out-of-window override (manual)** — there is no per-row verification. To touch a date outside the current window, a manager asks the admin; the admin widens the matching window (a temporary `N` covering the date, or `-1` to allow any past date), the manager creates/edits/deletes, and the admin reviews the result via the date-based activity log (F16.2). If misused, the admin asks the manager to correct it — no system-enforced approval step.
+**Cross-site, same date** — there is no separate multisite flag. By default a labour has one record per date; to record the same labour/date at a **different** site, first free the existing row (remove it) or transfer the labour to the new site (F7.2). To genuinely allow both sites on the same date, raise the relevant `*_per_labour_per_day_limit`.
 
-**Fields by entity** (field name pattern `<entity>_<axis>`, e.g. `attendance_create_window`, `sitecost_update_window`, `advance_delete_window`, `fooding_per_day_limit`):
-
-| Entity | create_window | update_window | delete_window | per_day_limit |
-|---|---|---|---|---|
-| attendance | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) |
-| fooding | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) |
-| advance | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | ✓ (def −1) |
-| return | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
-| extrawork | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
-| sitecost | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
-| hiddencost | ✓ (def -1) | ✓ (def -1) | ✓ (def -1) | — |
-| sitecash (deposit) | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
-| sitecashreturn | ✓ (def 1) | ✓ (def 1) | ✓ (def 1) | — |
-| sitebill | ✓ (def -1) | ✓ (def -1) | ✓ (def -1) | — |
+**Out-of-window override (manual)** — there is no per-row verification. To touch a date outside the current window, a manager asks the admin; the admin widens the daily-record window (a temporary `N` covering the date, or `-1` to allow any past date), the manager creates/edits/deletes, and the admin reviews the result via the date-based activity log (F16.2). If misused, the admin asks the manager to correct it — no system-enforced approval step.
 
 **Validation ranges** — per-site, customizable by Company Admin. `labour.default_salary` / `default_fooding` are validated against the labour's **current_site** config at create/edit time:
 - `attendance_present_choices` — explicit allowed set for the `present` value, e.g. `[0, 0.5, 1, 1.5, 2, 3]` (only these accepted; the set is not a uniform step, so it is a list not a min/max).
 - `salary_min` / `salary_max` — bounds for attendance `salary` and `labour.default_salary` (e.g. 500–1500).
 - `fooding_min` / `fooding_max` — bounds for fooding pay amount and `labour.default_fooding` (e.g. 50–200).
-- `advance_min` / `advance_max` — bounds for a **single** advance row amount (e.g. 0–10000); caps the per-row amount, not the daily count (`advance_per_day_limit`).
+- `advance_min` / `advance_max` — bounds for a **single** advance row amount (e.g. 0–10000); caps the per-row amount, not the daily count (`advance_per_labour_per_day_limit`).
 
 ### F6.1 — Create / edit site
 - Admin provides site name (and detail fields). New site starts open + active.
@@ -383,11 +371,11 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 
 ### F6.12 — Manage site configuration
 - Company Admin views/edits the site's `SiteConfig` (one row per site, auto-created at F6.1 with the defaults above).
-- Controls, per entity type: create window, update window, delete window, and per-day quota (see **Site Configuration** above).
+- Controls: one shared daily-record create / update / delete window (gates the eight daily ledgers) + the per-labour/day quotas (attendance, fooding, advance) — see **Site Configuration** above.
 - Changes apply to **future** create / edit checks only — existing rows are untouched. Every change is activity-logged (F16).
-- Setting a `*_create_window = 0` freezes new entries of that type at the site without deactivating the whole site.
+- Setting `daily_record_create_window = 0` freezes new daily-ledger entries at the site without deactivating the whole site.
 - **Reset to defaults** — Company Admin can reset this site's `SiteConfig` back to its built-in defaults in one action; config-only (no entity data touched), applies to future checks only, activity-logged.
-- **Out-of-window override (manual)** — see **Site Configuration** (F6): the admin temporarily widens the matching window, the manager acts, and the admin reviews via the activity log (F16.2).
+- **Out-of-window override (manual)** — see **Site Configuration** (F6): the admin temporarily widens the daily-record window, the manager acts, and the admin reviews via the activity log (F16.2).
 
 ### F6.13 — View site activity log
 - Site-scoped view of the **activity log** (F16.2 / F16.4): labour transfers (F7.2), category removals/merges (F6.15), and all create / update / delete events for this site, filterable by user, entity type, and date.
@@ -436,7 +424,7 @@ Salary is stored on each DailyAttendance row. `labour.default_salary` is used on
 3. Enter the new salary (must be within the site's `salary_min` / `salary_max`).
 4. System updates `salary` on each selected (`is_sealed = false`) row and recomputes the running `site_total_salary` of those and all later rows.
 - Rows already sealed (`is_sealed = true`) cannot be re-priced.
-- `attendance_update_window` applies to the `present` field only — salary may be re-priced on any still-unsealed row regardless of the window.
+- `daily_record_update_window` applies to the `present` field only — salary may be re-priced on any still-unsealed row regardless of the window.
 - No activity log needed for salary change of daily attendance.
 
 ### F7.5 — View and search labourers
@@ -523,11 +511,11 @@ Rules:
 
 ### F11.1 — Record daily attendance
 - Grain is **labour / day** (optionally split by billing category): Site Manager picks date, optional billing category (from the site's list, F6.9), `present` units (full/half/overtime), and `salary` (seeded from the labour default, editable per row).
-- **No DB uniqueness** on (labour, billing_category, date) — a labour may have **multiple attendance rows on the same date** (different billing categories, or the same one). New rows per labour/date are gated by **`attendance_per_day_limit`** (config affects **new** rows only; existing rows untouched).
+- **No DB uniqueness** on (labour, billing_category, date) — a labour may have **multiple attendance rows on the same date** (different billing categories, or the same one). New rows per labour/date are gated by **`attendance_per_labour_per_day_limit`** (config affects **new** rows only; existing rows untouched).
 - Billing category is **optional**; when set, the earnings attribute to billing-category costing. When the site has none it stays null.
-- Validations: labour active and assigned to this site, site active, billing category active (if chosen), and the site config gates (`attendance_create_window`, `attendance_per_day_limit` — F6.12). New row is `is_sealed = false`.
+- Validations: labour active and assigned to this site, site active, billing category active (if chosen), and the site config gates (`daily_record_create_window`, `attendance_per_labour_per_day_limit` — F6.12). New row is `is_sealed = false`.
 - Row stores the salary snapshot and **per-site** running totals: `site_total_present`, `site_total_salary`.
-> Create/update/delete windows + `*_per_day_limit` gate every ledger entity — see **Site Configuration** (F6) / F6.12. A creatable date must additionally be **> the last work session's `created_at` date** and **never in the future** (F10).
+> The shared daily-record window + the per-labour/day limits gate the eight daily ledgers — see **Site Configuration** (F6) / F6.12. A creatable date must additionally be **> the last work session's `created_at` date** and **never in the future** (F10).
 
 ### F11.2 — Record extra work
 - Separate ledger (`ExtraWork`): site, **optional** billing category (F6.9), labour, date, amount, note; `is_sealed = false`.
@@ -551,7 +539,7 @@ Rules:
 ### F12.2 — Record hidden cost (HiddenCost)
 - Separate record type from SiteCost — kept apart so permissions/visibility can differ ("hidden" from normal site views).
 - It is not paid from site cash; it is paid directly by the company admin.
-- Gated by `hiddencost_create_window` / `hiddencost_update_window` / `hiddencost_delete_window` (default `-1` = any date — admin enters hidden costs late); see F6.12.
+- **Not** gated by the daily-record window — hidden cost is an admin/office record, allowed on any date ≤ today (entered late); see F6.12.
 - It is used to calculate the **profit/revenue** of a site, not the cash balance.
 - **Billing category is optional**: set → cost allocates to that billing category; null → site-general (not tied to any billing category, F15.8).
 - **Hiddencost category optional** (`custom_category`, `scope = hiddencost` — F3.4; prompted when any exist).
@@ -582,7 +570,7 @@ Rules:
 ### F14.1 — Create site bill
 - Authorized user records a bill: site, date, **optional billing category (F6.9)**, **optional sitebill category** (`custom_category`, `scope = sitebill` — F3.4), amount, note.
 - Running per-site `site_total` per bill row; bills accumulate against that billing category's contract value (sqft × rate, F6.9) when set.
-- Gated by `sitebill_create_window` / `sitebill_update_window` / `sitebill_delete_window` (default `-1` = any date, so the admin/office can record bills anytime); see F6.12.
+- **Not** gated by the daily-record window — site bill is an admin/office record, allowed on any date ≤ today (recorded anytime); see F6.12.
 
 ### F14.2 — View bill history
 - Ledger per site, filterable by billing category, date range; shows billed vs billing-category contract value vs remaining receivable.
@@ -632,7 +620,7 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 Edits happen directly; the `is_sealed` flag is the hard lock, and the **activity log** makes every live edit accountable. The activity log replaces the old per-row `updated_by` — the actor lives on `activity_log.actor_id`.
 
 ### F16.1 — Edit / delete a record (direct, with auto activity log)
-- Allowed only on rows that are still **unsealed** (`is_sealed = false`; sealed rows are immutable — see F10) **and** whose date is inside the site's `*_update_window` (for edits) or `*_delete_window` (for deletes) — F6.12. Sealed always blocks; otherwise the stricter of the two limits wins.
+- Allowed only on rows that are still **unsealed** (`is_sealed = false`; sealed rows are immutable — see F10) **and** whose date is inside the site's `daily_record_update_window` (for edits) or `daily_record_delete_window` (for deletes) — F6.12. Hidden cost / site bill are not window-gated. Sealed always blocks; otherwise the window limit applies.
 - An authorized user edits or deletes a record from its own module (attendance F11, extra work F11, advance/fooding F8, return F9, cash F13, cost/hidden cost F12, bill F14, plus master data).
 - In one transaction the system:
   1. Applies the change (financial/ledger rows are **soft-deleted**, not hard-deleted).
