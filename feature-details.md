@@ -21,18 +21,17 @@
 - **Site Manager** — records attendance, cash, and cost for permitted sites; edits are logged.
 
 ## Access Control & User Model
-### One `User` table, two scopes:
-- **System** (`scope = system`, `company = null`) — platform staff (F2); uses the **Platform API** (`/api/platform/…`), cross-company.
-- **Tenant** (`scope = tenant`, `company` set) — company user (F5); uses the **Tenant API** (`/api/…`), auto-scoped to its company.
-- One phone = one account, so a person is system **or** tenant. Same OTP + JWT login (F1.1 / F2.1); token carries `user_id`, `scope`, `company_id`, groups. A system user reaches tenant data only through explicit platform endpoints (e.g. F2.9).
-- **Why separate login endpoints** 
-  - Phone is globally unique, so `scope` alone *could* drive one shared endpoint; they are split for security, not necessity.
-  - The platform login is an isolated route with its own rate-limit / IP-allowlist / hardening, kept off the tenant attack surface.
-  - A system account can never authenticate on the tenant endpoint (scope mismatch → rejected), shrinking coupling and blast radius. 
-  - It avoids the account enumeration a shared endpoint leaks (which phones are platform staff). OTP generation, JWT issue, and BD-phone normalization live in a **shared service**; each endpoint is a thin wrapper that fixes the scope and applies its own policy — **one core logic, two doors**.
+### One `User` table, two kinds of user — split by Django's `is_staff`:
+- **System** (`is_staff = true`, often `is_superuser`; `company_id = null`) — platform staff (F2). Sign in to the **Django admin site** (`/admin/`) with **session auth**; cross-company.
+- **Tenant** (`is_staff = false`, `company_id` set) — company user (F5). Use the **Tenant API** (`/api/…`) with **JWT**, auto-scoped to its company.
+- One phone = one account, so a person is system **or** tenant — Django's `is_staff` distinguishes them (no separate `scope` column). Tenant login (F1.1) issues JWT; the token carries `user_id`, `company_id`, groups. A system user reaches tenant data only through the Django admin / explicit platform actions (e.g. F2.9), never the tenant JWT API.
+- **Why two auth backends** (session for admin, JWT for API)
+  - Different surfaces, different hardening: the **admin panel uses Django session auth**, the **tenant API uses JWT**. The admin site is an isolated route (its own rate-limit / IP-allowlist), kept off the tenant attack surface.
+  - `is_staff` gates the admin site — a tenant user (`is_staff = false`) can never reach it; and a system account is in no company group, so it cannot act on tenant API data. Shrinks coupling and blast radius.
+  - It avoids the account enumeration a shared login leaks (which phones are platform staff). OTP generation and BD-phone normalization live in a **shared service**; each surface is a thin wrapper applying its own auth + policy — **one core logic, two doors**.
 
 ### Who can do what — two independent layers:
-- **Capability** (*what*) — a Django **Group**: System Admin / System Manager; Company Admin / Company Manager / Site Manager. Global within its scope, never per-site.
+- **Capability** (*what*) — a Django **Group**: System Admin / System Manager; Company Admin / Company Manager / Site Manager. Global within its tier (system vs company), never per-site.
 - **Scope** (*which sites*) — **`UserSite`** links a tenant user to sites. A site can have many managers; a user many sites.
 - A **write** is allowed when: capability (Group) **+** assigned to the site (`UserSite`) **+** inside the entity's window (F6.12) **+** the row is **unsealed** (`is_sealed = false`). The Company Admin manages all sites by default, but to **record** on a site must self-assign and join the Site Manager group (F6.14) — the same write rule then applies.
 ---
@@ -86,7 +85,7 @@ System-level users; not tied to any company.
 > **MVP scope** — in the MVP the entire platform side (F2.*) is operated through the **Django admin site** (`/admin/`, Django session auth); there is no platform frontend or public platform API yet, and system users are Django staff/superusers. The dedicated **Platform API** + system OTP/JWT login (F2.1) and custom actions like company reset (F2.11) are a **later phase**. The **tenant** side (F1, F3–F16) ships with its real API + frontend now.
 
 ### F2.1 — System user login
-- Separate login for platform staff (no company context); same OTP + JWT pattern.
+- Platform staff sign in to the **Django admin site** with **session auth** (no company context) — MVP. A dedicated OTP + JWT platform-API login is a later phase (see F2 MVP note). Identified by `is_staff = true`.
 
 ### F2.2 — View and search all companies
 - List with open site count, billing status, activity, and activity logs.
@@ -104,7 +103,7 @@ System-level users; not tied to any company.
 - Dashboard of all companies: plan, active / expiring soon / expired, revenue summary.
 
 ### F2.6 — Create system users
-- System Admin creates platform staff accounts (`scope = system`, `company = null`); assigned a system group (F2.7).
+- System Admin creates platform staff accounts (`is_staff = true`, `company_id = null`); assigned a system group (F2.7).
 
 ### F2.7 — Assign system roles
 - System Admin assigns staff to system-level groups (System Admin / System Manager).
@@ -227,7 +226,7 @@ Pricing is driven by **open site count**; the user and labour caps default to `-
 - System validates BD phone_number and checks it is not already registered.
 - System checks the company's **active-user count** against the plan's active-user limit (skip if `-1`); at the cap → blocked with an upgrade prompt (F4.4).
 - System sends an OTP to this phone number; admin completes registration by providing the OTP.
-- System will creates user under the same company (`scope = tenant`, `company` = admin's company).
+- System will creates user under the same company (`is_staff = false`, `company` = admin's company).
 - If provide role and permitted sites then Assign this user to that group and permitted sites.
 > Lately this staff user will login using this phone_number and password. and can change the password. There is no security concern about account missused by admin. Because, admin need the otp to register or login staff user account. But, otp will send to this user phone_number. So, Account owner only can login. Admin just has activate, deactivate, role management, permission management and delete this account autority.
 

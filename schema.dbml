@@ -4,11 +4,6 @@ Project SiteMan {
 
 // ---------------- Enums ----------------
 
-Enum user_scope {
-  system
-  tenant
-}
-
 Enum otp_channel {
   sms
   email
@@ -40,9 +35,9 @@ Enum custom_category_scope {
 }
 
 Enum activity_action {
-  create
-  update
-  delete
+  addition
+  change
+  delation
   merge
 }
 
@@ -52,16 +47,19 @@ Enum activity_action {
 
 Table user {
   id                    bigint      [pk]
-  scope                 user_scope  [not null, note: 'system => company_id NULL; tenant => company_id set']
   company_id            bigint      [ref: > company.id, null, note: 'NULL for system users']
   name                  varchar     [not null]
   phone_number          varchar     [not null, unique, note: 'BD phone, normalized +8801XXXXXXXXX (F1.1)']
   email                 varchar     [null]
   email_verified        boolean     [not null, default: false, note: 'email change confirmed via OTP (F1)']
+  
   password              varchar     [not null, note: 'hashed']
   is_active             boolean     [not null, default: true]
+  is_superuser          boolean     [not null, default: false, note: 'system-scope only (F1.2)']
+  is_staff              boolean     [not null, default: false, note: 'system-scope only (F1.2)']
+
   created_at            timestamp   [not null]
-  created_by            bigint      [ref: > user.id, not null]
+  created_by            bigint      [ref: > user.id, null]
   updated_at            timestamp   [not null]
   deleted_at            timestamp   [null, note: 'deactivate only; hard-delete blocked while any created_by/actor ref exists (RESTRICT) — purge effectively never (F5.6)']
 
@@ -72,7 +70,28 @@ Table user {
 
 Table group {
   id    bigint  [pk]
-  name  varchar [not null, unique, note: 'Django auth_group — System/Company/Site roles']
+  name  varchar [not null, unique]
+}
+
+Table content_type {
+  id            int       [pk]
+  app_label     varchar
+  model         varchar
+
+  indexes {
+    (app_label, model) [unique]
+  }
+}
+
+Table permission {
+  id                int       [pk]
+  name              varchar
+  content_type_id   int       [ref: > content_type.id]
+  codename          varchar
+
+  indexes {
+    (content_type_id, codename) [unique]
+  }
 }
 
 Table user_group {
@@ -83,6 +102,43 @@ Table user_group {
   Indexes {
     (user_id, group_id) [unique]
   }
+}
+
+Table user_permissions {
+  id             bigint [pk]
+  user_id        int [ref: > user.id]
+  permission_id  int [ref: > permission.id]
+
+  indexes {
+    (user_id, permission_id) [unique]
+  }
+}
+
+Table group_permissions {
+  id             bigint [pk]
+  group_id       int [ref: > group.id]
+  permission_id  int [ref: > permission.id]
+
+  indexes {
+    (group_id, permission_id) [unique]
+  }
+}
+
+Table session {
+  session_key    varchar [pk]
+  session_data   text
+  expire_date    datetime
+}
+
+Table admin_log {
+  id                int       [pk]
+  action_time       datetime
+  user_id           int       [ref: > user.id]
+  content_type_id   int       [ref: > content_type.id]
+  object_id         text
+  object_repr       varchar
+  action_flag       smallint
+  change_message    text
 }
 
 Table user_site {
@@ -581,18 +637,17 @@ Table activity_log {
   id           bigint          [pk]
   company_id   bigint          [ref: > company.id, not null]
   actor_id     bigint          [ref: > user.id, not null, note: 'who acted — the creator; no created_by/updated_at, logs are immutable (F16)']
-  target_type  varchar         [not null, note: 'model name of the changed record']
-  target_id    bigint          [not null]
-  action       activity_action [not null]
+  content_type_id  bigint     [ref: > content_type.id]
+  object_id    bigint          [not null]
+  action_flag       activity_action [not null]
   before       jsonb           [null, note: 'snapshot before update/delete/merge']
   after        jsonb           [null, note: 'snapshot after create/update/merge']
   note         varchar         [null, note: 'required for update/delete of financial records']
-  is_sensitive boolean         [not null, default: false, note: 'true for hidden_cost + company-level events (F16.2)']
   created_at   timestamp       [not null, note: 'event time; never updated or deleted (F16.3)']
 
   Indexes {
-    (company_id, target_type, target_id)
-    (company_id, action)
+    (company_id, content_type_id, object_id)
+    (company_id, action_flag)
   }
 }
 
