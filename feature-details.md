@@ -94,7 +94,7 @@ System-level users; not tied to any company.
 - Deactivated company: all its users blocked from login; data retained.
 
 ### F2.4 — Manage subscription plans
-- System Admin creates/edits plan tiers: **open-site limit**, **active-user limit**, **active-labour limit**, and one or more **durations** — each duration (any month count, e.g. 1 / 3 / 6 / 12 / 24) with its own **per-month rate**. Durations are stored as `plan_price` rows (not fixed columns), so adding a new duration needs **no schema change**. Each limit `-1` = no limit; `N` = cap.
+- System Admin creates/edits plan tiers: **open-site limit**, **active-user limit**, **active-labour limit**, and one or more **durations** — each duration (any month count, e.g. 1 / 3 / 6 / 12 / 24) with its own **per-month rate**. Durations are stored as `plan_variant` rows (not fixed columns), so adding a new duration needs **no schema change**. Each limit `-1` = no limit; `N` = cap.
 - Price changes apply to new purchases/renewals only; running subscriptions keep their rate snapshot.
 - Custom plan: limits and price negotiated and set manually per company.
 - **Manual payment** — a System user can record a subscription payment that bypasses the gateway (offline / bank / cash, or after a gateway failure) for any company.
@@ -122,13 +122,13 @@ System-level users; not tied to any company.
 | Field | Default | Meaning |
 |---|---|---|
 | `maintenance_mode` | false | When `true`, show a maintenance banner to all users. |
-| `subscription_renew_notification` | 5 (days) | Begin renewal reminders this many days **before** `valid_until` — SMS + dashboard to every Company Admin (F4.7). |
+| `subscription_renew_notification` | 5 (days) | Begin renewal reminders this many days **before** `paid_until` — SMS + dashboard to every Company Admin (F4.7). |
 | `company_deactivate_after_expiry` | 10 (days) | Days **after** expiry to auto-deactivate the company. On expiry, write access is cut immediately (F4.6); after this many further days the cron deactivates the company — no user can log in, reactivation needs a support request (F2.3). |
 | `delete_deactivated_company` | 60 (days) | Days a company may stay deactivated before a cron **purges** its data. |
 
 **How it drives cron** — the scheduled jobs run on a **fixed schedule** (daily, set at deploy). They read these **threshold values** at run time and decide what to act on. So changing a value takes effect on the next run.
 
-> **Lifecycle timeline:** `valid_until` reached → write disabled immediately (F4.6) → **+ `company_deactivate_after_expiry` days** still unpaid → company deactivated, logins blocked → **+ `delete_deactivated_company` days** → data purged.
+> **Lifecycle timeline:** `paid_until` reached → write disabled immediately (F4.6) → **+ `company_deactivate_after_expiry` days** still unpaid → company deactivated, logins blocked → **+ `delete_deactivated_company` days** → data purged.
 
 ### F2.11 — Reset a company (system user only, OTP dual-control)
 A low-frequency support action for clients who tested the app on a real account and want a clean production start. Destructive and **irreversible**, so it lives only on the platform side under two-party control.
@@ -157,16 +157,17 @@ A low-frequency support action for clients who tested the app on a real account 
 - System saves and records the change in the activity log.
 
 ### F3.4 — Manage custom categories
-- **One model** `custom_category` (`site_id`, `scope`, `name`, `note`, `display_order`, `is_active`) replaces the old per-ledger type tables. `scope` (enum) ties a category to one ledger: `sitecost` (F12.1), `hiddencost` (F12.2), `sitecash` (F13.1), `sitecashreturn` (F13.2), `sitebill` (F14.1). Admin creates/edits each.
+- **One model** `custom_category` (`site_id`, `scope`, `name`, `note`, `display_order`, `is_active`) replaces the old per-ledger type tables. `scope` (enum) ties a category to one ledger: `attendance` (F11.1), `extrawork` (F11.2), `sitecost` (F12.1), `hiddencost` (F12.2), `sitecash` (F13.1), `sitecashreturn` (F13.2), `sitebill` (F14.1). Admin creates/edits each.
 - **Site-scoped** — each **site** owns its own category set; the ledger dropdown filters by **(site, scope)**. A site may start with **zero** categories or some defaults.
 - **Optional on the ledger** — each ledger's `custom_category_id` is **nullable**. On create the user is prompted to pick one **only when** that site has `count(scope) > 0`; otherwise (or by choice) it stays null.
 - **Deactivate** — hidden from new-entry dropdowns; existing rows keep their link.
-- **Remove (delete or merge)** — deleting a category prompts the admin to choose: **(a) set null** — the FK on every referencing row becomes null (`ON DELETE SET NULL`); or **(b) merge** — re-point its rows to another same-site, same-`scope` category (plain `UPDATE`), then delete the emptied one. One activity log entry is written (`action = delete` or `merge`). The action is **not undoable** — the admin must confirm first.
+- **Remove (delete or merge)** — deleting a category prompts the admin to choose: **(a) set null** — the FK on every referencing row becomes null (`ON DELETE SET NULL`); or **(b) merge** — re-point its rows to another same-site, same-`scope` category (plain `UPDATE`), then delete the emptied one. One activity log entry is written (`action_flag = deletion` or `merge`). The action is **not undoable** — the admin must confirm first.
 
 ### F3.5 — Manage company configuration
 - Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 with its own built-in defaults).
 - Tenant-wide feature flags that apply to every site of the company. The change is activity-logged.
 - Example: **`allow_labour_transfer`** (bool, default `true`) — when `false`, moving a labour from one site to another (F7.2) is blocked company-wide; a labour stays on its original site for its whole lifecycle. Existing assignments are untouched.
+- Example: **`auto_renew`** (bool, default `false`) — opt into automatic subscription renewal (F4.3); `false` (default) = let a term lapse at `paid_until` (i.e. "cancel").
 - **Reset to defaults** — Company Admin can reset `CompanyConfig` back to its built-in defaults in one action; config-only (no entity data touched), activity-logged.
 
 ---
@@ -177,14 +178,22 @@ A low-frequency support action for clients who tested the app on a real account 
 - Company Admin sees current plan, expiry date, payment history, and **usage vs limit** for each capped resource: open sites, active users, active labour.
 
 ### F4.2 — Pay for plan
-- Admin picks a plan tier and one of its offered durations (any `plan_price` for the tier).
+- Admin picks a plan tier and one of its offered durations (any `plan_variant` for the tier).
 - Admin starts payment → system creates a payment attempt and redirects to the payment gateway.
 - Gateway sends confirmation (IPN/webhook); system verifies signature and amount.
-- On success: subscription record saved (plan, duration, amount, transaction id), `paid_until` extended from the activation date.
+- On success: `subscription` row saved (`plan_variant`, duration, amount, transaction id) + a `payment`; `paid_until` set by **stacking** — `max(previous paid_until, today) + duration` (first purchase = `today + duration`). The gateway token may be saved to `company.gateway_customer_ref` to enable auto-renew (F4.3).
 - On failure/cancel: nothing changes; user can retry.
 
 ### F4.3 — Renew plan
-- Admin can renew plan at any time
+**Manual renew** — admin renews any time (before or after expiry): pick the same or another `plan_variant`; a `subscription` row + `payment` are created and `paid_until` **stacks** — `max(previous paid_until, today) + duration` (renew-early keeps the unused tail; renew-late starts from today).
+
+**Auto-renew** — opt-in, so a term renews without manual action.
+- **Arm it:** admin sets `CompanyConfig.auto_renew = true` (F3.5) **and** a saved gateway token exists (`company.gateway_customer_ref`, captured on a tokenized F4.2 payment). `auto_renew = true` with no token = intent but not armed → prompt one tokenized payment.
+- **Charge cycle** (cron, reuses F4.7 timing): a few days before `paid_until`, for armed companies, charge `gateway_customer_ref` for the latest term's `plan_variant.discount_price`.
+  - **Success** → new `subscription` row (variant + snapshot limits/price, stacked `paid_until`) + `payment` (`method = gateway`, `status = success`); refresh `company.paid_until`. Service never lapses.
+  - **Failure** → `payment.status = failed`, notify admin, retry within the lead window; if still unpaid past `paid_until`, fall to the normal expiry chain (F4.6).
+  - **Skipped** (notify → manual renew) when the latest subscription has **no variant** (custom deal, `plan_variant_id = null`) or the variant is **retired** (`is_active = false`).
+- **Cancel = turn `auto_renew` off.** The current term stays valid to `paid_until`; no future charge. No stored "cancelled" status — active/expired stays derived from `paid_until`.
 
 ### F4.4 — Upgrade plan
 - **Before expiry:** remaining value of the current plan is calculated (unused days × current per-day rate) and adjusted against the new plan cost; pay the difference.
@@ -206,7 +215,7 @@ A low-frequency support action for clients who tested the app on a real account 
 - Reminder log kept so the same reminder is not repeated.
 
 ### Subscription Model (reference)
-Pricing is driven by **open site count**; the user and labour caps default to `-1` (no limit) today and exist so a tier can be tightened later without a schema change. Longer durations get a **per-month discount**. Prices in BDT. The durations below (1 / 6 / 12 months) are the **current offering** only — they are `plan_price` rows, not fixed by schema, so any duration can be added as data.
+Pricing is driven by **open site count**; the user and labour caps default to `-1` (no limit) today and exist so a tier can be tightened later without a schema change. Longer durations get a **per-month discount**. Prices in BDT. The durations below (1 / 6 / 12 months) are the **current offering** only — they are `plan_variant` rows, not fixed by schema, so any duration can be added as data.
 
 | Plan | Open Sites | Active Users | Active Labour | 1 Month | 6 Months | 1 Year |
 |---|---|---|---|---|---|---|
@@ -285,7 +294,7 @@ Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with s
 > Future dates are **always** rejected, regardless of any window.
 > **Hidden cost** and **site bill** are **not** window-gated — they are admin/office records, allowed on any date ≤ today (late entries expected).
 
-**Per-labour/day quota** — `attendance_per_labour_per_day_limit`, `fooding_per_labour_per_day_limit`, `advance_per_labour_per_day_limit`:
+**Per-labour/day quota** — `attendance_per_labour_per_day_limit`, `extra_per_labour_per_day_limit`, `fooding_per_labour_per_day_limit`, `advance_per_labour_per_day_limit`:
 
 | Value | Meaning |
 |---|---|
@@ -293,7 +302,7 @@ Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with s
 | `0` | Blocked — no rows that day |
 | `N ≥ 1` | At most `N` rows per labour per date (across billing categories). Applies to **new** rows only; there is no DB uniqueness (F11.1). |
 
-Defaults: attendance `1`, fooding `1`, advance `-1`.
+Defaults: attendance `1`, extra work `1`, fooding `1`, advance `-1`.
 
 **Cross-site, same date** — there is no separate multisite flag. By default a labour has one record per date; to record the same labour/date at a **different** site, first free the existing row (remove it) or transfer the labour to the new site (F7.2). To genuinely allow both sites on the same date, raise the relevant `*_per_labour_per_day_limit`.
 
@@ -370,7 +379,7 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 
 ### F6.12 — Manage site configuration
 - Company Admin views/edits the site's `SiteConfig` (one row per site, auto-created at F6.1 with the defaults above).
-- Controls: one shared daily-record create / update / delete window (gates the eight daily ledgers) + the per-labour/day quotas (attendance, fooding, advance) — see **Site Configuration** above.
+- Controls: one shared daily-record create / update / delete window (gates the eight daily ledgers) + the per-labour/day quotas (attendance, extra work, fooding, advance) — see **Site Configuration** above.
 - Changes apply to **future** create / edit checks only — existing rows are untouched. Every change is activity-logged (F16).
 - Setting `daily_record_create_window = 0` freezes new daily-ledger entries at the site without deactivating the whole site.
 - **Reset to defaults** — Company Admin can reset this site's `SiteConfig` back to its built-in defaults in one action; config-only (no entity data touched), applies to future checks only, activity-logged.
@@ -392,9 +401,9 @@ A billing category that already has records can be removed two ways; the admin i
 1. **Delete & set null** — the category is deleted and every referencing ledger row (attendance, extra work, site cost, hidden cost, site bill) has its `billing_id` set to **null** (`ON DELETE SET NULL`). Those rows become site-general (no billing category).
 2. **Merge into another (same site)** — the admin picks a target A; the source B's rows are re-pointed to A (plain `UPDATE billing_id = A`), then B is deleted (now unreferenced). `updated_at` is untouched; `site_total*` is unaffected (site never changes); per-category figures are aggregated on read (Conventions).
 
-One activity log entry records the action (`action = delete` or `merge`, with affected-row count). `billing_category_details` cascades away with the deleted category.
+One activity log entry records the action (`action_flag = deletion` or `merge`, with affected-row count). `billing_category_details` cascades away with the deleted category.
 
-> Custom-category removal (sitecost / hiddencost / sitecash / sitecashreturn / sitebill) works the same way — see **F3.4**.
+> Custom-category removal (attendance / extrawork / sitecost / hiddencost / sitecash / sitecashreturn / sitebill) works the same way — see **F3.4**.
 
 ---
 
@@ -512,15 +521,16 @@ Rules:
 - Grain is **labour / day** (optionally split by billing category): Site Manager picks date, optional billing category (from the site's list, F6.9), `present` units (full/half/overtime), and `salary` (seeded from the labour default, editable per row).
 - **No DB uniqueness** on (labour, billing_category, date) — a labour may have **multiple attendance rows on the same date** (different billing categories, or the same one). New rows per labour/date are gated by **`attendance_per_labour_per_day_limit`** (config affects **new** rows only; existing rows untouched).
 - Billing category is **optional**; when set, the earnings attribute to billing-category costing. When the site has none it stays null.
+- **Optional attendance custom category** (`custom_category`, `scope = attendance` — F3.4; prompted when any exist for the site).
 - Validations: labour active and assigned to this site, site active, billing category active (if chosen), and the site config gates (`daily_record_create_window`, `attendance_per_labour_per_day_limit` — F6.12). New row is `is_sealed = false`.
 - Row stores the salary snapshot and **per-site** running totals: `site_total_present`, `site_total_salary`.
 > The shared daily-record window + the per-labour/day limits gate the eight daily ledgers — see **Site Configuration** (F6) / F6.12. A creatable date must additionally be **> the last work session's `created_at` date** and **never in the future** (F10).
 
 ### F11.2 — Record extra work
-- Separate ledger (`ExtraWork`): site, **optional** billing category (F6.9), labour, date, amount, note; `is_sealed = false`.
+- Separate ledger (`ExtraWork`): site, **optional** billing category (F6.9), **optional extrawork custom category** (`custom_category`, `scope = extrawork` — F3.4), labour, date, amount, note; `is_sealed = false`.
 - Kept apart from attendance so ad-hoc extra earnings are tracked on their own.
 - Running per-site `site_total_amount`. Adds to the labour's earnings.
-- **No DB uniqueness** — multiple extra-work rows per labour/date are allowed (gated by config).
+- **No DB uniqueness** — multiple extra-work rows per labour/date are allowed (gated by `extra_per_labour_per_day_limit`, F6.12).
 
 ### F11.3 — View attendance & extra work history
 - Filter by labour, site, billing category, or date range; shows daily rows + running totals.
@@ -623,14 +633,14 @@ Edits happen directly; the `is_sealed` flag is the hard lock, and the **activity
 - An authorized user edits or deletes a record from its own module (attendance F11, extra work F11, advance/fooding F8, return F9, cash F13, cost/hidden cost F12, bill F14, plus master data).
 - In one transaction the system:
   1. Applies the change (financial/ledger rows are **soft-deleted**, not hard-deleted).
-  2. Writes an **activity log entry**: company, actor, timestamp, target record type + id, action (`create` / `update` / `delete` / `merge`), **before snapshot**, **after snapshot**, and a **note (required for update/delete of financial records)**.
+  2. Writes an **activity log entry**: company, actor, timestamp, target (`content_type` + `object_id`, a Django generic FK), `action_flag` (`addition` / `change` / `deletion` / `merge` — Django LogEntry style: addition=create, change=update, deletion=delete), **before snapshot**, **after snapshot**, and a **note (required for change/deletion of financial records)**.
   3. Bumps the record's `updated_at` — **only** for an explicit user field edit. A **category removal/merge** (F3.4 / F6.15) re-points or nulls the row's category FK and leaves `updated_at` untouched.
   4. Recalculates the per-**site** running totals (`site_total*`) of all later rows in the same ledger so the chain stays consistent.
 
 ### F16.2 — View the activity log
 - Any authorized user views the log, filtered by record, site, user, action, or date range.
 - Each entry shows who changed what, when, the before/after values, and the note.
-- **Visibility** — a Site Manager / Company Manager sees all activity for their **authorized sites**, **except sensitive entries**: hidden cost (admin-only, F12.2) and company-level events. Those are shown to the Company Admin only.
+- **Visibility** — a Site Manager / Company Manager sees all activity for their **authorized sites**, **except sensitive entries** — **derived** from the entry's target `content_type` (e.g. `hidden_cost`, F12.2) plus company-level events, **not** a stored flag. Sensitive entries are shown to the Company Admin only.
 
 ### F16.3 — Activity logs are permanent
 - Activity entries can **never** be edited or deleted — **not even by the Company Admin**. There is no soft-delete and no removal action on the tenant side.

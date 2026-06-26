@@ -21,6 +21,8 @@ Enum payment_status {
 }
 
 Enum custom_category_scope {
+  attendance
+  extrawork
   sitecost
   hiddencost
   sitecash
@@ -31,7 +33,7 @@ Enum custom_category_scope {
 Enum activity_action {
   addition
   change
-  delation
+  deletion
   merge
 }
 
@@ -155,7 +157,7 @@ Table user_site {
 Table system_config {
   id                              bigint    [pk, note: 'Singleton (django-solo), F2.10']
   maintenance_mode                boolean   [not null, default: false]
-  subscription_renew_notification int       [not null, default: 5,  note: 'days BEFORE valid_until (F4.7)']
+  subscription_renew_notification int       [not null, default: 5,  note: 'days BEFORE paid_until (F4.7)']
   company_deactivate_after_expiry int       [not null, default: 10, note: 'days AFTER expiry to deactivate (F4.6)']
   delete_deactivated_company      int       [not null, default: 60, note: 'days deactivated before purge']
   created_at                      timestamp [not null]
@@ -294,6 +296,7 @@ Table site_config {
 
 
   attendance_per_labour_per_day_limit int [not null, default: 1, note: 'gates NEW attendance rows per labour/date (F11.1); existing rows unaffected']
+  extra_per_labour_per_day_limit      int [not null, default: 1]
   fooding_per_labour_per_day_limit    int [not null, default: 1]
   advance_per_labour_per_day_limit    int [not null, default: -1]
 
@@ -450,6 +453,7 @@ Table daily_attendance {
   labour_id           bigint        [ref: > labour.id, not null]
   site_id             bigint        [ref: > site.id, not null]
   billing_id          bigint        [null, note: 'optional billing category; site may run without categories (F6.9)']
+  custom_category_id  bigint        [null, note: 'optional billing category; site may run without categories ']
   date                date          [not null]
   present             decimal(12,2) [not null, note: 'validated against attendance_present_choices']
   salary              int           [not null, note: 'snapshot; seeded from labour.default_salary']
@@ -471,6 +475,7 @@ Table extra_work {
   labour_id           bigint    [ref: > labour.id, not null]
   site_id             bigint    [ref: > site.id, not null]
   billing_id          bigint    [null, note: 'optional billing category (F6.9)']
+  custom_category_id  bigint    [null, note: 'optional custom category']
   date                date      [not null]
   amount              int       [not null]
   note                varchar   [null]
@@ -655,6 +660,8 @@ Ref: site_cost.billing_id         > billing_category.id   [delete: set null]
 Ref: hidden_cost.billing_id       > billing_category.id   [delete: set null]
 Ref: site_bill.billing_id         > billing_category.id   [delete: set null]
 
+Ref: daily_attendance.custom_category_id > custom_category.id  [delete: set null]
+Ref: extra_work.custom_category_id       > custom_category.id  [delete: set null]
 Ref: site_cost.custom_category_id        > custom_category.id  [delete: set null]
 Ref: hidden_cost.custom_category_id      > custom_category.id  [delete: set null]
 Ref: site_cash.custom_category_id        > custom_category.id  [delete: set null]
