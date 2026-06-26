@@ -20,12 +20,6 @@ Enum payment_status {
   failed
 }
 
-Enum subscription_status {
-  active
-  expired
-  cancelled
-}
-
 Enum custom_category_scope {
   sitecost
   hiddencost
@@ -187,7 +181,8 @@ Table company {
   open_site_limit     int       [not null, default: 1,  note: 'cache; -1 = no limit']
   active_user_limit   int       [not null, default: -1, note: 'cache; -1 = no limit']
   active_labour_limit int       [not null, default: -1, note: 'cache; -1 = no limit']
-  valid_until         date      [null, note: 'cache of active subscription paid_until (F4.6)']
+  paid_until         date      [null, note: 'cache of active subscription paid_until (F4.6)']
+  gateway_customer_ref varchar [null, note: 'saved gateway customer/instrument id for auto-renew charges (F4.3)']
   created_at          timestamp [not null]
   updated_at          timestamp [not null]
   deleted_at          timestamp [null, note: 'purge target after deactivation window']
@@ -197,6 +192,7 @@ Table company_config {
   id                    bigint    [pk]
   company_id            bigint    [ref: - company.id, not null, unique, note: 'one-to-one']
   allow_labour_transfer boolean   [not null, default: true, note: 'false => block labour transfer company-wide (F7.2)']
+  auto_renew            boolean   [not null, default: false, note: 'F4.3: on expiry auto-charge + extend using the latest subscription variant; false = let the term lapse (this is "cancel")']
   updated_at            timestamp [not null]
 }
 
@@ -210,14 +206,12 @@ Table plan {
   open_site_limit     int       [not null, note: '-1 = no limit']
   active_user_limit   int       [not null, default: -1]
   active_labour_limit int       [not null, default: -1]
-  is_custom           boolean   [not null, default: false]
-  is_active           boolean   [not null, default: true]
   created_at          timestamp [not null]
   created_by          bigint    [ref: > user.id, not null]
   updated_at          timestamp [not null]
 }
 
-Table plan_price {
+Table plan_variant {
   id             bigint    [pk]
   plan_id        bigint    [ref: > plan.id, not null]
   duration       int       [not null, note: 'any duration — 30, 120, 360']
@@ -236,17 +230,14 @@ Table plan_price {
 Table subscription {
   id                  bigint              [pk]
   company_id          bigint              [ref: > company.id, not null]
-  plan_id             bigint              [ref: > plan.id, null, note: 'NULL allowed for fully custom']
+  plan_variant_id     bigint              [ref: > plan_variant.id, null, note: 'NULL allowed for fully custom']
   open_site_limit     int                 [not null, note: 'snapshot at purchase']
   active_user_limit   int                 [not null]
   active_labour_limit int                 [not null]
-  duration            int                 [not null, note: 'chosen from plan_price.duration']
-  price               int                 [not null, note: 'locked from plan_price.price']
+  duration            int                 [not null, note: 'chosen from plan_variant.duration']
+  price               int                 [not null, note: 'locked from plan_variant.price']
   discount_price      int                 [not null, note: 'total paid this term']
-  start_date          date                [not null, note: 'activation date']
-  paid_until          date                [not null, note: 'extended from activation (F4.2)']
-  status              subscription_status [not null, default: 'active']
-  is_custom           boolean             [not null, default: false]
+  paid_until          date                [null, note: 'base_date = max(previous_paid_until, today) new_paid_until = base_date + duration; Null = not payment yet']
   created_at          timestamp           [not null]
   created_by          bigint              [ref: > user.id, not null]
   updated_at          timestamp           [not null]
@@ -264,7 +255,6 @@ Table payment {
   amount          int            [not null]
   status          payment_status [not null, default: 'pending']
   transaction_id  varchar        [null, note: 'gateway txn id; NULL for manual']
-  recorded_by     bigint         [ref: > user.id, not null, note: 'system user who logged a manual payment (F2.4)']
   paid_at         timestamp      [null]
   gateway_payload jsonb          [null, note: 'raw IPN/webhook']
   created_at      timestamp      [not null]
@@ -691,7 +681,7 @@ TableGroup company_and_subscription {
   company
   company_config
   plan
-  plan_price
+  plan_variant
   subscription
   payment
 }
