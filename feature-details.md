@@ -17,8 +17,8 @@
 - **System Admin** — manages all companies and subscriptions.
 - **System Manager** — monitors subscriptions and payments (assigned permissions).
 - **Company Admin** — full control of one company: users, sites, labour, subscription.
-- **Company Manager** — manages assigned sites and reviews the activity log for them.
-- **Site Manager** — records attendance, cash, and cost for permitted sites; edits are logged.
+- **Site Manager** — full CRUD on assigned sites (attendance, cash, cost, etc.); edits are logged.
+- **Site Auditor** — **view-only** on assigned sites (data + their activity log); cannot create / edit / delete.
 
 ## Access Control & User Model
 ### One `User` table, two kinds of user — split by Django's `is_staff`:
@@ -30,10 +30,13 @@
   - `is_staff` gates the admin site — a tenant user (`is_staff = false`) can never reach it; and a system account is in no company group, so it cannot act on tenant API data. Shrinks coupling and blast radius.
   - It avoids the account enumeration a shared login leaks (which phones are platform staff). OTP generation and BD-phone normalization live in a **shared service**; each surface is a thin wrapper applying its own auth + policy — **one core logic, two doors**.
 
-### Who can do what — two independent layers:
-- **Capability** (*what*) — a Django **Group**: System Admin / System Manager; Company Admin / Company Manager / Site Manager. Global within its tier (system vs company), never per-site.
-- **Scope** (*which sites*) — **`UserSite`** links a tenant user to sites. A site can have many managers; a user many sites.
-- A **write** is allowed when: capability (Group) **+** assigned to the site (`UserSite`) **+** inside the entity's window (F6.12) **+** the row is **unsealed** (`is_sealed = false`). The Company Admin manages all sites by default, but to **record** on a site must self-assign and join the Site Manager group (F6.14) — the same write rule then applies.
+### Who can do what — capability + (for site records) assignment:
+- **Capability** (*what*) — Django **groups + permissions** (`group_permissions`). System tier: System Admin / System Manager. Tenant tier roles **nest**: **Site Auditor** (view) ⊂ **Site Manager** (CRUD) ⊂ **Company Admin** (all). Multiple groups allowed — effective capability = **union** (= the highest). Permissions are **model-level / global** (e.g. `change_dailyattendance`).
+- **Scope** (*which sites*) — **`UserSite`** links a tenant user to sites. A site can have many users; a user many sites.
+- **Two authorization modes:**
+  1. **Site-scoped records** — every ledger (attendance, extra work, advance, fooding, return, site cost, hidden cost, site cash, cash return, bill; F8 / F9 / F11–F14): allowed when **has the permission** **AND** **assigned to that site** (`UserSite`) **AND** the row is **unsealed** (`is_sealed = false`) **AND**, for the eight daily ledgers, inside the daily-record window (F6.12). The site-scope check is enforced in **app code** (queryset / object filter by `UserSite`), not by the model-level permission.
+  2. **Everything else** — company / site config, users, subscription, plans, categories, site lifecycle, reports: **permission only** (no `UserSite`).
+- **Company Admin** holds **all** permissions, but **site-scoped records still require a `UserSite` assignment** for that site — capability alone is not enough there. "**Managed by admin**" = **assign the admin to the specific site** (F6.14); the admin then records on it like a manager. Non-site operations need no assignment. Every write is traceable via `created_by` / `activity_log.actor_id`.
 ---
 
 ## F1 — Manage Authentication
@@ -157,11 +160,11 @@ A low-frequency support action for clients who tested the app on a real account 
 - System saves and records the change in the activity log.
 
 ### F3.4 — Manage custom categories
-- **One model** `custom_category` (`site_id`, `scope`, `name`, `note`, `display_order`, `is_active`) replaces the old per-ledger type tables. `scope` (enum) ties a category to one ledger: `attendance` (F11.1), `extrawork` (F11.2), `sitecost` (F12.1), `hiddencost` (F12.2), `sitecash` (F13.1), `sitecashreturn` (F13.2), `sitebill` (F14.1). Admin creates/edits each.
-- **Site-scoped** — each **site** owns its own category set; the ledger dropdown filters by **(site, scope)**. A site may start with **zero** categories or some defaults.
-- **Optional on the ledger** — each ledger's `custom_category_id` is **nullable**. On create the user is prompted to pick one **only when** that site has `count(scope) > 0`; otherwise (or by choice) it stays null.
+- **One model** `custom_category` (`company_id`, `scope`, `name`, `note`, `display_order`, `is_active`) replaces the old per-ledger type tables. `scope` (enum) ties a category to one ledger: `attendance` (F11.1), `extrawork` (F11.2), `sitecost` (F12.1), `hiddencost` (F12.2), `sitecash` (F13.1), `sitecashreturn` (F13.2), `sitebill` (F14.1). Admin creates/edits each.
+- **Company-scoped** — each **company** owns one category set, **shared across all its sites**; the ledger dropdown filters by **(company, scope)**. A company may start with **zero** categories per scope.
+- **Optional on the ledger** — each ledger's `custom_category_id` is **nullable**. On create the user is prompted to pick one **only when** that company has `count(scope) > 0`; otherwise (or by choice) it stays null.
 - **Deactivate** — hidden from new-entry dropdowns; existing rows keep their link.
-- **Remove (delete or merge)** — deleting a category prompts the admin to choose: **(a) set null** — the FK on every referencing row becomes null (`ON DELETE SET NULL`); or **(b) merge** — re-point its rows to another same-site, same-`scope` category (plain `UPDATE`), then delete the emptied one. One activity log entry is written (`action_flag = deletion` or `merge`). The action is **not undoable** — the admin must confirm first.
+- **Remove (delete or merge)** — deleting a category prompts the admin to choose: **(a) set null** — the FK on every referencing row becomes null (`ON DELETE SET NULL`); or **(b) merge** — re-point its rows to another same-company, same-`scope` category (plain `UPDATE`), then delete the emptied one. One activity log entry is written (`action_flag = deletion` or `merge`). The action is **not undoable** — the admin must confirm first.
 
 ### F3.5 — Manage company configuration
 - Company Admin views/edits the company's `CompanyConfig` (one row per company, auto-created at F3.1 with its own built-in defaults).
@@ -240,13 +243,13 @@ Pricing is driven by **open site count**; the user and labour caps default to `-
 > Lately this staff user will login using this phone_number and password. and can change the password. There is no security concern about account missused by admin. Because, admin need the otp to register or login staff user account. But, otp will send to this user phone_number. So, Account owner only can login. Admin just has activate, deactivate, role management, permission management and delete this account autority.
 
 ### F5.2 — Assign role to user
-- Admin picks a role (Company Admin / Company Manager / Site Manager) → user added to that group.
+- Admin picks a role (Company Admin / Site Manager / Site Auditor) → user added to that group. A user may hold more than one group; effective capability is the **union** (roles nest, so the highest wins).
 - Role change takes effect on next request (permissions read from group).
 
 ### F5.3 — Assign user to sites
 - Admin assigns user to one or more sites (`UserSite` link records).
 - Site-scoped actions check this assignment: managers only act on assigned sites.
-- A site may have multiple Site Managers / Company Managers; a user may be assigned to multiple sites. See **Access Control & User Model**.
+- A site may have multiple Site Managers / Site Auditors; a user may be assigned to multiple sites. See **Access Control & User Model**.
 
 ### F5.4 — Assign permissions to user
 - Admin grants/revokes fine-grained permissions on top of the role defaults.
@@ -389,11 +392,12 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - Site-scoped view of the **activity log** (F16.2 / F16.4): labour transfers (F7.2), category removals/merges (F6.15), and all create / update / delete events for this site, filterable by user, entity type, and date.
 - **View only** — activity entries are **never** edited or deleted (F16.3). Sensitive events (hidden cost, company-level) are hidden from site / non-admin users (F16.2).
 
-### F6.14 — Admin records on a site
-- By default the Company Admin has config + read access to **all** sites and need not be assigned to any site.
-- To **record** on a site, the admin assigns himself to that site (`UserSite`) and joins the **Site Manager** group — he then belongs to both Company Admin and Site Manager (for the self-assigned sites), and the normal write rule (Access Control) applies.
-- Reversible any time — the admin can unassign himself or leave the Site Manager group; the change is activity-logged.
-- No extra security concern: every row keeps `created_by`, and every change is in the **activity log** (`actor_id`), so who created or changed it is always traceable — if the admin created it, he acted as that site's manager.
+### F6.14 — Admin records on a site (managed by admin)
+- Company Admin holds **all** permissions and has config + read access to all sites without assignment, but **site-scoped records require a `UserSite` assignment** — capability alone does not let the admin record on a site (Access Control).
+- **Managed by admin** = the admin is **assigned to that specific site** (`UserSite`, via F6.6 / F5.3) — the site(s) the admin wants to run directly, alongside or instead of a Site Manager. The admin then records there exactly like a manager.
+- **No group-join needed** — the admin already holds the record permissions; the `UserSite` assignment is the only thing that unlocks that site's ledgers. (Non-site operations need no assignment at all.)
+- Reversible any time — unassign the admin from the site; the change is activity-logged.
+- No extra security concern: every row keeps `created_by`, and every change is in the **activity log** (`actor_id`), so the actual writer is always traceable.
 
 ### F6.15 — Remove a billing category (delete or merge)
 A billing category that already has records can be removed two ways; the admin is prompted to pick, **confirms**, and the choice is **activity-logged and not undoable**.
@@ -521,7 +525,7 @@ Rules:
 - Grain is **labour / day** (optionally split by billing category): Site Manager picks date, optional billing category (from the site's list, F6.9), `present` units (full/half/overtime), and `salary` (seeded from the labour default, editable per row).
 - **No DB uniqueness** on (labour, billing_category, date) — a labour may have **multiple attendance rows on the same date** (different billing categories, or the same one). New rows per labour/date are gated by **`attendance_per_labour_per_day_limit`** (config affects **new** rows only; existing rows untouched).
 - Billing category is **optional**; when set, the earnings attribute to billing-category costing. When the site has none it stays null.
-- **Optional attendance custom category** (`custom_category`, `scope = attendance` — F3.4; prompted when any exist for the site).
+- **Optional attendance custom category** (`custom_category`, `scope = attendance` — F3.4; prompted when any exist for the company).
 - Validations: labour active and assigned to this site, site active, billing category active (if chosen), and the site config gates (`daily_record_create_window`, `attendance_per_labour_per_day_limit` — F6.12). New row is `is_sealed = false`.
 - Row stores the salary snapshot and **per-site** running totals: `site_total_present`, `site_total_salary`.
 > The shared daily-record window + the per-labour/day limits gate the eight daily ledgers — see **Site Configuration** (F6) / F6.12. A creatable date must additionally be **> the last work session's `created_at` date** and **never in the future** (F10).
@@ -542,7 +546,7 @@ Rules:
 ### F12.1 — Record site construction cost (SiteCost)
 - Manager enters site, date, **optional billing category (F6.9)**, **optional sitecost category** (`custom_category`, `scope = sitecost` — F3.4), amount, note.
 - Row computes running per-site `site_total` from the previous cost row.
-- Both categories are **optional** — prompted only when entries exist (billing categories for the site, or `custom_category` of that scope for this site); else null.
+- Both categories are **optional** — prompted only when entries exist (billing categories for the site, or `custom_category` of that scope for this company); else null.
 - Paid from site cash (draws down the cash balance).
 
 ### F12.2 — Record hidden cost (HiddenCost)
@@ -640,7 +644,7 @@ Edits happen directly; the `is_sealed` flag is the hard lock, and the **activity
 ### F16.2 — View the activity log
 - Any authorized user views the log, filtered by record, site, user, action, or date range.
 - Each entry shows who changed what, when, the before/after values, and the note.
-- **Visibility** — a Site Manager / Company Manager sees all activity for their **authorized sites**, **except sensitive entries** — **derived** from the entry's target `content_type` (e.g. `hidden_cost`, F12.2) plus company-level events, **not** a stored flag. Sensitive entries are shown to the Company Admin only.
+- **Visibility** — a Site Manager / Site Auditor sees all activity for their **authorized sites**, **except sensitive entries** — **derived** from the entry's target `content_type` (e.g. `hidden_cost`, F12.2) plus company-level events, **not** a stored flag. Sensitive entries are shown to the Company Admin only.
 
 ### F16.3 — Activity logs are permanent
 - Activity entries can **never** be edited or deleted — **not even by the Company Admin**. There is no soft-delete and no removal action on the tenant side.

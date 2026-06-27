@@ -363,7 +363,6 @@ Table site_closure_summary {
 Table custom_category {
   id            bigint                [pk]
   company_id    bigint                [ref: > company.id, not null]
-  site_id       bigint    [ref: > site.id, not null]
   scope         custom_category_scope [not null, note: 'which ledger it serves (F3.4)']
   name          varchar               [not null]
   note          varchar               [null]
@@ -374,7 +373,7 @@ Table custom_category {
   updated_at    timestamp             [not null]
 
   Indexes {
-    (site_id, scope, name) [unique]
+    (company_id, scope, name) [unique]
   }
 }
 
