@@ -474,17 +474,12 @@ A labour is paid through two ledgers — **advance pay** (cash advances) and **f
 ### F8.4 — View payment history
 - Advance and fooding ledgers per labour or per site, ordered by date; each row shows amount + running totals.
 
----
-
-## F9 — Manage Labour Return
-
-### F9.1 — Record labour return
+### F8.5 — Record labour return
 - Labour may return overpaid money. Manager creates a `LabourReturn` (amount, note, date; `is_sealed = false`).
 - Running `site_total` computed from the previous row; increases the labour's balance.
 
-### F9.2 — View return history
+### F8.6 — View return history
 - Ledger of returns per labour/site.
-
 ---
 
 ## F10 — Manage Labour Work Session
