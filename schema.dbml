@@ -241,7 +241,6 @@ Table subscription {
   discount_price      int                 [not null, note: 'total paid this term']
   paid_until          date                [null, note: 'base_date = max(previous_paid_until, today) new_paid_until = base_date + duration; Null = not payment yet']
   created_at          timestamp           [not null]
-  created_by          bigint              [ref: > user.id, not null]
   updated_at          timestamp           [not null]
 
   Indexes {
@@ -251,7 +250,7 @@ Table subscription {
 
 Table payment {
   id              bigint         [pk]
-  subscription_id bigint         [ref: > subscription.id, not null]
+  plan_variant_id bigint         [ref: > plan_variant.id, not null]
   company_id      bigint         [not null, note: 'denormalized for tenant filtering']
   method          payment_method [not null]
   amount          int            [not null]
