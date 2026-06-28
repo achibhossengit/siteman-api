@@ -294,7 +294,7 @@ Table site_config {
   daily_record_delete_window     int [not null, default: 1]
 
 
-  attendance_per_labour_per_day_limit int [not null, default: 1, note: 'gates NEW attendance rows per labour/date (F11.1); existing rows unaffected']
+  attendance_per_labour_per_day_limit int [not null, default: 1, note: 'gates NEW attendance rows per labour/date (F10.1); existing rows unaffected']
   extra_per_labour_per_day_limit      int [not null, default: 1]
   fooding_per_labour_per_day_limit    int [not null, default: 1]
   advance_per_labour_per_day_limit    int [not null, default: -1]
@@ -392,7 +392,6 @@ Table labour {
   created_at      timestamp     [not null]
   created_by      bigint        [ref: > user.id, not null]
   updated_at      timestamp     [not null]
-  deleted_at      timestamp     [null, note: 'delete requires zero balance + no refs (RESTRICT); deactivate otherwise (F7.6)']
 
   Indexes {
     (company_id, name) [unique]
@@ -400,7 +399,7 @@ Table labour {
 }
 
 // ============================================================
-// F10 — Labour work session
+// F9 — Labour work session
 // ============================================================
 
 Table labour_session {
@@ -442,7 +441,7 @@ Table labour_site_session {
 }
 
 // ============================================================
-// F11 — Daily attendance & extra work
+// F10 — Daily attendance & extra work
 // ============================================================
 
 Table daily_attendance {
@@ -460,10 +459,10 @@ Table daily_attendance {
   created_at          timestamp     [not null]
   created_by          bigint        [ref: > user.id, null]
   updated_at          timestamp     [not null]
-  is_sealed           boolean       [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
+  is_sealed           boolean       [not null, default: false, note: 'true = immutable; set by work-session seal (F9)']
   
   Indexes {
-    (labour_id, date) [note: 'non-unique; multiple rows per labour/date allowed, gated by attendance_per_labour_per_day_limit (F11.1)']
+    (labour_id, date) [note: 'non-unique; multiple rows per labour/date allowed, gated by attendance_per_labour_per_day_limit (F10.1)']
   }
 }
 
@@ -481,7 +480,7 @@ Table extra_work {
   created_at          timestamp [not null]
   created_by          bigint    [ref: > user.id, not null]
   updated_at          timestamp [not null]
-  is_sealed           boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
+  is_sealed           boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F9)']
 
   Indexes {
     (labour_id, date)
@@ -489,7 +488,7 @@ Table extra_work {
 }
 
 // ============================================================
-// F8 / F9 — Advance, fooding, return ledgers (categoryless cash)
+// F8 — Advance, fooding, return ledgers (categoryless cash)
 // ============================================================
 
 Table labour_advance_pay {
@@ -504,7 +503,7 @@ Table labour_advance_pay {
   created_at      timestamp [not null]
   created_by      bigint    [ref: > user.id, not null]
   updated_at      timestamp [not null]
-  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
+  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F9)']
 }
 
 Table labour_fooding_pay {
@@ -519,7 +518,7 @@ Table labour_fooding_pay {
   created_at      timestamp [not null]
   created_by      bigint    [ref: > user.id, null]
   updated_at      timestamp [not null]
-  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
+  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F9)']
 }
 
 Table labour_return {
@@ -534,11 +533,11 @@ Table labour_return {
   created_at      timestamp [not null]
   created_by      bigint    [ref: > user.id, not null]
   updated_at      timestamp [not null]
-  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F10)']
+  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F9)']
 }
 
 // ============================================================
-// F12 — Site expense (construction cost + hidden cost)
+// F11 — Site expense (construction cost + hidden cost)
 // ============================================================
 
 Table site_cost {
@@ -560,7 +559,7 @@ Table hidden_cost {
   id                  bigint    [pk]
   company_id          bigint    [not null]
   site_id             bigint    [ref: > site.id, not null]
-  billing_id          bigint    [null, note: 'null => site-general (not pro-rated, F15.8); optional (F6.9)']
+  billing_id          bigint    [null, note: 'null => site-general (not pro-rated, F14.8); optional (F6.9)']
   custom_category_id  bigint    [null, note: 'optional hiddencost category (F3.4)']
   date                date      [not null]
   amount              int       [not null]
@@ -572,7 +571,7 @@ Table hidden_cost {
 }
 
 // ============================================================
-// F13 — Site cash (deposit + return/withdrawal)
+// F12 — Site cash (deposit + return/withdrawal)
 // ============================================================
 
 Table site_cash {
@@ -604,7 +603,7 @@ Table site_cash_return {
 }
 
 // ============================================================
-// F14 — Site bill
+// F13 — Site bill
 // ============================================================
 
 Table site_bill {
@@ -623,20 +622,20 @@ Table site_bill {
 }
 
 // ============================================================
-// F16 — Activity log (permanent, immutable)
+// F15 — Activity log (permanent, immutable)
 // ============================================================
 
 Table activity_log {
   id           bigint          [pk]
   company_id   bigint          [ref: > company.id, not null]
-  actor_id     bigint          [ref: > user.id, not null, note: 'who acted — the creator; no created_by/updated_at, logs are immutable (F16)']
+  actor_id     bigint          [ref: > user.id, not null, note: 'who acted — the creator; no created_by/updated_at, logs are immutable (F15)']
   content_type_id  bigint     [ref: > content_type.id]
   object_id    bigint          [not null]
   action_flag       activity_action [not null]
   before       jsonb           [null, note: 'snapshot before update/delete/merge']
   after        jsonb           [null, note: 'snapshot after create/update/merge']
   note         varchar         [null, note: 'required for update/delete of financial records']
-  created_at   timestamp       [not null, note: 'event time; never updated or deleted (F16.3)']
+  created_at   timestamp       [not null, note: 'event time; never updated or deleted (F15.3)']
 
   Indexes {
     (company_id, content_type_id, object_id)

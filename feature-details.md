@@ -3,8 +3,8 @@
 ## Conventions
 - **Tenant isolation** — every tenant row carries `company_id`; See **Access Control & User Model**.
 - **Running totals** — ledger rows store a **per-site** cumulative `site_total*` only; **per-billing-category figures are aggregated on read (no stored `billing_total*`)**. Update all later rows' `site_total*` after a relevant update/delete.
-- **`is_sealed` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `is_sealed = false` (editable); a work-session seal (F10) sets `is_sealed = true` (immutable).
-- **Direct edit + activity log** — authorized users edit/delete directly; the system auto-writes an **activity log** entry (actor, time, before/after, note). Ledger rows are **soft-deleted**. Activity logs are **permanent** — no one, not even Company Admin, can edit or delete them (F16.3).
+- **`is_sealed` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `is_sealed = false` (editable); a work-session seal (F9) sets `is_sealed = true` (immutable).
+- **Direct edit + activity log** — authorized users edit/delete directly; the system auto-writes an **activity log** entry (actor, time, before/after, note). Ledger rows are **soft-deleted**. Activity logs are **permanent** — no one, not even Company Admin, can edit or delete them (F15.3).
 - every model keeps `created_at`, `created_by`, `updated_at`
 - **Removing a category** — `billing_category` / `custom_category` are nullable. Deleting one prompts the admin to either (a) **delete & set the FK null** on all its rows (`ON DELETE SET NULL`), or (b) **merge** — re-point its rows to another same-scope category, then delete it. The action is **activity-logged and not undoable**; the admin must confirm first. `updated_at` is untouched (it is not a per-row user edit). See F3.4 / F6.9 / F6.15.
 - **Future dates blocked** — no record's `date` may be in the future, for every date-bearing entity.
@@ -34,7 +34,7 @@
 - **Capability** (*what*) — Django **groups + permissions** (`group_permissions`). System tier: System Admin / System Manager. Tenant tier roles **nest**: **Site Auditor** (view) ⊂ **Site Manager** (CRUD) ⊂ **Company Admin** (all). Multiple groups allowed — effective capability = **union** (= the highest). Permissions are **model-level / global** (e.g. `change_dailyattendance`).
 - **Scope** (*which sites*) — **`UserSite`** links a tenant user to sites. A site can have many users; a user many sites.
 - **Two authorization modes:**
-  1. **Site-scoped records** — every ledger (attendance, extra work, advance, fooding, return, site cost, hidden cost, site cash, cash return, bill; F8 / F9 / F11–F14): allowed when **has the permission** **AND** **assigned to that site** (`UserSite`) **AND** the row is **unsealed** (`is_sealed = false`) **AND**, for the eight daily ledgers, inside the daily-record window (F6.12). The site-scope check is enforced in **app code** (queryset / object filter by `UserSite`), not by the model-level permission.
+  1. **Site-scoped records** — every ledger (attendance, extra work, advance, fooding, return, site cost, hidden cost, site cash, cash return, bill; F8 / F10–F13): allowed when **has the permission** **AND** **assigned to that site** (`UserSite`) **AND** the row is **unsealed** (`is_sealed = false`) **AND**, for the eight daily ledgers, inside the daily-record window (F6.12). The site-scope check is enforced in **app code** (queryset / object filter by `UserSite`), not by the model-level permission.
   2. **Everything else** — company / site config, users, subscription, plans, categories, site lifecycle, reports: **permission only** (no `UserSite`).
 - **Company Admin** holds **all** permissions, but **site-scoped records still require a `UserSite` assignment** for that site — capability alone is not enough there. "**Managed by admin**" = **assign the admin to the specific site** (F6.14); the admin then records on it like a manager. Non-site operations need no assignment. Every write is traceable via `created_by` / `activity_log.actor_id`.
 ---
@@ -85,7 +85,7 @@
 ## F2 — Manage Platform
 System-level users; not tied to any company.
 
-> **MVP scope** — in the MVP the entire platform side (F2.*) is operated through the **Django admin site** (`/admin/`, Django session auth); there is no platform frontend or public platform API yet, and system users are Django staff/superusers. The dedicated **Platform API** + system OTP/JWT login (F2.1) and custom actions like company reset (F2.11) are a **later phase**. The **tenant** side (F1, F3–F16) ships with its real API + frontend now.
+> **MVP scope** — in the MVP the entire platform side (F2.*) is operated through the **Django admin site** (`/admin/`, Django session auth); there is no platform frontend or public platform API yet, and system users are Django staff/superusers. The dedicated **Platform API** + system OTP/JWT login (F2.1) and custom actions like company reset (F2.11) are a **later phase**. The **tenant** side (F1, F3–F15) ships with its real API + frontend now.
 
 ### F2.1 — System user login
 - Platform staff sign in to the **Django admin site** with **session auth** (no company context) — MVP. A dedicated OTP + JWT platform-API login is a later phase (see F2 MVP note). Identified by `is_staff = true`.
@@ -160,7 +160,7 @@ A low-frequency support action for clients who tested the app on a real account 
 - System saves and records the change in the activity log.
 
 ### F3.4 — Manage custom categories
-- **One model** `custom_category` (`company_id`, `scope`, `name`, `note`, `display_order`, `is_active`) replaces the old per-ledger type tables. `scope` (enum) ties a category to one ledger: `attendance` (F11.1), `extrawork` (F11.2), `sitecost` (F12.1), `hiddencost` (F12.2), `sitecash` (F13.1), `sitecashreturn` (F13.2), `sitebill` (F14.1). Admin creates/edits each.
+- **One model** `custom_category` (`company_id`, `scope`, `name`, `note`, `display_order`, `is_active`) replaces the old per-ledger type tables. `scope` (enum) ties a category to one ledger: `attendance` (F10.1), `extrawork` (F10.2), `sitecost` (F11.1), `hiddencost` (F11.2), `sitecash` (F12.1), `sitecashreturn` (F12.2), `sitebill` (F13.1). Admin creates/edits each.
 - **Company-scoped** — each **company** owns one category set, **shared across all its sites**; the ledger dropdown filters by **(company, scope)**. A company may start with **zero** categories per scope.
 - **Optional on the ledger** — each ledger's `custom_category_id` is **nullable**. On create the user is prompted to pick one **only when** that company has `count(scope) > 0`; otherwise (or by choice) it stays null.
 - **Deactivate** — hidden from new-entry dropdowns; existing rows keep their link.
@@ -303,13 +303,13 @@ Every site has a one-to-one `SiteConfig` (managed in F6.12), auto-created with s
 |---|---|
 | `-1` | Unlimited |
 | `0` | Blocked — no rows that day |
-| `N ≥ 1` | At most `N` rows per labour per date (across billing categories). Applies to **new** rows only; there is no DB uniqueness (F11.1). |
+| `N ≥ 1` | At most `N` rows per labour per date (across billing categories). Applies to **new** rows only; there is no DB uniqueness (F10.1). |
 
 Defaults: attendance `1`, extra work `1`, fooding `1`, advance `-1`.
 
 **Cross-site, same date** — there is no separate multisite flag. By default a labour has one record per date; to record the same labour/date at a **different** site, first free the existing row (remove it) or transfer the labour to the new site (F7.2). To genuinely allow both sites on the same date, raise the relevant `*_per_labour_per_day_limit`.
 
-**Out-of-window override (manual)** — there is no per-row verification. To touch a date outside the current window, a manager asks the admin; the admin widens the daily-record window (a temporary `N` covering the date, or `-1` to allow any past date), the manager creates/edits/deletes, and the admin reviews the result via the date-based activity log (F16.2). If misused, the admin asks the manager to correct it — no system-enforced approval step.
+**Out-of-window override (manual)** — there is no per-row verification. To touch a date outside the current window, a manager asks the admin; the admin widens the daily-record window (a temporary `N` covering the date, or `-1` to allow any past date), the manager creates/edits/deletes, and the admin reviews the result via the date-based activity log (F15.2). If misused, the admin asks the manager to correct it — no system-enforced approval step.
 
 **Validation ranges** — per-site, customizable by Company Admin. `labour.default_salary` / `default_fooding` are validated against the labour's **current_site** config at create/edit time:
 - `attendance_present_choices` — explicit allowed set for the `present` value, e.g. `[0, 0.5, 1, 1.5, 2, 3]` (only these accepted; the set is not a uniform step, so it is a list not a min/max).
@@ -333,8 +333,8 @@ Defaults: attendance `1`, extra work `1`, fooding `1`, advance `-1`.
 A site typically runs ~2 years, then work is done. Closing frees a plan slot and lets the system shed the large detail dataset **in the same database** (no separate archive store) while keeping a permanent summary.
 
 1. **Zero the site cash balance (manual, by site manager):**
-   - balance > 0 → withdraw the surplus via a SiteCashReturn (F13.2).
-   - balance < 0 → cover the deficit via a SiteCash deposit (F13.1).
+   - balance > 0 → withdraw the surplus via a SiteCashReturn (F12.2).
+   - balance < 0 → cover the deficit via a SiteCash deposit (F12.1).
    - Close is blocked until the site cash balance = 0.
 2. **Set `closed_at = now()`** (a null `closed_at` = open, non-null = closed). Closed sites do not count toward the plan's open-site limit.
 3. **Build the closure summary** (immutable snapshot): totals from SiteCost, HiddenCost, SiteBill, DailyAttendance (total present, total salary), ExtraWork totals, total cost, total bills, total paid bills, profit, billing-category contract vs billed — everything the admin needs after the detail is gone.
@@ -363,13 +363,13 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - Show site total attendance count and total salary.
 - Show site total cost.
 - Show site labour payouts (advance + fooding).
-- Billing-category breakdown line: per-billing-category contract value, billed, cost and profit (detail in F15.8).
+- Billing-category breakdown line: per-billing-category contract value, billed, cost and profit (detail in F14.8).
 
 ### F6.9 — Manage billing categories
 - Site-level master data: Admin defines the site's **billing categories** — header row `billing_category` (`id`, `company_id`, `site_id`, `name` e.g. Basement / Floor-1 / Floor-2-Extra, `display_order`, `is_active`).
 - Measurement lives in a **1:1 `billing_category_details`** row: `sqft`, `rate_per_sqft`, `custom_amount`.
 - **Optional** — billing categories are not mandatory. A site may run with **none** (simple project, or to avoid complexity), so every ledger's `billing_id` is **nullable**; categories can be added later and old rows keep `null`.
-- Billing-category list feeds the dropdown on attendance (F11.1), extra work (F11.2), site cost (F12.1), hidden cost (F12.2), and bill (F14.1) entries.
+- Billing-category list feeds the dropdown on attendance (F10.1), extra work (F10.2), site cost (F11.1), hidden cost (F11.2), and bill (F13.1) entries.
 - Editable while the site is open. **Removing** a billing category prompts the admin to delete-with-set-null or merge-into-another — see F6.15.
 
 ### F6.10 — Deactivate/Activate billing categories
@@ -383,14 +383,14 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 ### F6.12 — Manage site configuration
 - Company Admin views/edits the site's `SiteConfig` (one row per site, auto-created at F6.1 with the defaults above).
 - Controls: one shared daily-record create / update / delete window (gates the eight daily ledgers) + the per-labour/day quotas (attendance, extra work, fooding, advance) — see **Site Configuration** above.
-- Changes apply to **future** create / edit checks only — existing rows are untouched. Every change is activity-logged (F16).
+- Changes apply to **future** create / edit checks only — existing rows are untouched. Every change is activity-logged (F15).
 - Setting `daily_record_create_window = 0` freezes new daily-ledger entries at the site without deactivating the whole site.
 - **Reset to defaults** — Company Admin can reset this site's `SiteConfig` back to its built-in defaults in one action; config-only (no entity data touched), applies to future checks only, activity-logged.
-- **Out-of-window override (manual)** — see **Site Configuration** (F6): the admin temporarily widens the daily-record window, the manager acts, and the admin reviews via the activity log (F16.2).
+- **Out-of-window override (manual)** — see **Site Configuration** (F6): the admin temporarily widens the daily-record window, the manager acts, and the admin reviews via the activity log (F15.2).
 
 ### F6.13 — View site activity log
-- Site-scoped view of the **activity log** (F16.2 / F16.4): labour transfers (F7.2), category removals/merges (F6.15), and all create / update / delete events for this site, filterable by user, entity type, and date.
-- **View only** — activity entries are **never** edited or deleted (F16.3). Sensitive events (hidden cost, company-level) are hidden from site / non-admin users (F16.2).
+- Site-scoped view of the **activity log** (F15.2 / F15.4): labour transfers (F7.2), category removals/merges (F6.15), and all create / update / delete events for this site, filterable by user, entity type, and date.
+- **View only** — activity entries are **never** edited or deleted (F15.3). Sensitive events (hidden cost, company-level) are hidden from site / non-admin users (F15.2).
 
 ### F6.14 — Admin records on a site (managed by admin)
 - Company Admin holds **all** permissions and has config + read access to all sites without assignment, but **site-scoped records require a `UserSite` assignment** — capability alone does not let the admin record on a site (Access Control).
@@ -427,7 +427,7 @@ One activity log entry records the action (`action_flag = deletion` or `merge`, 
 
 ### F7.3 — Activate / deactivate labour account
 - Inactive labour: no new attendance, extra work, or payments; history stays.
-- A sealed `LabourSession` (vacation) deactivates the account automatically; returning from vacation requires reactivation **before** any new record (F10.1).
+- A sealed `LabourSession` (vacation) deactivates the account automatically; returning from vacation requires reactivation **before** any new record (F9.1).
 
 ### F7.4 — Update labour salary for a date range
 Salary is stored on each DailyAttendance row. `labour.default_salary` is used only when creating new attendance records.
@@ -446,16 +446,11 @@ Salary is stored on each DailyAttendance row. `labour.default_salary` is used on
 Many labourers work short engagements and never return; their accounts accumulate and must be cleanable without losing site financial data.
 
 **Pre-condition:** Labour balance must be zero before deletion is allowed.
-
-1. Set `labour.deleted_at = now()` — labour hidden from all active views; write to activity log.
-2. Admin can view and restore deactivated labourers at any time.
-3. A labour referenced by any ledger row **cannot be hard-deleted** (`ON DELETE RESTRICT`) — it stays soft-deleted/deactivated so site financials keep their link. Hard purge only when it has zero references using corn job, or via a company reset (F2.11).
-
 ---
 
-## F8 — Manage Labour Payments (Advance & Fooding)
+## F8 — Manage Labour Payments (Advance, Fooding & Return)
 
-A labour is paid through two ledgers — **advance pay** (cash advances) and **fooding pay** (meal allowance). Both are payouts that draw down site cash and reduce the labour's balance.
+A labour is paid through two payout ledgers — **advance pay** (cash advances) and **fooding pay** (meal allowance) — both draw down site cash and reduce the labour's balance. A third ledger, **labour return** (F8.5/F8.6), records money the labour gives back, which increases the balance.
 
 ### F8.1 — Issue advance pay
 - Manager picks labour, enters amount, note, date → creates a `LabourAdvancePay` row (`is_sealed = false`).
@@ -482,11 +477,11 @@ A labour is paid through two ledgers — **advance pay** (cash advances) and **f
 - Ledger of returns per labour/site.
 ---
 
-## F10 — Manage Labour Work Session
+## F9 — Manage Labour Work Session
 
 A labour works continuously — moving site to site — then takes a vacation. The **period** between two vacations is one work session, recorded as a `LabourSession` plus one `LabourSiteSession` per site touched. Ledger rows belong to a session by **date range + labour** (`[start_date … end_date]`), not a per-row FK.
 
-### F10.1 — Create / seal a labour work session (vacation flow)
+### F9.1 — Create / seal a labour work session (vacation flow)
 Triggered when the labour wants to go on vacation:
 1. **Review** — all still-**unsealed** (`is_sealed = false`) rows (attendance, extra work, advance, fooding, return) are reviewed; any correction is applied now, while they are still unsealed.
 2. **Settle** — a final payment is made based on the current balance (pay out the payable, or collect an overpayment) so the balance reflects reality.
@@ -501,153 +496,153 @@ Triggered when the labour wants to go on vacation:
 Rules:
 - **One session per labour per day** — a labour may have at most one `LabourSession` created on a given day (`(labour, created_at::date)` unique).
 - **New record date gate** — any new ledger entity's `date` must be **> the last work session's `created_at` date** (and never in the future).
-- **Amend a sealed day** — to create a record after a session was already made the same day, **delete that session** (F10.3), create the record, then create the session again.
+- **Amend a sealed day** — to create a record after a session was already made the same day, **delete that session** (F9.3), create the record, then create the session again.
 - Records created after sealing belong to the **next** session.
 - After returning from vacation, the account must be **reactivated first** (F7.3) before creating any record.
 
-### F10.2 — View session history
+### F9.2 — View session history
 - Timeline of sessions per labour with per-site breakdown (present, earnings, payouts), start/end dates, and carried totals/balance.
 
-### F10.3 — Delete a work session (unseal)
+### F9.3 — Delete a work session (unseal)
 - Deleting a `LabourSession` **unseals** it: every one of this labour's rows with `date` in `[start_date … end_date]` is set back to `is_sealed = false`, then the session row (and its `LabourSiteSession` rollups) is deleted. One activity log entry is written.
 - Use when an already-sealed day must be amended: **delete the session → create/correct the entity → create the session again** (re-seal).
 
 ---
 
-## F11 — Manage Daily Attendance & Extra Work
+## F10 — Manage Daily Attendance & Extra Work
 
-### F11.1 — Record daily attendance
+### F10.1 — Record daily attendance
 - Grain is **labour / day** (optionally split by billing category): Site Manager picks date, optional billing category (from the site's list, F6.9), `present` units (full/half/overtime), and `salary` (seeded from the labour default, editable per row).
 - **No DB uniqueness** on (labour, billing_category, date) — a labour may have **multiple attendance rows on the same date** (different billing categories, or the same one). New rows per labour/date are gated by **`attendance_per_labour_per_day_limit`** (config affects **new** rows only; existing rows untouched).
 - Billing category is **optional**; when set, the earnings attribute to billing-category costing. When the site has none it stays null.
 - **Optional attendance custom category** (`custom_category`, `scope = attendance` — F3.4; prompted when any exist for the company).
 - Validations: labour active and assigned to this site, site active, billing category active (if chosen), and the site config gates (`daily_record_create_window`, `attendance_per_labour_per_day_limit` — F6.12). New row is `is_sealed = false`.
 - Row stores the salary snapshot and **per-site** running totals: `site_total_present`, `site_total_salary`.
-> The shared daily-record window + the per-labour/day limits gate the eight daily ledgers — see **Site Configuration** (F6) / F6.12. A creatable date must additionally be **> the last work session's `created_at` date** and **never in the future** (F10).
+> The shared daily-record window + the per-labour/day limits gate the eight daily ledgers — see **Site Configuration** (F6) / F6.12. A creatable date must additionally be **> the last work session's `created_at` date** and **never in the future** (F9).
 
-### F11.2 — Record extra work
+### F10.2 — Record extra work
 - Separate ledger (`ExtraWork`): site, **optional** billing category (F6.9), **optional extrawork custom category** (`custom_category`, `scope = extrawork` — F3.4), labour, date, amount, note; `is_sealed = false`.
 - Kept apart from attendance so ad-hoc extra earnings are tracked on their own.
 - Running per-site `site_total_amount`. Adds to the labour's earnings.
 - **No DB uniqueness** — multiple extra-work rows per labour/date are allowed (gated by `extra_per_labour_per_day_limit`, F6.12).
 
-### F11.3 — View attendance & extra work history
+### F10.3 — View attendance & extra work history
 - Filter by labour, site, billing category, or date range; shows daily rows + running totals.
 
 ---
 
-## F12 — Manage Site Expense
+## F11 — Manage Site Expense
 
-### F12.1 — Record site construction cost (SiteCost)
+### F11.1 — Record site construction cost (SiteCost)
 - Manager enters site, date, **optional billing category (F6.9)**, **optional sitecost category** (`custom_category`, `scope = sitecost` — F3.4), amount, note.
 - Row computes running per-site `site_total` from the previous cost row.
 - Both categories are **optional** — prompted only when entries exist (billing categories for the site, or `custom_category` of that scope for this company); else null.
 - Paid from site cash (draws down the cash balance).
 
-### F12.2 — Record hidden cost (HiddenCost)
+### F11.2 — Record hidden cost (HiddenCost)
 - Separate record type from SiteCost — kept apart so permissions/visibility can differ ("hidden" from normal site views).
 - It is not paid from site cash; it is paid directly by the company admin.
 - **Not** gated by the daily-record window — hidden cost is an admin/office record, allowed on any date ≤ today (entered late); see F6.12.
 - It is used to calculate the **profit/revenue** of a site, not the cash balance.
-- **Billing category is optional**: set → cost allocates to that billing category; null → site-general (not tied to any billing category, F15.8).
+- **Billing category is optional**: set → cost allocates to that billing category; null → site-general (not tied to any billing category, F14.8).
 - **Hiddencost category optional** (`custom_category`, `scope = hiddencost` — F3.4; prompted when any exist).
 
-### F12.3 — View cost history
+### F11.3 — View cost history
 - Ledger per site, filterable by billing category, category (sitecost / hiddencost), record type (site cost / hidden cost), date range.
 
 ---
 
-## F13 — Manage Site Cash
+## F12 — Manage Site Cash
 
-### F13.1 — Record cash deposit
+### F12.1 — Record cash deposit
 - Manager records incoming cash with notes (`SiteCash`); **optional sitecash category** (`custom_category`, `scope = sitecash` — F3.4; prompted when any exist).
 - Running site cash total increases.
 
-### F13.2 — Record cash return / withdrawal
+### F12.2 — Record cash return / withdrawal
 - Outgoing cash: return to owner or other source with note (`SiteCashReturn`); **optional sitecashreturn category** (`custom_category`, `scope = sitecashreturn` — F3.4). This is not a site cost — a withdrawal.
 - Cannot go below zero — insufficient balance is rejected.
 - Running site return total increases.
 
-### F13.3 — View site cash history
+### F12.3 — View site cash history
 - Passbook view: date, type, note, amount (±), running balance per row (per Conventions formula).
 
 ---
 
-## F14 — Manage Site Bills
+## F13 — Manage Site Bills
 
-### F14.1 — Create site bill
+### F13.1 — Create site bill
 - Authorized user records a bill: site, date, **optional billing category (F6.9)**, **optional sitebill category** (`custom_category`, `scope = sitebill` — F3.4), amount, note.
 - Running per-site `site_total` per bill row; bills accumulate against that billing category's contract value (sqft × rate, F6.9) when set.
 - **Not** gated by the daily-record window — site bill is an admin/office record, allowed on any date ≤ today (recorded anytime); see F6.12.
 
-### F14.2 — View bill history
+### F13.2 — View bill history
 - Ledger per site, filterable by billing category, date range; shows billed vs billing-category contract value vs remaining receivable.
 
 ---
 
-## F15 — Generate Reports
+## F14 — Generate Reports
 
 All reports are tenant-scoped and respect site assignments (managers see only their sites).
 
-### F15.1 — Labour balance report
+### F14.1 — Labour balance report
 - Per labour: earnings (attendance salary + extra work), advance, fooding, returns, net balance. Read from latest running totals / carried balance.
 
-### F15.2 — Site expense report
+### F14.2 — Site expense report
 - Costs grouped by ledger category (sitecost / hiddencost) / billing category for a site and date range (SiteCost and HiddenCost shown separately).
 
-### F15.3 — Site balance report
+### F14.3 — Site balance report
 - `deposits − returns − site cost total − advance pay total − fooding pay total` per site — current spendable cash (matches F6.8; hidden cost excluded).
 
-### F15.4 — Site profit report
+### F14.4 — Site profit report
 - Profit per site: `bills − (labour cost + site cost + hidden cost)`, where labour cost = attendance salary + extra work (payouts are cash, not cost).
 - Profit per billing category of site: `bills of category − (labour cost of category + site cost of category + hidden cost of category)`.
 
-### F15.5 — Site labour cost report
+### F14.5 — Site labour cost report
 - Attendance salary per site / date / billing category.
 - Extra work per site / date / billing category.
 - Advance pay and fooding pay per site / date.
 - Labour cost per site: `latest attendance site_total_salary` + extra work total.
 - Labour cost per billing category of site.
 
-### F15.6 — Summary for a date range
+### F14.6 — Summary for a date range
 - Company-level roll-up between two dates: cash in/out, costs, bills, labour cost, per-site rows.
 - Site-level summary.
 
-### F15.7 — Company dashboard
+### F14.7 — Company dashboard
 - Open sites overview, balances, subscription expiry alert, recent edits (from activity log), recent activity.
 
-### F15.8 — Billing-category costing & revenue report
+### F14.8 — Billing-category costing & revenue report
 - Per billing category of a site: `sqft`, `rate_per_sqft`, contract value (sqft × rate, or `custom_amount`), billed, remaining receivable (contract − billed), labour cost, construction cost, allocated hidden cost, total cost, profit (billed − total cost), cost per sqft.
 - Site-general hidden cost (billing_category = null) is shown as its own row, **not** pro-rated across billing categories.
 - Reconciles to site profit: `site profit = (Σ billing-category profit) − general hidden cost`, which equals `bills − (labour + site cost + all hidden cost)`.
 
 ---
 
-## F16 — Record Edits & Activity Log
+## F15 — Record Edits & Activity Log
 
 Edits happen directly; the `is_sealed` flag is the hard lock, and the **activity log** makes every live edit accountable. The activity log replaces the old per-row `updated_by` — the actor lives on `activity_log.actor_id`.
 
-### F16.1 — Edit / delete a record (direct, with auto activity log)
-- Allowed only on rows that are still **unsealed** (`is_sealed = false`; sealed rows are immutable — see F10) **and** whose date is inside the site's `daily_record_update_window` (for edits) or `daily_record_delete_window` (for deletes) — F6.12. Hidden cost / site bill are not window-gated. Sealed always blocks; otherwise the window limit applies.
-- An authorized user edits or deletes a record from its own module (attendance F11, extra work F11, advance/fooding F8, return F9, cash F13, cost/hidden cost F12, bill F14, plus master data).
+### F15.1 — Edit / delete a record (direct, with auto activity log)
+- Allowed only on rows that are still **unsealed** (`is_sealed = false`; sealed rows are immutable — see F9) **and** whose date is inside the site's `daily_record_update_window` (for edits) or `daily_record_delete_window` (for deletes) — F6.12. Hidden cost / site bill are not window-gated. Sealed always blocks; otherwise the window limit applies.
+- An authorized user edits or deletes a record from its own module (attendance F10, extra work F10, advance/fooding/return F8, cash F12, cost/hidden cost F11, bill F13, plus master data).
 - In one transaction the system:
   1. Applies the change (financial/ledger rows are **soft-deleted**, not hard-deleted).
   2. Writes an **activity log entry**: company, actor, timestamp, target (`content_type` + `object_id`, a Django generic FK), `action_flag` (`addition` / `change` / `deletion` / `merge` — Django LogEntry style: addition=create, change=update, deletion=delete), **before snapshot**, **after snapshot**, and a **note (required for change/deletion of financial records)**.
   3. Bumps the record's `updated_at` — **only** for an explicit user field edit. A **category removal/merge** (F3.4 / F6.15) re-points or nulls the row's category FK and leaves `updated_at` untouched.
   4. Recalculates the per-**site** running totals (`site_total*`) of all later rows in the same ledger so the chain stays consistent.
 
-### F16.2 — View the activity log
+### F15.2 — View the activity log
 - Any authorized user views the log, filtered by record, site, user, action, or date range.
 - Each entry shows who changed what, when, the before/after values, and the note.
-- **Visibility** — a Site Manager / Site Auditor sees all activity for their **authorized sites**, **except sensitive entries** — **derived** from the entry's target `content_type` (e.g. `hidden_cost`, F12.2) plus company-level events, **not** a stored flag. Sensitive entries are shown to the Company Admin only.
+- **Visibility** — a Site Manager / Site Auditor sees all activity for their **authorized sites**, **except sensitive entries** — **derived** from the entry's target `content_type` (e.g. `hidden_cost`, F11.2) plus company-level events, **not** a stored flag. Sensitive entries are shown to the Company Admin only.
 
-### F16.3 — Activity logs are permanent
+### F15.3 — Activity logs are permanent
 - Activity entries can **never** be edited or deleted — **not even by the Company Admin**. There is no soft-delete and no removal action on the tenant side.
 - The only way they leave the database is a full **company reset** (F2.11), which hard-deletes them system-side under OTP dual-control.
 - This makes the log a tamper-evident backstop: the affected record's `updated_at` and the permanent entry together always show that, and how, it was modified.
 
-### F16.4 — Activity view (admin oversight)
-- The admin reviews the **activity log** (F16.2): all records created / updated / deleted / merged, filterable by site, user, entity type, and date.
+### F15.4 — Activity view (admin oversight)
+- The admin reviews the **activity log** (F15.2): all records created / updated / deleted / merged, filterable by site, user, entity type, and date.
 - This is the verification mechanism — instead of a per-row `verified` flag, the admin watches activity (especially after granting an out-of-window override, F6.12, or running a merge, F6.15) and manually asks a manager to correct anything wrong.
 
 > **Note** — there is intentionally no admin override to edit a **sealed** (`is_sealed = true`) record. The seal is the hard boundary; if a settled session truly needs a fix, the correction is done by a system user (F2.9), not a normal edit.

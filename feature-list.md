@@ -13,15 +13,14 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F5 | Manage Company Users |
 | F6 | Manage Sites |
 | F7 | Manage Labour Accounts |
-| F8 | Manage Labour Payments (Advance & Fooding) |
-| F9 | Manage Labour Return |
-| F10 | Manage Labour Work Session |
-| F11 | Manage Daily Attendance & Extra Work |
-| F12 | Manage Site Expense |
-| F13 | Manage Site Cash |
-| F14 | Manage Site Bills |
-| F15 | Generate Reports |
-| F16 | Record Edits & Audit Trail |
+| F8 | Manage Labour Payments (Advance, Fooding & Return) |
+| F9 | Manage Labour Work Session |
+| F10 | Manage Daily Attendance & Extra Work |
+| F11 | Manage Site Expense |
+| F12 | Manage Site Cash |
+| F13 | Manage Site Bills |
+| F14 | Generate Reports |
+| F15 | Record Edits & Audit Trail |
 
 ---
 
@@ -110,70 +109,66 @@ Construction site labour and cost management SaaS. Each company is an isolated t
 | F7.5 | View and search labourers |
 | F7.6 | Delete labour account |
 
-### F8 → Manage Labour Payments (Advance & Fooding)
+### F8 → Manage Labour Payments (Advance, Fooding & Return)
 | # | Feature |
 |---|---|
 | F8.1 | Issue advance pay |
 | F8.2 | Issue fooding pay |
 | F8.3 | Track labour balance |
 | F8.4 | View payment history |
+| F8.5 | Record labour return |
+| F8.6 | View return history |
 
-### F9 → Manage Labour Return
+### F9 → Manage Labour Work Session
 | # | Feature |
 |---|---|
-| F9.1 | Record labour return |
-| F9.2 | View return history |
+| F9.1 | Create / seal a labour work session |
+| F9.2 | View session history |
+| F9.3 | Delete a work session (unseal) |
 
-### F10 → Manage Labour Work Session
+### F10 → Manage Daily Attendance & Extra Work
 | # | Feature |
 |---|---|
-| F10.1 | Create / seal a labour work session |
-| F10.2 | View session history |
-| F10.3 | Delete a work session (unseal) |
+| F10.1 | Record daily attendance |
+| F10.2 | Record extra work |
+| F10.3 | View attendance & extra work history |
 
-### F11 → Manage Daily Attendance & Extra Work
+### F11 → Manage Site Expense
 | # | Feature |
 |---|---|
-| F11.1 | Record daily attendance |
-| F11.2 | Record extra work |
-| F11.3 | View attendance & extra work history |
+| F11.1 | Record site construction cost |
+| F11.2 | Record hidden cost |
+| F11.3 | View cost history |
 
-### F12 → Manage Site Expense
+### F12 → Manage Site Cash
 | # | Feature |
 |---|---|
-| F12.1 | Record site construction cost |
-| F12.2 | Record hidden cost |
-| F12.3 | View cost history |
+| F12.1 | Record cash deposit |
+| F12.2 | Record cash return / withdrawal |
+| F12.3 | View site cash history |
 
-### F13 → Manage Site Cash
+### F13 → Manage Site Bills
 | # | Feature |
 |---|---|
-| F13.1 | Record cash deposit |
-| F13.2 | Record cash return / withdrawal |
-| F13.3 | View site cash history |
+| F13.1 | Create site bill |
+| F13.2 | View bill history |
 
-### F14 → Manage Site Bills
+### F14 → Generate Reports
 | # | Feature |
 |---|---|
-| F14.1 | Create site bill |
-| F14.2 | View bill history |
+| F14.1 | Labour balance report |
+| F14.2 | Site expense report |
+| F14.3 | Site balance report |
+| F14.4 | Site profit report |
+| F14.5 | Site labour cost report |
+| F14.6 | Summary for a date range |
+| F14.7 | Company dashboard |
+| F14.8 | Floor costing & revenue report |
 
-### F15 → Generate Reports
+### F15 → Record Edits & Activity Log
 | # | Feature |
 |---|---|
-| F15.1 | Labour balance report |
-| F15.2 | Site expense report |
-| F15.3 | Site balance report |
-| F15.4 | Site profit report |
-| F15.5 | Site labour cost report |
-| F15.6 | Summary for a date range |
-| F15.7 | Company dashboard |
-| F15.8 | Floor costing & revenue report |
-
-### F16 → Record Edits & Activity Log
-| # | Feature |
-|---|---|
-| F16.1 | Edit / delete a record |
-| F16.2 | View the activity log |
-| F16.3 | Activity logs are permanent |
-| F16.4 | Activity view (admin oversight) |
+| F15.1 | Edit / delete a record |
+| F15.2 | View the activity log |
+| F15.3 | Activity logs are permanent |
+| F15.4 | Activity view (admin oversight) |

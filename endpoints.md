@@ -122,7 +122,7 @@
 | `POST` | `/api/v1/labours/{id}/deactivate` | Deactivate labour; no new records | L1 | pending |
 | `DELETE` | `/api/v1/labours/{id}` | Delete labour; requires zero balance; RESTRICT if referenced | L1 | pending |
 
-## F8 — Manage Labour Payments (Advance & Fooding)
+## F8 — Manage Labour Payments (Advance, Fooding & Return)
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -140,7 +140,7 @@
 | `DELETE` | `/api/v1/labour-returns/{id}` | Soft-delete unsealed row in window; activity-logged; recompute totals | L1 | pending |
 
 
-## F10 — Manage Labour Work Session
+## F9 — Manage Labour Work Session
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -151,7 +151,7 @@
 | `GET` | `/api/v1/labour-sessions/current-session` | labour most last sessions + running nonsealed earnings/advance/fooding/returns/net balance | L1 | pending |
 
 
-## F11 — Manage Daily Attendance & Extra Work
+## F10 — Manage Daily Attendance & Extra Work
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -165,7 +165,7 @@
 | `PATCH` | `/api/v1/extra-works/{id}` | Edit unsealed row in window; activity-logged; recompute totals | L1 | pending |
 | `DELETE` | `/api/v1/extra-works/{id}` | Soft-delete unsealed row in window; activity-logged; recompute totals | L1 | pending |
 
-## F12 — Manage Site Expense
+## F11 — Manage Site Expense
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -178,7 +178,7 @@
 | `PATCH` | `/api/v1/hidden-costs/{id}` | Edit hidden cost; activity-logged; recompute totals | L1 | pending |
 | `DELETE` | `/api/v1/hidden-costs/{id}` | Soft-delete hidden cost; activity-logged; recompute totals | L1 | pending |
 
-## F13 — Manage Site Cash
+## F12 — Manage Site Cash
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -191,7 +191,7 @@
 | `PATCH` | `/api/v1/site-cash-returns/{id}` | Edit unsealed return in window; activity-logged; recompute totals | L1 | pending |
 | `DELETE` | `/api/v1/site-cash-returns/{id}` | Soft-delete unsealed return in window; activity-logged; recompute totals | L1 | pending |
 
-## F14 — Manage Site Bills
+## F13 — Manage Site Bills
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -200,7 +200,7 @@
 | `PATCH` | `/api/v1/site-bills/{id}` | Edit bill; activity-logged; recompute totals | MVP | pending |
 | `DELETE` | `/api/v1/site-bills/{id}` | Soft-delete bill; activity-logged; recompute totals | MVP | pending |
 
-## F15 — Generate Reports
+## F14 — Generate Reports
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -211,7 +211,7 @@
 | `GET` | `/api/v1/reports/summary` | Company & site roll-up between two dates | L1 | pending |
 | `GET` | `/api/v1/reports/billing-category-costing` | Per-category contract/billed/cost/profit/cost-per-sqft | L2 | pending |
 
-## F16 — Record Edits & Activity Log
+## F15 — Record Edits & Activity Log
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
