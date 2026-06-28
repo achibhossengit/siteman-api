@@ -25,6 +25,16 @@ services:
     depends_on:
       - db
 
+  redis:
+    image: redis:7-alpine
+    container_name: siteman-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - siteman_redisdata:/data
+
 volumes:
   siteman_pgdata:
   siteman_pgadmin:
+  siteman_redisdata:
