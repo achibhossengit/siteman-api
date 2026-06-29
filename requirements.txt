@@ -1,6 +1,7 @@
 asgiref==3.11.1
 Django==5.1.15
 djangorestframework==3.17.1
+djangorestframework-simplejwt==5.5.1
 psycopg2-binary==2.9.12
 python-decouple==3.8
 redis==8.0.1

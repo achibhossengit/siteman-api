@@ -47,7 +47,6 @@ Table user {
   name                  varchar     [not null]
   phone_number          varchar     [not null, unique, note: 'BD phone, normalized +8801XXXXXXXXX (F1.1)']
   email                 varchar     [null]
-  email_verified        boolean     [not null, default: false, note: 'email change confirmed via OTP (F1)']
   
   password              varchar     [not null, note: 'hashed']
   is_active             boolean     [not null, default: true]
@@ -55,7 +54,6 @@ Table user {
   is_staff              boolean     [not null, default: false, note: 'system-scope only (F1.2)']
 
   created_at            timestamp   [not null]
-  created_by            bigint      [ref: > user.id, null]
   updated_at            timestamp   [not null]
   deleted_at            timestamp   [null, note: 'deactivate only; hard-delete blocked while any created_by/actor ref exists (RESTRICT) — purge effectively never (F5.6)']
 
@@ -175,16 +173,10 @@ Table company_reset_log {
 // ============================================================
 // F3 — Company, company config
 // ============================================================
-
 Table company {
   id                  bigint    [pk]
   name                varchar   [not null]
-  is_active           boolean   [not null, default: true, note: 'deactivated => logins blocked (F2.3)']
-  open_site_limit     int       [not null, default: 1,  note: 'cache; -1 = no limit']
-  active_user_limit   int       [not null, default: -1, note: 'cache; -1 = no limit']
-  active_labour_limit int       [not null, default: -1, note: 'cache; -1 = no limit']
-  paid_until         date      [null, note: 'cache of active subscription paid_until (F4.6)']
-  gateway_customer_ref varchar [null, note: 'saved gateway customer/instrument id for auto-renew charges (F4.3)']
+  is_active           boolean   [not null, default: true, note: 'deactivated => logins blocked']
   created_at          timestamp [not null]
   updated_at          timestamp [not null]
   deleted_at          timestamp [null, note: 'purge target after deactivation window']

@@ -190,14 +190,6 @@ A low-frequency support action for clients who tested the app on a real account 
 ### F4.3 — Renew plan
 **Manual renew** — admin renews any time (before or after expiry): pick the same or another `plan_variant`; a `subscription` row + `payment` are created and `paid_until` **stacks** — `max(previous paid_until, today) + duration` (renew-early keeps the unused tail; renew-late starts from today).
 
-**Auto-renew** — opt-in, so a term renews without manual action.
-- **Arm it:** admin sets `CompanyConfig.auto_renew = true` (F3.5) **and** a saved gateway token exists (`company.gateway_customer_ref`, captured on a tokenized F4.2 payment). `auto_renew = true` with no token = intent but not armed → prompt one tokenized payment.
-- **Charge cycle** (cron, reuses F4.7 timing): a few days before `paid_until`, for armed companies, charge `gateway_customer_ref` for the latest term's `plan_variant.discount_price`.
-  - **Success** → new `subscription` row (variant + snapshot limits/price, stacked `paid_until`) + `payment` (`method = gateway`, `status = success`); refresh `company.paid_until`. Service never lapses.
-  - **Failure** → `payment.status = failed`, notify admin, retry within the lead window; if still unpaid past `paid_until`, fall to the normal expiry chain (F4.6).
-  - **Skipped** (notify → manual renew) when the latest subscription has **no variant** (custom deal, `plan_variant_id = null`) or the variant is **retired** (`is_active = false`).
-- **Cancel = turn `auto_renew` off.** The current term stays valid to `paid_until`; no future charge. No stored "cancelled" status — active/expired stays derived from `paid_until`.
-
 ### F4.4 — Upgrade plan
 - **Before expiry:** remaining value of the current plan is calculated (unused days × current per-day rate) and adjusted against the new plan cost; pay the difference.
 - **After expiry:** plain purchase of any higher plan.
