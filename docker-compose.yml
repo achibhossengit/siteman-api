@@ -34,7 +34,18 @@ services:
     volumes:
       - siteman_redisdata:/data
 
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: redisinsight
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/data
+    depends_on:
+      - redis
+
 volumes:
   siteman_pgdata:
   siteman_pgadmin:
   siteman_redisdata:
+  redisinsight_data:
