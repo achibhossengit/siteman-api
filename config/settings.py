@@ -121,7 +121,8 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.ScopedRateThrottle',
     ),
     'DEFAULT_THROTTLE_RATES': {
-        'register': config('REGISTER_THROTTLE_RATE', default='100/hour'),
+        'register': config('REGISTER_THROTTLE_RATE', default='5/min'),
+        'login': config('LOGIN_THROTTLE_RATE', default='3/min'),
     },
 }
 
@@ -133,7 +134,16 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True, # never need to login again. ones login life par.
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
+    "USER_AUTHENTICATION_RULE": "accounts.authentication.jwt_user_authentication_rule", # checked on new token creation by TokenObtainPairView and TokenRefreshView
 }
+
+
+# # Auth refresh cookie
+AUTH_COOKIE_REFRESH = 'refresh_token'
+AUTH_COOKIE_SECURE = config('AUTH_COOKIE_SECURE', default=not DEBUG, cast=bool)
+AUTH_COOKIE_SAMESITE = 'Lax'
+AUTH_COOKIE_PATH = '/api/v1/auth/token'
+
 
 # OTP / notification delivery
 OTP_LENGTH = config('OTP_LENGTH', default=6, cast=int)

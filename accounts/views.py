@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
@@ -6,13 +7,46 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.settings import api_settings as jwt_settings
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
 from core import notifications, verifications
 from company.models import Company
 from .models import User
-from .serializers import RegisterConfirmSerializer, RegisterSerializer, ResendOtpSerializer, UserProfileSerializer
+from .serializers import (
+    # registration serializers
+    RegisterConfirmSerializer,
+    RegisterSerializer,
+    ResendOtpSerializer,
+    UserProfileSerializer,
+
+    # token serializers
+    CookieTokenObtainPairSerializer,
+    CookieTokenRefreshSerializer,
+    CookieTokenBlacklistSerializer,
+)
 
 REGISTER_PURPOSE = "register"
 COMPANY_ADMIN_GROUP = "Company Admin"
+
+def _set_refresh_token_cookie(response, refresh_token=None):
+    if refresh_token is not None:
+        response.set_cookie(
+            key=getattr(settings, "AUTH_COOKIE_REFRESH", "refresh_token"),
+            value=str(refresh_token),
+            max_age=int(jwt_settings.REFRESH_TOKEN_LIFETIME.total_seconds()),
+            httponly=True,
+            secure=getattr(settings, "AUTH_COOKIE_SECURE", not settings.DEBUG),
+            samesite=getattr(settings, "AUTH_COOKIE_SAMESITE", "Lax"),
+            path=getattr(settings, "AUTH_COOKIE_PATH", "/api/v1/auth/token"),
+        )
+
+def _clear_refresh_token_cookie(response):
+    response.delete_cookie(
+        key=getattr(settings, "AUTH_COOKIE_REFRESH", "refresh_token"),
+        path=getattr(settings, "AUTH_COOKIE_PATH", "/api/v1/auth/token"),
+    )
+
 
 def _register_otp_response(ticket, delivery_info, status_code=status.HTTP_200_OK):
     data = {
@@ -91,7 +125,6 @@ class RegisterConfirmView(GenericAPIView):
             user = self._confirm_registration(payload)
         except IntegrityError:
             raise ValidationError(code="already_registered", detail={"phone_number": "This phone number is already registered."})
-        # TODO: auto-login after registration
         serialized_user = UserProfileSerializer(user)
         return Response(data=serialized_user.data, status=status.HTTP_201_CREATED)
 
@@ -113,3 +146,36 @@ class RegisterConfirmView(GenericAPIView):
         admin_group, _ = Group.objects.get_or_create(name=COMPANY_ADMIN_GROUP)
         user.groups.add(admin_group)
         return user
+
+
+class CookieTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CookieTokenObtainPairSerializer
+    throttle_scope = "login"
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        _set_refresh_token_cookie(response, response.data["refresh"])
+        return response
+
+
+class CookieTokenRefreshView(TokenRefreshView):
+    serializer_class = CookieTokenRefreshSerializer
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        # response contains 'refresh' only when ROTATE_REFRESH_TOKENS=True
+        _set_refresh_token_cookie(response, response.data.get("refresh"))
+        return response
+
+
+class CookieTokenBlacklistView(TokenBlacklistView):
+    serializer_class = CookieTokenBlacklistSerializer
+
+    def post(self, request, *args, **kwargs):
+        try:
+            response = super().post(request, *args, **kwargs)
+        except InvalidToken:
+            response = Response({"detail": "Refresh token already invalid."})
+        _clear_refresh_token_cookie(response)
+        return response
+    

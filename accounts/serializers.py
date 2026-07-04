@@ -3,6 +3,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
+from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.serializers import TokenBlacklistSerializer, TokenObtainPairSerializer, TokenRefreshSerializer
 from core.phone import normalize_bd_phone
 
 User = get_user_model()
@@ -64,3 +66,33 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_groups(self, obj):
         return list(obj.groups.values_list("name", flat=True))
+    
+
+class CookieTokenObtainPairSerializer(TokenObtainPairSerializer):
+    
+    def validate_phone_number(self, value):
+        phone = normalize_bd_phone(value)
+        return phone
+
+
+class CookieRefreshFallbackMixin:
+    """Let `refresh` come from the request body or, failing that, the
+    httponly auth cookie — browser clients cannot read the cookie from JS."""
+
+    def validate(self, attrs):
+        if not attrs.get("refresh"):
+            request = self.context.get("request")
+            cookie_name = getattr(settings, "AUTH_COOKIE_REFRESH", "refresh_token")
+            attrs["refresh"] = request.COOKIES.get(cookie_name) if request else None
+        if not attrs["refresh"]:
+            raise InvalidToken("No refresh token found in request body or cookie.")
+        return super().validate(attrs)
+
+
+class CookieTokenRefreshSerializer(CookieRefreshFallbackMixin, TokenRefreshSerializer):
+    refresh = serializers.CharField(required=False)
+
+
+class CookieTokenBlacklistSerializer(CookieRefreshFallbackMixin, TokenBlacklistSerializer):
+    refresh = serializers.CharField(required=False, write_only=True)
+

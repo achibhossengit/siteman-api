@@ -7,7 +7,7 @@
 | `POST` | `/api/v1/auth/register` | Validate name/phone/email/company/password; stash payload + OTP in Redis; return ticket | MVP | pending |
 | `POST` | `/api/v1/auth/register/resend-otp` | Resend OTP for ticket (60s cooldown, max 5/hr); regenerate code, drop old | MVP | pending |
 | `POST` | `/api/v1/auth/register/confirm` | Verify OTP; one tx: create company + admin user + Company Admin group + seed Free plan; auto-login (issue JWT) | MVP | pending |
-| `POST` | `/api/v1/auth/token/create` | Phone + password; validate BD phone + active account/company; issue JWT access + refresh (refresh token set in httponly cookie) | MVP | pending |
+| `POST` | `/api/v1/auth/token/obtain` | Phone + password; validate BD phone + active account/company; issue JWT access + refresh (refresh token set in httponly cookie) | MVP | pending |
 | `POST` | `/api/v1/auth/token/refresh` | Exchange refresh for new access; rotate refresh | MVP | pending |
 | `POST` | `/api/v1/auth/token/blacklist` | Blacklist current refresh token in database | MVP | pending |
 | `POST` | `/api/v1/auth/password/reset` | Registered phone; always 200 (no enumeration); send OTP; return ticket | MVP | pending |
