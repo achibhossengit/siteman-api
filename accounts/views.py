@@ -67,7 +67,7 @@ class RegisterView(GenericAPIView):
     serializer_class = RegisterSerializer
     throttle_scope = "register"
 
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -97,7 +97,7 @@ class RegisterResendOtpView(GenericAPIView):
     serializer_class = ResendOtpSerializer
     throttle_scope = "register"
 
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ticket = serializer.validated_data["ticket"]
@@ -113,7 +113,7 @@ class RegisterConfirmView(GenericAPIView):
     serializer_class = RegisterConfirmSerializer
     throttle_scope = "register"
 
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         payload = verifications.verify(
