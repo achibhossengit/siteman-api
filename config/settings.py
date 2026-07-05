@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'drf_standardized_errors',
+    'drf_spectacular',
 
     # Local
     'core',
@@ -117,6 +118,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'EXCEPTION_HANDLER': 'drf_standardized_errors.handler.exception_handler',
+    'DEFAULT_SCHEMA_CLASS': 'drf_standardized_errors.openapi.AutoSchema',
     'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
     'DEFAULT_VERSION': 'v1',
     'ALLOWED_VERSIONS': ('v1',),
@@ -127,6 +129,35 @@ REST_FRAMEWORK = {
         'register': config('REGISTER_THROTTLE_RATE', default='5/min'),
         'login': config('LOGIN_THROTTLE_RATE', default='3/min'),
     },
+}
+
+
+# drf-spectacular (OpenAPI schema + swagger/redoc docs)
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'SiteMan API',
+    'DESCRIPTION': 'Construction-site management API: auth, company, sites, labour, ledgers.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SCHEMA_PATH_PREFIX': r'/api/v[0-9]+',
+    # drf_standardized_errors error-response schemas
+    'ENUM_NAME_OVERRIDES': {
+        'ValidationErrorEnum': 'drf_standardized_errors.openapi_serializers.ValidationErrorEnum.choices',
+        'ClientErrorEnum': 'drf_standardized_errors.openapi_serializers.ClientErrorEnum.choices',
+        'ServerErrorEnum': 'drf_standardized_errors.openapi_serializers.ServerErrorEnum.choices',
+        'ErrorCode401Enum': 'drf_standardized_errors.openapi_serializers.ErrorCode401Enum.choices',
+        'ErrorCode403Enum': 'drf_standardized_errors.openapi_serializers.ErrorCode403Enum.choices',
+        'ErrorCode404Enum': 'drf_standardized_errors.openapi_serializers.ErrorCode404Enum.choices',
+        'ErrorCode405Enum': 'drf_standardized_errors.openapi_serializers.ErrorCode405Enum.choices',
+        'ErrorCode406Enum': 'drf_standardized_errors.openapi_serializers.ErrorCode406Enum.choices',
+        'ErrorCode415Enum': 'drf_standardized_errors.openapi_serializers.ErrorCode415Enum.choices',
+        'ErrorCode429Enum': 'drf_standardized_errors.openapi_serializers.ErrorCode429Enum.choices',
+        'ErrorCode500Enum': 'drf_standardized_errors.openapi_serializers.ErrorCode500Enum.choices',
+    },
+    # replaces drf-spectacular's default enum hook (patched copy that skips
+    # the dynamically generated per-endpoint error serializers)
+    'POSTPROCESSING_HOOKS': [
+        'drf_standardized_errors.openapi_hooks.postprocess_schema_enums',
+    ],
 }
 
 
