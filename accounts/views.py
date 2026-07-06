@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.settings import api_settings as jwt_settings
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
 from core import notifications, verifications
 from company.models import Company
@@ -20,6 +21,10 @@ from .serializers import (
     ResendOtpSerializer,
     UserProfileSerializer,
 
+    # password reset serializers
+    PasswordResetSerializer,
+    PasswordResetConfirmSerializer,
+
     # token serializers
     CookieTokenObtainPairSerializer,
     CookieTokenRefreshSerializer,
@@ -27,6 +32,7 @@ from .serializers import (
 )
 
 REGISTER_PURPOSE = "register"
+PASSWORD_RESET_PURPOSE = "password_reset"
 COMPANY_ADMIN_GROUP = "Company Admin"
 
 def _set_refresh_token_cookie(response, refresh_token=None):
@@ -148,6 +154,92 @@ class RegisterConfirmView(GenericAPIView):
         admin_group, _ = Group.objects.get_or_create(name=COMPANY_ADMIN_GROUP)
         user.groups.add(admin_group)
         return user
+
+
+class PasswordResetView(GenericAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetSerializer
+    throttle_scope = "password_reset"
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        phone = serializer.validated_data["phone_number"]
+        name = serializer.validated_data["name"]
+
+        # Anti-enumeration: a ticket is minted and the same 200 body returned
+        # whether or not the phone is registered. Only a real, active account
+        # gets a deliverable contact — a ghost ticket carries no phone, so
+        # nothing is ever sent and its OTP can never be verified.
+        # hard rule: the account holder's exact name must match too —
+        # keeps reset stricter than a plain phone->OTP flow
+        user = User.objects.filter(
+            phone_number=phone,
+            name=name,
+            is_active=True,
+            deleted_at__isnull=True,
+        ).first()
+        ticket, delivery_info = verifications.create_ticket(
+            purpose=PASSWORD_RESET_PURPOSE,
+            channel=notifications.SMS,
+            phone=phone if user else None,
+            email=None,
+            payload={"user_id": user.id if user else None},
+        )
+
+        # ghost tickets (unregistered phone) have no deliverable contact
+        if delivery_info["phone"]:
+            notifications.deliver_otp(**delivery_info)
+        return _register_otp_response(ticket, status_code=status.HTTP_200_OK)
+
+
+class PasswordResetResendOtpView(GenericAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = ResendOtpSerializer
+    throttle_scope = "password_reset"
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ticket = serializer.validated_data["ticket"]
+        delivery_info = verifications.resend(ticket, purpose=PASSWORD_RESET_PURPOSE)
+
+        # ghost tickets (unregistered phone) have no deliverable contact
+        if delivery_info["phone"]:
+            notifications.deliver_otp(**delivery_info)
+        return _register_otp_response(ticket, status_code=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(GenericAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetConfirmSerializer
+    throttle_scope = "password_reset"
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = verifications.verify(
+            serializer.validated_data["ticket"],
+            serializer.validated_data["otp"],
+            purpose=PASSWORD_RESET_PURPOSE,
+        )
+        user = User.objects.filter(
+            id=payload["user_id"], is_active=True, deleted_at__isnull=True
+        ).first()
+        if user is None:
+            # ghost ticket, or the account was deactivated mid-flow
+            raise ValidationError(code="invalid", detail={"ticket": "This verification ticket is invalid."})
+
+        with transaction.atomic():
+            user.set_password(serializer.validated_data["new_password"])
+            user.save(update_fields=["password", "updated_at"])
+            # invalidate every existing refresh token (F1.3)
+            for token in OutstandingToken.objects.filter(user=user):
+                BlacklistedToken.objects.get_or_create(token=token)
+        return Response({"detail": "Password has been reset. Please log in again."})
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):

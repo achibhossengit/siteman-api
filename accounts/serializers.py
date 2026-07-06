@@ -49,6 +49,29 @@ class ResendOtpSerializer(serializers.Serializer):
 class RegisterConfirmSerializer(serializers.Serializer):
     ticket = serializers.CharField(max_length=255)
     otp = serializers.CharField(max_length=OTP_LENGTH, min_length=OTP_LENGTH)
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=20)
+    name = serializers.CharField(max_length=255)
+
+    def validate_phone_number(self, value):
+        # format check only — existence is never validated here, so the
+        # response can not leak which numbers are registered
+        try:
+            return normalize_bd_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages[0])
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    ticket = serializers.CharField(max_length=255)
+    otp = serializers.CharField(max_length=OTP_LENGTH, min_length=OTP_LENGTH)
+    new_password = serializers.CharField(write_only=True, style={"input_type": "password"})
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
     
 
 class UserProfileSerializer(serializers.ModelSerializer):

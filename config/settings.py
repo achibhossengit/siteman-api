@@ -126,8 +126,9 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.ScopedRateThrottle',
     ),
     'DEFAULT_THROTTLE_RATES': {
-        'register': config('REGISTER_THROTTLE_RATE', default='5/min'),
+        'register': config('REGISTER_THROTTLE_RATE', default='20/h'),
         'login': config('LOGIN_THROTTLE_RATE', default='3/min'),
+        'password_reset': config('PASSWORD_RESET_THROTTLE_RATE', default='20/h'),
     },
 }
 

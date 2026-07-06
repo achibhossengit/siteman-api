@@ -4,18 +4,20 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework.throttling import ScopedRateThrottle
 from core import verifications
 from company.models import Company
+from .views import PASSWORD_RESET_PURPOSE, REGISTER_PURPOSE
 
 User = get_user_model()
 
 TEST_CACHES = {
     "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
 }
-TEST_THROTTLE_RATES = {"register": "1000/min", "login": "1000/min"}
+TEST_THROTTLE_RATES = {"register": "1000/min", "login": "1000/min", "password_reset": "1000/min"}
 
 
 @override_settings(CACHES=TEST_CACHES)
@@ -249,6 +251,7 @@ class AuthenticationRateLimitTests(APITestCase):
     The 'register' scope is shared by register/resend-otp/confirm,
     so those three endpoints share one bucket per client IP.
     The 'login' scope covers token/obtain only.
+    The 'password_reset' scope is shared by reset/resend-otp/confirm.
     """
 
     def setUp(self):
@@ -257,8 +260,13 @@ class AuthenticationRateLimitTests(APITestCase):
         self.resend_url = reverse("register-resend-otp", kwargs={"version": "v1"})
         self.confirm_url = reverse("register-confirm", kwargs={"version": "v1"})
         self.token_obtain_url = reverse("token-obtain", kwargs={"version": "v1"})
+        self.reset_url = reverse("password-reset", kwargs={"version": "v1"})
+        self.reset_resend_url = reverse("password-reset-resend-otp", kwargs={"version": "v1"})
+        self.reset_confirm_url = reverse("password-reset-confirm", kwargs={"version": "v1"})
         throttle_patcher = patch.object(
-            ScopedRateThrottle, "THROTTLE_RATES", {"register": "3/min", "login": "3/min"}
+            ScopedRateThrottle,
+            "THROTTLE_RATES",
+            {"register": "3/min", "login": "3/min", "password_reset": "3/min"},
         )
         throttle_patcher.start()
         self.addCleanup(throttle_patcher.stop)
@@ -268,6 +276,7 @@ class AuthenticationRateLimitTests(APITestCase):
             "company_name": "Achib Builders",
             "password": "strong-pass-123",
         }
+        self.reset_payload = {"phone_number": "+8801712345678", "name": "Achib Hossen"}
 
     def exhaust_register_scope(self):
         """Use up the whole 'register' bucket (3/min)."""
@@ -275,6 +284,13 @@ class AuthenticationRateLimitTests(APITestCase):
             for _ in range(3):
                 response = self.client.post(self.register_url, self.register_payload)
                 self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def exhaust_password_reset_scope(self):
+        """Use up the whole 'password_reset' bucket (3/min)."""
+        with patch("core.notifications.deliver_otp"):
+            for _ in range(3):
+                response = self.client.post(self.reset_url, self.reset_payload)
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_register_rate_limited(self):
         self.exhaust_register_scope()
@@ -305,3 +321,232 @@ class AuthenticationRateLimitTests(APITestCase):
         credentials = {"phone_number": "+8801712345678", "password": "wrong-pass"}
         response = self.client.post(self.token_obtain_url, credentials)
         self.assertNotEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_password_reset_rate_limited(self):
+        self.exhaust_password_reset_scope()
+        with patch("core.notifications.deliver_otp"):
+            blocked = self.client.post(self.reset_url, self.reset_payload)
+        self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertIn("Retry-After", blocked.headers)
+
+    def test_reset_resend_and_confirm_share_password_reset_scope(self):
+        self.exhaust_password_reset_scope()
+        resend = self.client.post(self.reset_resend_url, {"ticket": "any"})
+        confirm = self.client.post(
+            self.reset_confirm_url,
+            {"ticket": "any", "otp": "123456", "new_password": "new-pass-456"},
+        )
+        self.assertEqual(resend.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertEqual(confirm.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_password_reset_scope_is_independent(self):
+        self.exhaust_password_reset_scope()
+        # reset bucket is full, but register and login must still be allowed
+        with patch("core.notifications.deliver_otp"):
+            register = self.client.post(self.register_url, self.register_payload)
+        credentials = {"phone_number": "+8801712345678", "password": "wrong-pass"}
+        login = self.client.post(self.token_obtain_url, credentials)
+        self.assertNotEqual(register.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertNotEqual(login.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+@override_settings(CACHES=TEST_CACHES)
+class PasswordResetFlowTests(APITestCase):
+    """password/reset -> resend-otp -> confirm, including the
+    anti-enumeration behaviour (ghost tickets for unknown phones)."""
+
+    def setUp(self):
+        cache.clear()
+        throttle_patcher = patch.object(
+            ScopedRateThrottle, "THROTTLE_RATES", TEST_THROTTLE_RATES
+        )
+        throttle_patcher.start()
+        self.addCleanup(throttle_patcher.stop)
+        self.reset_url = reverse("password-reset", kwargs={"version": "v1"})
+        self.resend_url = reverse("password-reset-resend-otp", kwargs={"version": "v1"})
+        self.confirm_url = reverse("password-reset-confirm", kwargs={"version": "v1"})
+        self.obtain_url = reverse("token-obtain", kwargs={"version": "v1"})
+        self.refresh_url = reverse("token-refresh", kwargs={"version": "v1"})
+        self.company = Company.objects.create(name="Achib Builders")
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="old-pass-123",
+            company=self.company,
+        )
+
+    def request_reset(self, phone="+8801712345678", name="Achib Hossen"):
+        """POST /password/reset with delivery mocked.
+        Returns (response, ticket, otp, mocked)."""
+        with patch("core.notifications.deliver_otp") as mocked:
+            response = self.client.post(
+                self.reset_url, {"phone_number": phone, "name": name}
+            )
+        ticket = response.data.get("ticket") if response.status_code == 200 else None
+        otp = mocked.call_args.kwargs.get("otp") if mocked.call_args else None
+        return response, ticket, otp, mocked
+
+    # --- request ---
+
+    def test_reset_request_sends_otp_for_registered_phone(self):
+        response, ticket, _, mocked = self.request_reset()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(response.data.keys(), ["ticket", "otp_expires_in", "resend_cooldown"])
+        self.assertIsNotNone(ticket)
+        mocked.assert_called_once()
+        self.assertEqual(mocked.call_args.kwargs["phone"], "+8801712345678")
+
+    def test_reset_request_invalid_phone_same_response_no_delivery(self):
+        response, ticket, _, mocked = self.request_reset(phone="+8801912345678")
+        # identical 200 body — the caller can not tell the phone is unregistered
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(response.data.keys(), ["ticket", "otp_expires_in", "resend_cooldown"])
+        self.assertIsNotNone(ticket)
+        mocked.assert_not_called()
+
+    def test_reset_request_inactive_or_deleted_user_gets_ghost_ticket(self):
+        cases = {"is_active": False, "deleted_at": timezone.now()}
+        for field, value in cases.items():
+            with self.subTest(field=field):
+                User.objects.filter(pk=self.user.pk).update(is_active=True, deleted_at=None)
+                User.objects.filter(pk=self.user.pk).update(**{field: value})
+                response, _, _, mocked = self.request_reset()
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                mocked.assert_not_called()
+
+    def test_reset_request_rejects_invalid_phone(self):
+        response, _, _, _ = self.request_reset(phone="+8802123456789")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_request_rejects_invalid_name_same_response_no_delivery(self):
+        response, ticket, _, mocked = self.request_reset(name="Someone Else")
+        # same 200 body as a valid pair — name mismatch is not revealed
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(response.data.keys(), ["ticket", "otp_expires_in", "resend_cooldown"])
+        self.assertIsNotNone(ticket)
+        mocked.assert_not_called()
+
+    def test_reset_request_name_trims_surrounding_spaces(self):
+        # DRF CharField trims leading/trailing whitespace by default
+        _, _, _, mocked = self.request_reset(name="  Achib Hossen  ")
+        mocked.assert_called_once()
+
+    def test_reset_request_name_match_is_exact(self):
+        for name in ["ACHIB HOSSEN", "achib hossen", "Achib  Hossen"]:
+            with self.subTest(name=name):
+                cache.clear()  # reset throttle/ticket state between attempts
+                _, _, _, mocked = self.request_reset(name=name)
+                mocked.assert_not_called()
+
+    def test_reset_request_normalizes_phone(self):
+        _, _, _, mocked = self.request_reset(phone="01712345678")
+        self.assertEqual(mocked.call_args.kwargs["phone"], "+8801712345678")
+
+    # --- resend OTP ---
+
+    def test_reset_resend_within_cooldown_throttled(self):
+        _, ticket, _, _ = self.request_reset()
+        with patch("core.notifications.deliver_otp"):
+            response = self.client.post(self.resend_url, {"ticket": ticket})
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_reset_resend_success(self):
+        _, ticket, _, _ = self.request_reset()
+        with patch.object(verifications, "RESEND_COOLDOWN", 0):
+            with patch("core.notifications.deliver_otp") as mocked:
+                response = self.client.post(self.resend_url, {"ticket": ticket})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # the freshly generated OTP must work on confirm
+        new_otp = mocked.call_args.kwargs["otp"]
+        confirm = self.client.post(
+            self.confirm_url, {"ticket": ticket, "otp": new_otp, "new_password": "new-pass-456"}
+        )
+        self.assertEqual(confirm.status_code, status.HTTP_200_OK)
+
+    def test_reset_resend_ghost_ticket_no_delivery(self):
+        _, ticket, _, _ = self.request_reset(phone="+8801912345678")
+        with patch.object(verifications, "RESEND_COOLDOWN", 0):
+            with patch("core.notifications.deliver_otp") as mocked:
+                response = self.client.post(self.resend_url, {"ticket": ticket})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mocked.assert_not_called()
+
+    def test_reset_resend_rejects_ticket_of_other_purpose(self):
+        ticket, _ = verifications.create_ticket(
+            purpose=REGISTER_PURPOSE, channel="sms",
+            phone="+8801712345678", email=None, payload={},
+        )
+        response = self.client.post(self.resend_url, {"ticket": ticket})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # --- confirm ---
+
+    def test_reset_confirm_sets_new_password(self):
+        _, ticket, otp, _ = self.request_reset()
+        response = self.client.post(
+            self.confirm_url, {"ticket": ticket, "otp": otp, "new_password": "new-pass-456"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("new-pass-456"))
+        self.assertFalse(self.user.check_password("old-pass-123"))
+
+    def test_reset_confirm_invalidates_existing_refresh_tokens(self):
+        credentials = {"phone_number": "+8801712345678", "password": "old-pass-123"}
+        refresh = self.client.post(self.obtain_url, credentials).data["refresh"]
+
+        _, ticket, otp, _ = self.request_reset()
+        self.client.post(
+            self.confirm_url, {"ticket": ticket, "otp": otp, "new_password": "new-pass-456"}
+        )
+        # every pre-reset refresh token is blacklisted (F1.3)
+        response = self.client.post(self.refresh_url, {"refresh": refresh})
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_reset_confirm_rejects_wrong_otp(self):
+        _, ticket, otp, _ = self.request_reset()
+        wrong = "000000" if otp != "000000" else "999999"
+        response = self.client.post(
+            self.confirm_url, {"ticket": ticket, "otp": wrong, "new_password": "new-pass-456"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("old-pass-123"))
+
+    def test_reset_confirm_rejects_weak_password(self):
+        _, ticket, otp, _ = self.request_reset()
+        response = self.client.post(
+            self.confirm_url, {"ticket": ticket, "otp": otp, "new_password": "123"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_confirm_ticket_is_single_use(self):
+        _, ticket, otp, _ = self.request_reset()
+        body = {"ticket": ticket, "otp": otp, "new_password": "new-pass-456"}
+        first = self.client.post(self.confirm_url, body)
+        second = self.client.post(self.confirm_url, body)
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_confirm_ghost_ticket_rejected_even_with_correct_otp(self):
+        # unknown phone => payload carries user_id=None; even a "valid" OTP
+        # (impossible for a real caller, forged here) must not pass
+        ticket, delivery_info = verifications.create_ticket(
+            purpose=PASSWORD_RESET_PURPOSE, channel="sms",
+            phone=None, email=None, payload={"user_id": None},
+        )
+        response = self.client.post(
+            self.confirm_url,
+            {"ticket": ticket, "otp": delivery_info["otp"], "new_password": "new-pass-456"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_confirm_rejects_user_deactivated_mid_flow(self):
+        _, ticket, otp, _ = self.request_reset()
+        User.objects.filter(pk=self.user.pk).update(is_active=False)
+        response = self.client.post(
+            self.confirm_url, {"ticket": ticket, "otp": otp, "new_password": "new-pass-456"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("old-pass-123"))
