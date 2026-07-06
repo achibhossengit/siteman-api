@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
 from core import notifications, verifications
 from company.models import Company
@@ -24,6 +25,7 @@ from .serializers import (
     # password reset serializers
     PasswordResetSerializer,
     PasswordResetConfirmSerializer,
+    PasswordChangeSerializer,
 
     # token serializers
     CookieTokenObtainPairSerializer,
@@ -240,6 +242,29 @@ class PasswordResetConfirmView(GenericAPIView):
             for token in OutstandingToken.objects.filter(user=user):
                 BlacklistedToken.objects.get_or_create(token=token)
         return Response({"detail": "Password has been reset. Please log in again."})
+
+
+class PasswordChangeView(GenericAPIView):
+    # authenticated endpoint: global JWT auth + IsAuthenticated defaults apply
+    serializer_class = PasswordChangeSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+
+        with transaction.atomic():
+            user.set_password(serializer.validated_data["new_password"])
+            user.save(update_fields=["password", "updated_at"])
+            # kill every existing session (F1.4)
+            for token in OutstandingToken.objects.filter(user=user):
+                BlacklistedToken.objects.get_or_create(token=token)
+
+        # re-issue a fresh pair so this device stays logged in
+        refresh = RefreshToken.for_user(user)
+        response = Response({"access": str(refresh.access_token), "refresh": str(refresh)})
+        _set_refresh_token_cookie(response, refresh)
+        return response
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):

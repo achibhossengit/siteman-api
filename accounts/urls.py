@@ -6,6 +6,7 @@ from .views import (
     PasswordResetView,
     PasswordResetResendOtpView,
     PasswordResetConfirmView,
+    PasswordChangeView,
     CookieTokenObtainPairView,
     CookieTokenRefreshView,
     CookieTokenBlacklistView,
@@ -19,6 +20,7 @@ urlpatterns = [
     path("password/reset", PasswordResetView.as_view(), name="password-reset"),
     path("password/reset/resend-otp", PasswordResetResendOtpView.as_view(), name="password-reset-resend-otp"),
     path("password/reset/confirm", PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
+    path("password/change", PasswordChangeView.as_view(), name="password-change"),
 
     path("token/obtain", CookieTokenObtainPairView.as_view(), name="token-obtain"),
     path("token/refresh", CookieTokenRefreshView.as_view(), name="token-refresh"),
