@@ -48,14 +48,13 @@ def _clear_refresh_token_cookie(response):
     )
 
 
-def _register_otp_response(ticket, delivery_info, status_code=status.HTTP_200_OK):
+def _register_otp_response(ticket, status_code=status.HTTP_200_OK):
     data = {
         "ticket": ticket,
         "otp_expires_in": verifications.OTP_AGE,
         "resend_cooldown": verifications.RESEND_COOLDOWN,
     }
     
-    notifications.deliver_otp(**delivery_info)
     return Response(data, status=status_code)
      
 
@@ -87,8 +86,10 @@ class RegisterView(GenericAPIView):
             email=payload["email"],
             payload=payload,
         )
-        
-        return _register_otp_response(ticket, delivery_info, status_code=status.HTTP_201_CREATED)
+
+        notifications.deliver_otp(**delivery_info)
+        response = _register_otp_response(ticket, status_code=status.HTTP_201_CREATED)
+        return response
 
 
 class RegisterResendOtpView(GenericAPIView):
@@ -101,10 +102,11 @@ class RegisterResendOtpView(GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ticket = serializer.validated_data["ticket"]
-
         delivery_info = verifications.resend(ticket, purpose=REGISTER_PURPOSE)
-        
-        return _register_otp_response(ticket, delivery_info, status_code=status.HTTP_200_OK)
+
+        notifications.deliver_otp(**delivery_info)
+        response = _register_otp_response(ticket, status_code=status.HTTP_200_OK)        
+        return response
 
 
 class RegisterConfirmView(GenericAPIView):
