@@ -173,10 +173,10 @@ SIMPLE_JWT = {
 
 
 # # Auth refresh cookie
-AUTH_COOKIE_REFRESH = 'refresh_token'
-AUTH_COOKIE_SECURE = config('AUTH_COOKIE_SECURE', default=not DEBUG, cast=bool)
-AUTH_COOKIE_SAMESITE = 'Lax'
-AUTH_COOKIE_PATH = '/api/v1/auth/token'
+REFRESH_TOKEN_COOKIE_NAME = 'refresh_token'
+REFRESH_TOKEN_COOKIE_SECURE = config('REFRESH_TOKEN_COOKIE_SECURE', default=not DEBUG, cast=bool)
+REFRESH_TOKEN_COOKIE_SAMESITE = 'Lax'
+REFRESH_TOKEN_COOKIE_PATH = '/api/v1/auth/token'
 
 
 # OTP / notification delivery

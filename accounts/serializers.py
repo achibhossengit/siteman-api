@@ -82,7 +82,7 @@ class CookieRefreshFallbackMixin:
     def validate(self, attrs):
         if not attrs.get("refresh"):
             request = self.context.get("request")
-            cookie_name = getattr(settings, "AUTH_COOKIE_REFRESH", "refresh_token")
+            cookie_name = getattr(settings, "REFRESH_TOKEN_COOKIE_NAME", "refresh_token")
             attrs["refresh"] = request.COOKIES.get(cookie_name) if request else None
         if not attrs["refresh"]:
             raise InvalidToken("No refresh token found in request body or cookie.")
