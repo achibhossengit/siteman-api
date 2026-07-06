@@ -56,7 +56,7 @@ def _clear_refresh_token_cookie(response):
     )
 
 
-def _register_otp_response(ticket, status_code=status.HTTP_200_OK):
+def _ticket_response(ticket, status_code=status.HTTP_200_OK):
     data = {
         "ticket": ticket,
         "otp_expires_in": verifications.OTP_AGE,
@@ -96,7 +96,7 @@ class RegisterView(GenericAPIView):
         )
 
         notifications.deliver_otp(**delivery_info)
-        response = _register_otp_response(ticket, status_code=status.HTTP_201_CREATED)
+        response = _ticket_response(ticket, status_code=status.HTTP_201_CREATED)
         return response
 
 
@@ -113,7 +113,7 @@ class RegisterResendOtpView(GenericAPIView):
         delivery_info = verifications.resend(ticket, purpose=REGISTER_PURPOSE)
 
         notifications.deliver_otp(**delivery_info)
-        response = _register_otp_response(ticket, status_code=status.HTTP_200_OK)        
+        response = _ticket_response(ticket, status_code=status.HTTP_200_OK)        
         return response
 
 
@@ -193,7 +193,7 @@ class PasswordResetView(GenericAPIView):
         # ghost tickets (unregistered phone) have no deliverable contact
         if delivery_info["phone"]:
             notifications.deliver_otp(**delivery_info)
-        return _register_otp_response(ticket, status_code=status.HTTP_200_OK)
+        return _ticket_response(ticket, status_code=status.HTTP_200_OK)
 
 
 class PasswordResetResendOtpView(GenericAPIView):
@@ -211,7 +211,7 @@ class PasswordResetResendOtpView(GenericAPIView):
         # ghost tickets (unregistered phone) have no deliverable contact
         if delivery_info["phone"]:
             notifications.deliver_otp(**delivery_info)
-        return _register_otp_response(ticket, status_code=status.HTTP_200_OK)
+        return _ticket_response(ticket, status_code=status.HTTP_200_OK)
 
 
 class PasswordResetConfirmView(GenericAPIView):
