@@ -124,11 +124,14 @@ REST_FRAMEWORK = {
     'ALLOWED_VERSIONS': ('v1',),
     'DEFAULT_THROTTLE_CLASSES': (
         'rest_framework.throttling.ScopedRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
     ),
     'DEFAULT_THROTTLE_RATES': {
         'register': config('REGISTER_THROTTLE_RATE', default='20/h'),
         'login': config('LOGIN_THROTTLE_RATE', default='3/min'),
         'password_reset': config('PASSWORD_RESET_THROTTLE_RATE', default='20/h'),
+        # generous per-user backstop for every endpoint (anon requests key by IP)
+        'user': config('USER_THROTTLE_RATE', default='100/min'),
     },
 }
 

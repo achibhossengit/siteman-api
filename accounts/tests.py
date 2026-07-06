@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
-from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.throttling import SimpleRateThrottle, UserRateThrottle
 from core import verifications
 from company.models import Company
 from .views import PASSWORD_RESET_PURPOSE, REGISTER_PURPOSE
@@ -17,7 +17,12 @@ User = get_user_model()
 TEST_CACHES = {
     "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
 }
-TEST_THROTTLE_RATES = {"register": "1000/min", "login": "1000/min", "password_reset": "1000/min"}
+TEST_THROTTLE_RATES = {
+    "register": "1000/min",
+    "login": "1000/min",
+    "password_reset": "1000/min",
+    "user": "1000/min",
+}
 
 
 @override_settings(CACHES=TEST_CACHES)
@@ -26,8 +31,11 @@ class RegistrationFlowTests(APITestCase):
         cache.clear()
         # THROTTLE_RATES is a class attribute snapshotted at import time,
         # so override_settings(REST_FRAMEWORK=...) has no effect on it.
+        # patch the base class: ScopedRateThrottle and UserRateThrottle
+        # both inherit THROTTLE_RATES from SimpleRateThrottle. 
+        # So, apply changes in the parent then all children will found it
         throttle_patcher = patch.object(
-            ScopedRateThrottle, "THROTTLE_RATES", TEST_THROTTLE_RATES
+            SimpleRateThrottle, "THROTTLE_RATES", TEST_THROTTLE_RATES
         )
         throttle_patcher.start()
         self.addCleanup(throttle_patcher.stop)
@@ -161,8 +169,11 @@ class TokenFlowTests(APITestCase):
         self.obtain_url = reverse("token-obtain", kwargs={"version": "v1"})
         self.refresh_url = reverse("token-refresh", kwargs={"version": "v1"})
         self.blacklist_url = reverse("token-blacklist", kwargs={"version": "v1"})
+        # patch the base class: ScopedRateThrottle and UserRateThrottle
+        # both inherit THROTTLE_RATES from SimpleRateThrottle
+        # So, apply changes in the parent then all children will found it
         throttle_patcher = patch.object(
-            ScopedRateThrottle, "THROTTLE_RATES", TEST_THROTTLE_RATES
+            SimpleRateThrottle, "THROTTLE_RATES", TEST_THROTTLE_RATES
         )
         throttle_patcher.start()
         self.addCleanup(throttle_patcher.stop)
@@ -263,10 +274,13 @@ class AuthenticationRateLimitTests(APITestCase):
         self.reset_url = reverse("password-reset", kwargs={"version": "v1"})
         self.reset_resend_url = reverse("password-reset-resend-otp", kwargs={"version": "v1"})
         self.reset_confirm_url = reverse("password-reset-confirm", kwargs={"version": "v1"})
+        # patch the base class: ScopedRateThrottle and UserRateThrottle
+        # both inherit THROTTLE_RATES from SimpleRateThrottle
+        # So, apply changes in the parent then all children will found it
         throttle_patcher = patch.object(
-            ScopedRateThrottle,
+            SimpleRateThrottle,
             "THROTTLE_RATES",
-            {"register": "3/min", "login": "3/min", "password_reset": "3/min"},
+            {"register": "3/min", "login": "3/min", "password_reset": "3/min", "user": "1000/min"},
         )
         throttle_patcher.start()
         self.addCleanup(throttle_patcher.stop)
@@ -349,6 +363,31 @@ class AuthenticationRateLimitTests(APITestCase):
         self.assertNotEqual(register.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
         self.assertNotEqual(login.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
+    def test_user_throttle_backstops_authenticated_endpoints(self):
+        change_url = reverse("password-change", kwargs={"version": "v1"})
+        company = Company.objects.create(name="Achib Builders")
+        User.objects.create_user(
+            phone_number="+8801912345678",
+            name="Rate User",
+            password="strong-pass-123",
+            company=company,
+        )
+        credentials = {"phone_number": "+8801912345678", "password": "strong-pass-123"}
+        access = self.client.post(self.token_obtain_url, credentials).data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+        # UserRateThrottle has no own THROTTLE_RATES attr, so this shadows the
+        # SimpleRateThrottle patch for the 'user' scope only
+        # So, apply changes in the parent then all children will found it
+        with patch.object(UserRateThrottle, "THROTTLE_RATES", {"user": "3/min"}):
+            body = {"current_password": "wrong-pass", "new_password": "new-pass-456"}
+            for _ in range(3):
+                response = self.client.post(change_url, body)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            blocked = self.client.post(change_url, body)
+        self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertIn("Retry-After", blocked.headers)
+
 
 @override_settings(CACHES=TEST_CACHES)
 class PasswordResetFlowTests(APITestCase):
@@ -357,8 +396,11 @@ class PasswordResetFlowTests(APITestCase):
 
     def setUp(self):
         cache.clear()
+        # patch the base class: ScopedRateThrottle and UserRateThrottle
+        # both inherit THROTTLE_RATES from SimpleRateThrottle
+        # So, apply changes in the parent then all children will found it
         throttle_patcher = patch.object(
-            ScopedRateThrottle, "THROTTLE_RATES", TEST_THROTTLE_RATES
+            SimpleRateThrottle, "THROTTLE_RATES", TEST_THROTTLE_RATES
         )
         throttle_patcher.start()
         self.addCleanup(throttle_patcher.stop)
@@ -550,3 +592,90 @@ class PasswordResetFlowTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("old-pass-123"))
+
+
+@override_settings(CACHES=TEST_CACHES)
+class PasswordChangeTests(APITestCase):
+    """password/change: authenticated, verifies the current password,
+    kills every other session and re-issues a pair for this device."""
+
+    REFRESH_TOKEN_COOKIE_NAME = getattr(settings, "REFRESH_TOKEN_COOKIE_NAME", "refresh_token")
+
+    def setUp(self):
+        cache.clear()
+        # patch the base class: ScopedRateThrottle and UserRateThrottle
+        # both inherit THROTTLE_RATES from SimpleRateThrottle
+        # So, apply changes in the parent then all children will found it
+        throttle_patcher = patch.object(
+            SimpleRateThrottle, "THROTTLE_RATES", TEST_THROTTLE_RATES
+        )
+        throttle_patcher.start()
+        self.addCleanup(throttle_patcher.stop)
+        self.obtain_url = reverse("token-obtain", kwargs={"version": "v1"})
+        self.refresh_url = reverse("token-refresh", kwargs={"version": "v1"})
+        self.change_url = reverse("password-change", kwargs={"version": "v1"})
+        self.company = Company.objects.create(name="Achib Builders")
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="old-pass-123",
+            company=self.company,
+        )
+        self.credentials = {"phone_number": "+8801712345678", "password": "old-pass-123"}
+
+    def login(self):
+        """Obtain a pair and authenticate the test client with the access token."""
+        data = self.client.post(self.obtain_url, self.credentials).data
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {data['access']}")
+        return data
+
+    def change(self, current="old-pass-123", new="new-pass-456"):
+        return self.client.post(
+            self.change_url, {"current_password": current, "new_password": new}
+        )
+
+    def test_change_requires_authentication(self):
+        response = self.change()
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_change_success_sets_new_password_and_reissues_pair(self):
+        self.login()
+        response = self.change()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(response.data.keys(), ["access", "refresh"])
+        cookie = response.cookies[self.REFRESH_TOKEN_COOKIE_NAME]
+        self.assertEqual(cookie.value, response.data["refresh"])
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("new-pass-456"))
+        self.assertFalse(self.user.check_password("old-pass-123"))
+
+    def test_change_rejects_wrong_current_password(self):
+        self.login()
+        response = self.change(current="wrong-pass")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("old-pass-123"))
+
+    def test_change_rejects_weak_new_password(self):
+        self.login()
+        response = self.change(new="123")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_change_kills_other_sessions_but_not_this_one(self):
+        # device A logs in, then device B logs in and changes the password
+        device_a_refresh = self.client.post(self.obtain_url, self.credentials).data["refresh"]
+        self.login()
+        response = self.change()
+        # device A's refresh token is blacklisted
+        retry = self.client.post(self.refresh_url, {"refresh": device_a_refresh})
+        self.assertEqual(retry.status_code, status.HTTP_401_UNAUTHORIZED)
+        # the re-issued pair from the change response still works
+        keep = self.client.post(self.refresh_url, {"refresh": response.data["refresh"]})
+        self.assertEqual(keep.status_code, status.HTTP_200_OK)
+
+    def test_change_reissued_access_token_is_usable(self):
+        self.login()
+        new_access = self.change().data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {new_access}")
+        response = self.change(current="new-pass-456", new="another-pass-789")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
