@@ -205,6 +205,7 @@ Table plan {
   updated_at          timestamp [not null]
 }
 
+
 Table plan_variant {
   id             bigint    [pk]
   plan_id        bigint    [ref: > plan.id, not null]
@@ -221,38 +222,59 @@ Table plan_variant {
   }
 }
 
+
+Table custom_plan {
+  id                  bigint    [pk]
+  company_id          bigint              [ref: > company.id, not null, note: 'Because, it is created for specific company']
+  open_site_limit     int       [not null, note: '-1 = no limit']
+  active_user_limit   int       [not null, default: -1]
+  active_labour_limit int       [not null, default: -1]
+  duration            int       [not null, note: 'term length in days; payment copies it like the variant path']
+  price               int       [note: 'negotiated fixed price for the full term']
+  is_active           boolean   [not null, default: true, note: 'retire an old deal without deleting it']
+  created_at          timestamp [not null]
+  created_by          bigint    [ref: > user.id, not null]
+  updated_at          timestamp [not null]
+}
+
+
 Table subscription {
   id                  bigint              [pk]
-  company_id          bigint              [ref: > company.id, not null]
-  plan_variant_id     bigint              [ref: > plan_variant.id, null, note: 'NULL allowed for fully custom']
+  company_id          bigint              [ref: - company.id, not null, note: 'one row per company — current entitlement cache, updated in place; history lives in payment']
+  // at most one of variant_id / custom_plan_id (DB check: not both); neither = a hand-set / trial term
+  variant_id     bigint              [ref: > plan_variant.id, null]
+  custom_plan_id      bigint              [ref: > custom_plan.id, null, note: 'the negotiated deal this company is on; suggests the next renewal billing']
   open_site_limit     int                 [not null, note: 'snapshot at purchase']
   active_user_limit   int                 [not null]
   active_labour_limit int                 [not null]
-  duration            int                 [not null, note: 'chosen from plan_variant.duration']
-  price               int                 [not null, note: 'locked from plan_variant.price']
-  discount_price      int                 [not null, note: 'total paid this term']
-  paid_until          date                [null, note: 'base_date = max(previous_paid_until, today) new_paid_until = base_date + duration; Null = not payment yet']
+
+  paid_until          date                [null, note: 'set from the succeeding payment period_end; Null = never activated. Free is an ordinary plan tier — its 0-price, long-duration variant yields a real far-future paid_until (no sentinel)']
   created_at          timestamp           [not null]
   updated_at          timestamp           [not null]
 
   Indexes {
-    company_id
+    (company_id) [unique, note: 'one subscription row per company']
   }
 }
 
 Table payment {
-  id              bigint         [pk]
-  plan_variant_id bigint         [ref: > plan_variant.id, not null]
-  company_id      bigint         [not null, note: 'denormalized for tenant filtering']
-  method          payment_method [not null]
-  amount          int            [not null]
-  status          payment_status [not null, default: 'pending']
-  transaction_id  varchar        [null, note: 'gateway txn id; NULL for manual']
-  paid_at         timestamp      [null]
-  gateway_payload jsonb          [null, note: 'raw IPN/webhook']
-  created_at      timestamp      [not null]
-  created_by      bigint         [ref: > user.id, not null]
-  updated_at      timestamp      [not null]
+  id              bigint          [pk]
+  company_id      bigint          [ref: > company.id, null, note: 'denormalized for tenant filtering; SET NULL on company delete — financial record survives']
+  status          payment_status  [not null, default: 'pending']
+  method          payment_method  [not null]
+  variant_id      bigint          [null, note: 'SET NULL on variant delete']
+  custom_plan_id  bigint          [null, note: 'SET NULL on custom plan delete']
+  amount            int           [not null, note: 'locked from plan_variant.discount_price (variant) or custom_plan.price (custom deal); its may different if upgrade or downgrade apply']
+
+  period_start    date            [null, note: 'coverage this payment buys; set when payment succeeds; max(active subscription enddate, today)']
+  period_end      date            [null, note: 'period_start + the variant/custom_plan duration']
+  paid_at         timestamp       [null]
+
+  transaction_id  varchar         [null, unique, note: 'gateway txn id; NULL for manual; dedupe webhook']
+  gateway_payload jsonb           [null, note: 'raw IPN/webhook']
+  created_at      timestamp       [not null]
+  created_by      bigint          [ref: > user.id, null]
+  updated_at      timestamp       [not null]
 }
 
 // ============================================================
@@ -649,6 +671,9 @@ Ref: site_cost.billing_id         > billing_category.id   [delete: set null]
 Ref: hidden_cost.billing_id       > billing_category.id   [delete: set null]
 Ref: site_bill.billing_id         > billing_category.id   [delete: set null]
 
+Ref: payment.variant_id     > plan_variant.id [delete: set null]
+Ref: payment.custom_plan_id > custom_plan.id  [delete: set null]
+
 Ref: daily_attendance.custom_category_id > custom_category.id  [delete: set null]
 Ref: extra_work.custom_category_id       > custom_category.id  [delete: set null]
 Ref: site_cost.custom_category_id        > custom_category.id  [delete: set null]
@@ -678,6 +703,7 @@ TableGroup company_and_subscription {
   company_config
   plan
   plan_variant
+  custom_plan
   subscription
   payment
 }

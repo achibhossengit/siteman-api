@@ -128,6 +128,7 @@ System-level users; not tied to any company.
 | `subscription_renew_notification` | 5 (days) | Begin renewal reminders this many days **before** `paid_until` — SMS + dashboard to every Company Admin (F4.7). |
 | `company_deactivate_after_expiry` | 10 (days) | Days **after** expiry to auto-deactivate the company. On expiry, write access is cut immediately (F4.6); after this many further days the cron deactivates the company — no user can log in, reactivation needs a support request (F2.3). |
 | `delete_deactivated_company` | 60 (days) | Days a company may stay deactivated before a cron **purges** its data. |
+| `trial_plan` | null | JSON: the plan + limits used to seed a trial subscription at registration; null = no trial. |
 
 **How it drives cron** — the scheduled jobs run on a **fixed schedule** (daily, set at deploy). They read these **threshold values** at run time and decide what to act on. So changing a value takes effect on the next run.
 
@@ -177,37 +178,38 @@ A low-frequency support action for clients who tested the app on a real account 
 
 ## F4 — Manage Company Subscription
 
-### F4.1 — View subscription status
-- Company Admin sees current plan, expiry date, payment history, and **usage vs limit** for each capped resource: open sites, active users, active labour.
+> **MVP scope** — the whole subscription lifecycle (create, pay, renew, upgrade / downgrade) is operated by a **System Admin through the Django admin site** (F2). There is **no tenant-facing subscription API in the MVP**; a company's plan is managed for it. The rest of this section is the data model and the manual flow.
 
-### F4.2 — Pay for plan
-- Admin picks a plan tier and one of its offered durations (any `plan_variant` for the tier).
-- Admin starts payment → system creates a payment attempt and redirects to the payment gateway.
-- Gateway sends confirmation (IPN/webhook); system verifies signature and amount.
-- On success: `subscription` row saved (`plan_variant`, duration, amount, transaction id) + a `payment`; `paid_until` set by **stacking** — `max(previous paid_until, today) + duration` (first purchase = `today + duration`). The gateway token may be saved to `company.gateway_customer_ref` to enable auto-renew (F4.3).
-- On failure/cancel: nothing changes; user can retry.
+### Data model
+- **`plan` / `plan_variant`** — the public tiers and their `(duration, price)` offerings (Free / Basic / Popular / Business).
+- **`custom_plan`** — a negotiated deal created for **one specific company** (own limits, duration, price); only that company may be put on it.
+- **`subscription`** — **one row per company**, the current entitlement cache: a snapshot of the active limits (`open_site_limit`, `active_user_limit`, `active_labour_limit`) plus `paid_until`. It points at the `plan_variant` **or** `custom_plan` it is on — never both, and neither for a hand-set / trial term. Updated in place; dies with the company.
+- **`payment`** — a financial record: `amount`, `method` (gateway / manual), `status`, the coverage window (`period_start` / `period_end`), and trace FKs to the `variant` / `custom_plan`. `payment.company` is **SET NULL** on company delete, so the money trail survives.
+
+### F4.1 — View subscription status
+- Current plan, `paid_until`, **usage vs limit** (open sites / active users / active labour), and payment history.
+
+### F4.2 — Pay for a plan
+- A `success` `payment` activates the term: `period_start = max(paid_until, today)`, `period_end = period_start + the chosen plan's duration`, then the subscription's `paid_until = period_end` and its limits are snapshotted from that plan. `method` is `gateway` or `manual`.
 
 ### F4.3 — Renew plan
-**Manual renew** — admin renews any time (before or after expiry): pick the same or another `plan_variant`; a `subscription` row + `payment` are created and `paid_until` **stacks** — `max(previous paid_until, today) + duration` (renew-early keeps the unused tail; renew-late starts from today).
+- Same as paying; renewing early keeps the unused tail (`period_start` stacks on the current `paid_until`).
 
 ### F4.4 — Upgrade plan
-- **Before expiry:** remaining value of the current plan is calculated (unused days × current per-day rate) and adjusted against the new plan cost; pay the difference.
-- **After expiry:** plain purchase of any higher plan.
+- Move to a higher tier (higher `open_site_limit`). Hitting a plan limit while creating a user / site / labour blocks the action with an upgrade prompt.
 
 ### F4.5 — Downgrade plan
-- **Before expiry:** not allowed — must wait until the current plan expires.
-- **After expiry:** system checks current usage of every capped resource (open sites, active users, active labour) against the target plan limits:
-  - All within limits → downgrade proceeds.
-  - Any exceeds its limit → admin is prompted to shed the excess (close sites / deactivate users / deactivate labour) or stay on the current plan.
+- Move to a lower tier after expiry; allowed only if current usage fits the smaller limits.
 
 ### F4.6 — Disable write access on expiry
-- Middleware checks subscription validity on every request.
-- Expired → write access to all sites is disabled immediately (read-only); admin gets an alert to renew.
-- If still unpaid `company_deactivate_after_expiry` days later (SystemConfig, F2.10), a cron **deactivates** the company — all logins blocked; reactivation then needs a support request (F2.3). Left deactivated for `delete_deactivated_company` days → data purged.
+- `paid_until` in the past → write access is cut (read-only). If left unpaid, the SystemConfig cron timeline (F2.10) deactivates and later purges the company.
 
-### F4.7 — Send renewal reminders
-- Scheduled job sends SMS + dashboard notification to every Company Admin starting `subscription_renew_notification` days before expiry (SystemConfig, F2.10), and again after expiry.
-- Reminder log kept so the same reminder is not repeated.
+### F4.7 — Renewal reminders
+- Reminder to the Company Admin starting `subscription_renew_notification` days before expiry (F2.10).
+
+### Free & trial
+- **Free** is an ordinary tier — a `0`-price, long-duration variant, so its `paid_until` is just a far-future date; no special-casing.
+- **Trial** — an optional `trial_plan` (SystemConfig, F2.10) may seed a limited-time plan at registration; it is a normal subscription with a near `paid_until` and no payment.
 
 ### Subscription Model (reference)
 Pricing is driven by **open site count**; the user and labour caps default to `-1` (no limit) today and exist so a tier can be tightened later without a schema change. Longer durations get a **per-month discount**. Prices in BDT. The durations below (1 / 6 / 12 months) are the **current offering** only — they are `plan_variant` rows, not fixed by schema, so any duration can be added as data.

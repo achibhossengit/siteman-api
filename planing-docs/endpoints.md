@@ -51,17 +51,7 @@
 
 ## F4 — Manage Company Subscription
 
-| Method | Endpoint | Description | Priority | Progress |
-|---|---|---|---|---|
-| `GET` | `/api/v1/subscription` | Current plan/expiry/payment history + usage vs limit | MVP | pending |
-| `GET` | `/api/v1/subscription/plans` | List plan tiers + variants (durations/prices) public endpoint | MVP | pending |
-| `GET` | `/api/v1/subscription/payments` | Payment history for company | L1 | pending |
-| `GET` | `/api/v1/subscription/payments/{id}` | Payment details | L1 | pending |
-| `POST`| `/api/v1/subscription/payments` | Create payment attempt + redirect to gateway | L1 | pending |
-| `POST`| `/api/v1/subscription/payments/webhook` | Gateway IPN/webhook (unauthenticated, signature-verified, idempotent — dedupe by transaction_id); verify amount; stack paid_until | L1 | pending |
-| `POST`| `/api/v1/subscription/renew` | Manual renew; current subscription or pick variant; stack paid_until | L1 | pending |
-| `POST`| `/api/v1/subscription/upgrade` | Upgrade plan; pro-rate before expiry / plain after | L2 | pending |
-| `POST`| `/api/v1/subscription/downgrade` | Downgrade after expiry; check usage vs target limits | L2 | pending |
+> **No API in the MVP.** Subscriptions and payments are managed by a System Admin through the **Django admin site** (see F4 in feature-details). A tenant-facing subscription API (view plan, pay, renew, gateway webhook) is a **post-MVP** phase.
 
 ## F5 — Manage Company Users
 
