@@ -38,27 +38,27 @@
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
-| `GET`   | `/api/v1/company` | View company profile & status (name/active/site count/plan/validity) | MVP | pending |
-| `PATCH` | `/api/v1/company` | Edit company name & profile; activity-logged | MVP | pending |
-| `GET`   | `/api/v1/company-config` | View CompanyConfig (allow_labour_transfer/auto_renew) | MVP | pending |
-| `PATCH` | `/api/v1/company-config` | Edit CompanyConfig flags; activity-logged | L1 | pending |
-| `POST`  | `/api/v1/company-config/reset` | Reset CompanyConfig to built-in defaults; activity-logged | L2 | pending |
-| `GET`   | `/api/v1/custom-categories` | List custom categories filtered by scope | MVP | pending |
-| `POST`  | `/api/v1/custom-categories` | Create custom category (scope/name/note/order) | L1 | pending |
-| `PATCH` | `/api/v1/custom-categories/{id}` | Edit custom category | L1 | pending |
-| `DELETE`| `/api/v1/custom-categories/{id}` | Delete & set-null on referencing rows; confirm + activity-logged | L1 | pending |
-| `POST`  | `/api/v1/custom-categories/{id}/merge` | Merge into another same-scope category | L2 | pending |
+| `GET`   | `/api/v1/company/profile` | View company profile & status (name/active/site count/plan/validity) | MVP | pending |
+| `PATCH` | `/api/v1/company/profile` | Edit company name & profile; activity-logged | MVP | pending |
+| `GET`   | `/api/v1/company/config` | View CompanyConfig (allow_labour_transfer/auto_renew) | MVP | pending |
+| `PATCH` | `/api/v1/company/config` | Edit CompanyConfig flags; activity-logged | L1 | pending |
+| `POST`  | `/api/v1/company/config/reset` | Reset CompanyConfig to built-in defaults; activity-logged | L2 | pending |
+| `GET`   | `/api/v1/company/custom-categories` | List custom categories filtered by scope | MVP | pending |
+| `POST`  | `/api/v1/company/custom-categories` | Create custom category (scope/name/note/order) | L1 | pending |
+| `PATCH` | `/api/v1/company/custom-categories/{id}` | Edit custom category | L1 | pending |
+| `DELETE`| `/api/v1/company/custom-categories/{id}` | Delete & set-null on referencing rows; confirm + activity-logged | L1 | pending |
+| `POST`  | `/api/v1/company/custom-categories/{id}/merge` | Merge into another same-scope category | L2 | pending |
 
 ## F4 — Manage Company Subscription
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
-| `GET` | `/api/v1/plans` | List plan tiers + variants (durations/prices) | MVP | pending |
-| `GET` | `/api/v1/payments` | Payment history for company | L1 | pending |
-| `GET` | `/api/v1/payments/{id}` | Payment details | L1 | pending |
-| `POST`| `/api/v1/payments` | Create payment attempt + redirect to gateway | L1 | pending |
-| `POST`| `/api/v1/payments/webhook` | Gateway IPN/webhook (unauthenticated, signature-verified, idempotent — dedupe by transaction_id); verify amount; stack paid_until | L1 | pending |
 | `GET` | `/api/v1/subscription` | Current plan/expiry/payment history + usage vs limit | MVP | pending |
+| `GET` | `/api/v1/subscription/plans` | List plan tiers + variants (durations/prices) public endpoint | MVP | pending |
+| `GET` | `/api/v1/subscription/payments` | Payment history for company | L1 | pending |
+| `GET` | `/api/v1/subscription/payments/{id}` | Payment details | L1 | pending |
+| `POST`| `/api/v1/subscription/payments` | Create payment attempt + redirect to gateway | L1 | pending |
+| `POST`| `/api/v1/subscription/payments/webhook` | Gateway IPN/webhook (unauthenticated, signature-verified, idempotent — dedupe by transaction_id); verify amount; stack paid_until | L1 | pending |
 | `POST`| `/api/v1/subscription/renew` | Manual renew; current subscription or pick variant; stack paid_until | L1 | pending |
 | `POST`| `/api/v1/subscription/upgrade` | Upgrade plan; pro-rate before expiry / plain after | L2 | pending |
 | `POST`| `/api/v1/subscription/downgrade` | Downgrade after expiry; check usage vs target limits | L2 | pending |
