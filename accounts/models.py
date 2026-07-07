@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
-from core.models import CompanyOwnedMixin, TimeStampedMixin
+from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
 from .managers import UserManager
 
 
@@ -42,7 +42,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
         return f"{self.name} ({self.phone_number})"
 
 
-class UserSite(CompanyOwnedMixin):
+class UserSite(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
