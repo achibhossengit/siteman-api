@@ -195,13 +195,22 @@ OTP_MAX_ATTEMPTS = config('OTP_MAX_ATTEMPTS', default=5, cast=int)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {name} {module} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
-        'console': {'class': 'logging.StreamHandler'},
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
     },
     'loggers': {
-        'root': {
+        'siteman': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': config('SITEMAN_LOG_LEVEL', default='ERROR'),
             'propagate': False,
         },
     },

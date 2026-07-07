@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from rest_framework import status
 from rest_framework.exceptions import APIException
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("siteman.notifications")
 
 SMS = "sms"
 EMAIL = "email"
