@@ -80,24 +80,18 @@
 | `GET` | `/api/v1/sites` | List sites; filters open/closed active/inactive; scoped by assignment | MVP | pending |
 | `POST`| `/api/v1/sites` | Create site (open+active); checks open-site limit | MVP | pending |
 | `GET`  | `/api/v1/sites/{id}` | View site detail | MVP | pending |
-| `PATCH`| `/api/v1/sites/{id}` | Edit site name/fields | MVP | pending |
-| `POST` | `/api/v1/sites/{id}/activate` | is_active=true | L1 | pending |
-| `POST` | `/api/v1/sites/{id}/deactivate` | is_active=false | L1 | pending |
+| `PATCH`| `/api/v1/sites/{id}` | Edit site name/fields; handle activate, deactivate partial operation | MVP | pending |
+| `DELETE` | `/api/v1/sites/{id}` | Delete site only if no financial records / refs | L1 | pending |
 | `POST` | `/api/v1/sites/{id}/close` | Zero cash check; set closed_at; build closure summary | L1 | pending |
 | `POST` | `/api/v1/sites/{id}/reopen` | Check slot; clear closed_at; delete summary (detail not purged) | L1 | pending |
-| `DELETE` | `/api/v1/sites/{id}` | Delete site only if no financial records / refs | L1 | pending |
 | `GET` | `/api/v1/sites/{id}/config` | View SiteConfig (windows/quotas/validation ranges) | MVP | pending |
 | `PATCH` | `/api/v1/sites/{id}/config` | Edit SiteConfig; future checks only; activity-logged | L1 | pending |
 | `POST` | `/api/v1/sites/{id}/config/reset` | Reset SiteConfig to defaults; activity-logged | L2 | pending |
-| `GET` | `/api/v1/billing-categories` | List site billing categories; filter by sites, etc | MVP | pending |
-| `POST` | `/api/v1/billing-categories` | Create billing category(name, site, etc) + 1:1 details | L1 | pending |
-| `PATCH` | `/api/v1/billing-categories/{id}` | Edit billing category & details | L1 | pending |
-| `POST` | `/api/v1/billing-categories/{id}/activate` | is_active=true | L1 | pending |
-| `POST` | `/api/v1/billing-categories/{id}/deactivate` | is_active=false; block new records except SiteBill | L1 | pending |
-| `POST` | `/api/v1/billing-categories/{id}/mark-done` | is_done=true; deactivates this billing category | L1 | pending |
-| `POST` | `/api/v1/billing-categories/{id}/unmark-done` | is_done=false; allow reactivation | L1 | pending |
-| `DELETE` | `/api/v1/billing-categories/{id}` | Delete & set-null on rows; confirm + activity-logged | L1 | pending |
-| `POST` | `/api/v1/billing-categories/{id}/merge` | Merge into another same-site category | L2 | pending |
+| `GET` | `/api/v1/sites/{id}/billing-categories` | List site billing categories; filter by sites, etc | MVP | pending |
+| `POST` | `/api/v1/sites/{id}/billing-categories` | Create billing category(name, site, etc) + 1:1 details | L1 | pending |
+| `PATCH` | `/api/v1/sites/{id}/billing-categories/{id}` | Edit billing category & details; activate, deactivate, mark_as_done, mark_as_undone these partial update also handle with this | L1 | pending |
+| `DELETE` | `/api/v1/sites/{id}/billing-categories/{id}` | Delete & set-null on rows; confirm + activity-logged | L1 | pending |
+| `POST` | `/api/v1/sites/{id}/billing-categories/{id}/merge` | Merge into another same-site category | L2 | pending |
 
 ## F7 — Manage Labour Accounts
 
