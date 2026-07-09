@@ -5,7 +5,7 @@ from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import GenericAPIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.settings import api_settings as jwt_settings
@@ -245,7 +245,8 @@ class PasswordResetConfirmView(GenericAPIView):
 
 
 class PasswordChangeView(GenericAPIView):
-    # authenticated endpoint: global JWT auth + IsAuthenticated defaults apply
+    # auth route: exempt from the global HasActiveSubscription write gate
+    permission_classes = [IsAuthenticated]
     serializer_class = PasswordChangeSerializer
 
     def post(self, request, *args, **kwargs):
