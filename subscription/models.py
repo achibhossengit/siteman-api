@@ -74,9 +74,9 @@ class Subscription(TimeStampedMixin):
     #     related_name="subscriptions",
     #     help_text="The negotiated deal this company is on; suggests the next renewal billing.",
     # )
-    open_site_limit = models.IntegerField(help_text="Snapshot; -1 means no limit.")
-    active_user_limit = models.IntegerField()
-    active_labour_limit = models.IntegerField()
+    open_site_limit = models.IntegerField(default=0, help_text="Snapshot; -1 means no limit.")
+    active_user_limit = models.IntegerField(default=0)
+    active_labour_limit = models.IntegerField(default=0)
     paid_until = models.DateField(
         null=True,
         blank=True,
