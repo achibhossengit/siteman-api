@@ -35,21 +35,6 @@ from .models import Payment, Subscription
 #     search_fields = ("company__name",)
 #     readonly_fields = ("created_at", "updated_at", "created_by")
 
-
-@admin.register(Subscription)
-class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = (
-        "company",
-        # "variant",
-        # "custom_plan",
-        "open_site_limit",
-        "active_user_limit",
-        "active_labour_limit",
-        "paid_until",
-    )
-    readonly_fields = ("created_at", "updated_at",)
-
-
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
     list_display = (
