@@ -1,6 +1,5 @@
-
 def jwt_user_authentication_rule(user) -> bool:
-    """Custom user authentication rule for JWT tokens."""
+    """Return True only for active tenant users with an active company."""
     return (
         user is not None
         and user.is_active
