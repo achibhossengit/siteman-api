@@ -1,0 +1,297 @@
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
+from django.urls import reverse
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APITestCase
+
+from company.models import Company
+from sites.models import Site, SiteConfig
+from subscription.models import Subscription
+from core.exceptions import SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE, SUBSCRIPTION_EXPIRED_RESPONSE_CODE
+
+User = get_user_model()
+
+
+class SiteAPITestCase(APITestCase):
+    """Shared fixtures for site endpoint tests."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+        # Trial default is 1 open site; raise for most CRUD tests.
+        self.subscription.open_site_limit = 5
+        self.subscription.save(update_fields=["open_site_limit"])
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self._grant_site_permissions(self.user)
+        self.client.force_authenticate(user=self.user)
+
+        self.list_url = reverse("site-list", kwargs={"version": "v1"})
+
+    def _grant_site_permissions(self, user, codenames=None):
+        codenames = codenames or [
+            "view_site",
+            "add_site",
+            "change_site",
+            "delete_site",
+        ]
+        ct = ContentType.objects.get_for_model(Site)
+        perms = Permission.objects.filter(content_type=ct, codename__in=codenames)
+        user.user_permissions.add(*perms)
+
+    def _detail_url(self, site_id):
+        return reverse("site-detail", kwargs={"version": "v1", "pk": site_id})
+
+    def _create_site(self, name="Site A", company=None, **kwargs):
+        company = company or self.company
+        return Site.objects.create(
+            name=name,
+            company=company,
+            created_by=self.user,
+            **kwargs,
+        )
+
+
+class SiteAuthPermissionTests(SiteAPITestCase):
+    def test_unauthenticated_list_returns_401(self):
+        # unauthenticate user first
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_missing_change_permission_returns_403(self):
+        site = self._create_site(name="Locked")
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_site_permissions(self.user, ["view_site", "add_site"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(self._detail_url(site.pk), {"name": "Nope"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_add_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_site_permissions(self.user, ["view_site"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(self.list_url, {"name": "New Site"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class SiteCRUDTests(SiteAPITestCase):
+    def test_list_empty(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_create_site_success(self):
+        response = self.client.post(self.list_url, {"name": "Padma Bridge"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["name"], "Padma Bridge")
+        self.assertTrue(response.data["is_active"])
+        self.assertFalse(response.data["is_closed"])
+        self.assertIsNone(response.data["closed_at"])
+        self.assertEqual(response.data["company"], self.company.pk)
+        self.assertEqual(response.data["created_by"], self.user.pk)
+
+        site = Site.objects.get(pk=response.data["id"])
+        self.assertTrue(SiteConfig.objects.filter(site=site).exists())
+
+    def test_create_forces_open_and_active(self):
+        response = self.client.post(
+            self.list_url,
+            {"name": "Forced", "is_active": False, "is_closed": True},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["is_active"])
+        self.assertFalse(response.data["is_closed"])
+        self.assertIsNone(response.data["closed_at"])
+
+    def test_list_uses_list_serializer_fields(self):
+        site = self._create_site(name="List Site")
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertCountEqual(
+            response.data[0].keys(),
+            ["id", "name", "is_active", "is_closed"],
+        )
+        self.assertEqual(response.data[0]["id"], site.pk)
+
+    def test_retrieve_site_detail(self):
+        site = self._create_site(name="Detail Site")
+        response = self.client.get(self._detail_url(site.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Detail Site")
+        self.assertIn("company", response.data)
+        self.assertIn("created_at", response.data)
+
+    def test_patch_name_and_is_active(self):
+        site = self._create_site(name="Old Name")
+        response = self.client.patch(
+            self._detail_url(site.pk),
+            {"name": "New Name", "is_active": False},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "New Name")
+        self.assertFalse(response.data["is_active"])
+        site.refresh_from_db()
+        self.assertEqual(site.name, "New Name")
+        self.assertFalse(site.is_active)
+
+    def test_patch_closed_site_rejected(self):
+        site = self._create_site(name="Closed Site", is_closed=True, closed_at=timezone.now())
+        response = self.client.patch(
+            self._detail_url(site.pk),
+            {"name": "Should Fail"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_delete_site_success(self):
+        site = self._create_site(name="To Delete")
+        response = self.client.delete(self._detail_url(site.pk))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Site.objects.filter(pk=site.pk).exists())
+
+    def test_put_not_allowed(self):
+        site = self._create_site()
+        response = self.client.put(self._detail_url(site.pk), {"name": "Put"})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+class SiteFilterIsolationTests(SiteAPITestCase):
+    def test_filter_by_is_active(self):
+        self._create_site(name="Active", is_active=True)
+        self._create_site(name="Inactive", is_active=False)
+
+        response = self.client.get(self.list_url, {"is_active": "true"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["name"], "Active")
+
+        response = self.client.get(self.list_url, {"is_active": "false"})
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["name"], "Inactive")
+
+    def test_filter_by_is_closed(self):
+        open_site = self._create_site(name="Open")
+        closed_site = self._create_site(
+            name="Closed",
+            is_closed=True,
+            closed_at=timezone.now(),
+        )
+
+        response = self.client.get(self.list_url, {"is_closed": "false"})
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], open_site.pk)
+
+        response = self.client.get(self.list_url, {"is_closed": "true"})
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], closed_site.pk)
+        
+    def test_cannot_create_site_under_other_company(self):
+        other_company = Company.objects.create(name="Other Co")
+        response = self.client.post(self.list_url, {"name": "Other Site", "company": other_company.pk})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertNotEqual(response.data["company"], other_company.pk)
+        self.assertEqual(response.data["company"], self.company.pk)
+
+    def test_cannot_see_other_company_sites(self):
+        other_company = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811111111",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other_company,
+        )
+        Site.objects.create(
+            name="Other Site",
+            company=other_company,
+            created_by=other_user,
+        )
+        self._create_site(name="Mine")
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["name"], "Mine")
+
+    def test_cannot_retrieve_other_company_site(self):
+        other_company = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811111112",
+            name="Other Admin 2",
+            password="strong-pass-123",
+            company=other_company,
+        )
+        other_site = Site.objects.create(
+            name="Secret",
+            company=other_company,
+            created_by=other_user,
+        )
+        response = self.client.get(self._detail_url(other_site.pk))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class SiteSubscriptionTests(SiteAPITestCase):
+    def test_create_blocked_when_open_site_limit_exceeded(self):
+        self.subscription.open_site_limit = 1
+        self.subscription.save(update_fields=["open_site_limit"])
+        self._create_site(name="Only Slot")
+
+        response = self.client.post(self.list_url, {"name": "Overflow"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Site.objects.filter(name="Overflow").exists())
+        self.assertEqual(response.data["errors"][0]["code"], SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE)
+
+    def test_closed_site_does_not_count_toward_open_limit(self):
+        self.subscription.open_site_limit = 1
+        self.subscription.save(update_fields=["open_site_limit"])
+        self._create_site(
+            name="Closed Slot",
+            is_closed=True,
+            closed_at=timezone.now(),
+        )
+
+        response = self.client.post(self.list_url, {"name": "New Open"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_blocked_when_subscription_expired(self):
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.post(self.list_url, {"name": "Too Late"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Site.objects.filter(name="Too Late").exists())
+        self.assertEqual(response.data["errors"][0]["code"], SUBSCRIPTION_EXPIRED_RESPONSE_CODE)
+
+    def test_list_allowed_when_subscription_expired(self):
+        self._create_site(name="Readable")
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_patch_blocked_when_subscription_expired(self):
+        site = self._create_site(name="Editable")
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.patch(
+            self._detail_url(site.pk),
+            {"name": "No Write"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["code"], SUBSCRIPTION_EXPIRED_RESPONSE_CODE)
+        site.refresh_from_db()
+        self.assertEqual(site.name, "Editable")

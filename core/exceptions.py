@@ -1,5 +1,8 @@
 from rest_framework.exceptions import ValidationError
 
+SUBSCRIPTION_EXPIRED_RESPONSE_CODE = "subscription_expired"
+SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE = "subscription_limit_exceeded"
+
 # Internal business exceptions
 class SubscriptionError(Exception):
     default_message = "Subscription error."
@@ -17,8 +20,8 @@ class SubscriptionLimitExceededError(SubscriptionError):
 # DRF exceptions
 class SubscriptionExpired(ValidationError):
     default_detail = "Company subscription has expired."
-    default_code = "subscription_expired"
+    default_code = SUBSCRIPTION_EXPIRED_RESPONSE_CODE
 
 class SubscriptionLimitExceeded(ValidationError):
     default_detail = "Open site limit exceeded for this company subscription."
-    default_code = "subscription_limit_exceeded"
+    default_code = SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE
