@@ -13,6 +13,7 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
 from core import notifications, verifications
+from core.permissions import COMPANY_ADMIN_GROUP
 from company.models import Company
 from .models import User
 from .serializers import (
@@ -35,7 +36,6 @@ from .serializers import (
 
 REGISTER_PURPOSE = "register"
 PASSWORD_RESET_PURPOSE = "password_reset"
-COMPANY_ADMIN_GROUP = "Company Admin"
 
 def _set_refresh_token_cookie(response, refresh_token=None):
     if refresh_token is not None:
@@ -140,8 +140,6 @@ class RegisterConfirmView(GenericAPIView):
 
     @transaction.atomic
     def _confirm_registration(self, payload):
-        # TODO: seed available Free-plan subscription here (endpoints.md F1 confirm) — blocked on subscription app.
-        # TODO: auto-create CompanyConfig with built-in defaults (F3.5) — blocked on CompanyConfig model.
         company = Company.objects.create(name=payload["company_name"])
         user = User(
             name=payload["name"],
@@ -245,7 +243,6 @@ class PasswordResetConfirmView(GenericAPIView):
 
 
 class PasswordChangeView(GenericAPIView):
-    # auth route: exempt from the global HasActiveSubscription write gate
     permission_classes = [IsAuthenticated]
     serializer_class = PasswordChangeSerializer
 

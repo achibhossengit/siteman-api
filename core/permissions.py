@@ -4,6 +4,8 @@ from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from subscription.models import Subscription
 
+COMPANY_ADMIN_GROUP = "Company Admin"
+
 
 class NoSubscription(PermissionDenied):
     default_detail = "Company has no subscription."
@@ -11,15 +13,21 @@ class NoSubscription(PermissionDenied):
 
 
 class SubscriptionExpired(PermissionDenied):
-    default_detail = "Company subscription is expired or was never activated."
+    default_detail = "Company subscription is expired!"
     default_code = "subscription_expired"
 
 
 def get_subscription(request):
-    """Resolve and cache the requesting user's company subscription."""
+    """
+    Resolve and cache the tenant subscription on ``request.subscription``.
+
+    Unlocked read used by ActiveSubscriptionOrReadOnly. Later limit checks
+    call SubscriptionService.get_locked_subscription(request), which upgrades
+    this to a select_for_update row and sets request._subscription_locked.
+    """
     if not hasattr(request, "subscription"):
         user = request.user
-        if not user.is_authenticated or user.company_id is None:
+        if not user.is_authenticated:
             request.subscription = None
         else:
             request.subscription = Subscription.objects.filter(
@@ -28,13 +36,10 @@ def get_subscription(request):
     return request.subscription
 
 
-class HasActiveSubscription(BasePermission):
-    """Reads always pass; writes require an active subscription.
-
-    Expired or missing subscription => tenant becomes read-only. System-scope
-    users (company_id is None) are exempt — platform permissions gate their
-    routes. After this permission runs, views can reuse the cached
-    request.subscription (e.g. open-site limit checks).
+class ActiveSubscriptionOrReadOnly(BasePermission):
+    """
+    Reads always pass; writes require an active subscription.
+    Expired or missing subscription => tenant becomes read-only.
     """
 
     def has_permission(self, request, view):
@@ -44,8 +49,6 @@ class HasActiveSubscription(BasePermission):
         user = request.user
         if not user.is_authenticated:
             return False  # let IsAuthenticated produce the 401
-        if user.company_id is None:
-            return True
 
         subscription = get_subscription(request)
         if subscription is None:
