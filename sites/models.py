@@ -1,10 +1,8 @@
 from decimal import Decimal
 
 from django.db import models
-from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MinValueValidator
 from django.contrib.postgres.fields import ArrayField
-from django.utils import timezone
 from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
 
 NON_NEGATIVE = MinValueValidator(0)
@@ -20,65 +18,13 @@ class Site(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     is_closed = models.BooleanField(default=False)
     closed_at = models.DateTimeField(null=True, blank=True)
 
+    def save(self, *args, **kwargs):
+        self.is_closed = self.closed_at is not None
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
-
-    def clean(self):
-        super().clean()
-        if self._needs_open_slot():
-            self.validate_open_site_slot()
-
-    def _needs_open_slot(self):
-        """True on create, or on reopen (closed site being set back to open)."""
-        if self._state.adding:
-            return True
-        if self.closed_at is not None:
-            return False
-        return Site.objects.filter(pk=self.pk, closed_at__isnull=False).exists()
-
-    def _get_subscription(self):
-        try:
-            return self.company.subscription
-        except ObjectDoesNotExist:
-            return None
-
-    def validate_open_site_slot(self, subscription=None):
-        """Subscription must be active and have a free open-site slot (F6).
-
-        API views pass request.subscription; admin/model callers leave it
-        None and the company's subscription is fetched.
-        """
-        if self.company_id is None:
-            return  # missing company is reported by field validation
-
-        subscription = subscription or self._get_subscription()
-        if subscription is None:
-            raise ValidationError(
-                message="Company has no subscription; cannot open a site.",
-                code="no_subscription",
-            )
-
-        today = timezone.localdate()
-        if subscription.paid_until is None or subscription.paid_until < today:
-            raise ValidationError(
-                message="Company subscription is expired or was never activated.",
-                code="subscription_expired",
-            )
-
-        limit = subscription.open_site_limit
-        if limit == -1:  # no limit
-            return
-
-        open_sites = Site.objects.filter(
-            company_id=self.company_id, closed_at__isnull=True
-        ).exclude(pk=self.pk)
-        if open_sites.count() >= limit:
-            raise ValidationError(
-                message="Open-site limit reached (%(limit)s). Close a site or upgrade the plan.",
-                code="open_site_limit_reached",
-                params={"limit": limit},
-            )
-
+    
 
 class SiteConfig(CompanyOwnedMixin):
     site = models.OneToOneField(
