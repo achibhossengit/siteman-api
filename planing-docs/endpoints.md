@@ -1,4 +1,7 @@
-# SiteMan — API Endpoints
+# SiteMan — Tenant API Endpoints
+
+> Tenant-only (`is_staff=false`, `company_id` set). JWT auth rejects system users.
+> Platform / system-scope endpoints live in [system-endpoint.md](system-endpoint.md).
 
 ## F1 — Manage Authentication
 
@@ -6,7 +9,7 @@
 |---|---|---|---|---|
 | `POST` | `/api/v1/auth/register` | Validate name/phone/email/company/password; stash payload + OTP in Redis; return ticket | MVP | pending |
 | `POST` | `/api/v1/auth/register/resend-otp` | Resend OTP for ticket (60s cooldown, max 5/hr); regenerate code, drop old | MVP | pending |
-| `POST` | `/api/v1/auth/register/confirm` | Verify OTP; one tx: create company + admin user + Company Admin group + seed Free plan; auto-login (issue JWT) | MVP | pending |
+| `POST` | `/api/v1/auth/register/confirm` | Verify OTP; one tx: create company + admin user + Company Admin group + seed trial subscription; auto-login (issue JWT) | MVP | pending |
 | `POST` | `/api/v1/auth/token/obtain` | Phone + password; validate BD phone + active account/company; issue JWT access + refresh (refresh token set in httponly cookie) | MVP | pending |
 | `POST` | `/api/v1/auth/token/refresh` | Exchange refresh for new access; rotate refresh | MVP | pending |
 | `POST` | `/api/v1/auth/token/blacklist` | Blacklist current refresh token in database | MVP | pending |
@@ -16,25 +19,7 @@
 | `POST` | `/api/v1/auth/password/change` | Logged-in: current + new password; bump token_version then re-issue current pair (kills all other tokens) | MVP | pending |
 | `GET` | `/api/v1/auth/me` | Logged-in user profile (id/name/phone/email/company/groups) | MVP | pending |
 
-## F2 — Manage Platform
-
-| Method | Endpoint | Description | Priority | Progress |
-|---|---|---|---|---|
-| `GET` | `/api/v1/platform/companies` | List/search all companies (site count/billing/activity). MVP via Django admin | L2 | pending |
-| `POST` | `/api/v1/platform/companies/{id}/activate` | Activate a company | L2 | pending |
-| `POST` | `/api/v1/platform/companies/{id}/deactivate` | Deactivate company; block all its logins; retain data | L2 | pending |
-| `GET` | `/api/v1/platform/subscriptions/monitor` | Dashboard of plans/expiry/revenue across companies | L2 | pending |
-| `POST` | `/api/v1/platform/payments/manual` | Record offline/manual subscription payment for any company | L2 | pending |
-| `POST` | `/api/v1/platform/users` | Create system staff (is_staff=true company_id=null) | L2 | pending |
-| `POST` | `/api/v1/platform/users/{id}/roles` | Assign system group (System Admin / System Manager) | L2 | pending |
-| `POST` | `/api/v1/platform/users/{id}/permissions` | Assign fine-grained platform permissions | L2 | pending |
-| `POST` | `/api/v1/platform/data-correction` | Correct sealed row / repair closed-site data (system only) | L2 | pending |
-| `GET` | `/api/v1/platform/system-config` | View SystemConfig singleton | L2 | pending |
-| `PATCH` | `/api/v1/platform/system-config` | Edit SystemConfig (maintenance/notify/deactivate/purge days) | L2 | pending |
-| `POST` | `/api/v1/platform/companies/{id}/reset/request-otp` | Start company reset; type company name; OTP to Company Admin | L2 | pending |
-| `POST` | `/api/v1/platform/companies/{id}/reset/confirm` | Verify OTP; hard-delete tenant data in one tx; write reset log | L2 | pending |
-
-## F3 — Manage Company
+## F2 — Manage Company
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -49,11 +34,11 @@
 | `DELETE`| `/api/v1/company/custom-categories/{id}` | Delete & set-null on referencing rows; confirm + activity-logged | L1 | pending |
 | `POST`  | `/api/v1/company/custom-categories/{id}/merge` | Merge into another same-scope category | L2 | pending |
 
-## F4 — Manage Company Subscription
+## F3 — Manage Company Subscription
 
-> **No API in the MVP.** Subscriptions and payments are managed by a System Admin through the **Django admin site** (see F4 in feature-details). A tenant-facing subscription API (view plan, pay, renew, gateway webhook) is a **post-MVP** phase.
+> **No API in the MVP.** Subscriptions and payments are managed by a System Admin through the **Django admin site** (see F3 in feature-details) and later via the platform API ([system-endpoint.md](system-endpoint.md)). A tenant-facing subscription API (view plan, pay, renew, gateway webhook) is a **post-MVP** phase.
 
-## F5 — Manage Company Users
+## F4 — Manage Company Users
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -73,7 +58,7 @@
 | `DELETE`| `/api/v1/users/{id}` | Soft-delete user (deleted_at); RESTRICT if referenced | L1 | pending |
 | `POST` | `/api/v1/users/{id}/restore` | Restore soft-deleted user (clear deleted_at) | L1 | pending |
 
-## F6 — Manage Sites
+## F5 — Manage Sites
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -93,7 +78,7 @@
 | `DELETE` | `/api/v1/sites/{id}/billing-categories/{id}` | Delete & set-null on rows; confirm + activity-logged | L1 | pending |
 | `POST` | `/api/v1/sites/{id}/billing-categories/{id}/merge` | Merge into another same-site category | L2 | pending |
 
-## F7 — Manage Labour Accounts
+## F6 — Manage Labour Accounts
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -106,7 +91,7 @@
 | `POST` | `/api/v1/labours/{id}/deactivate` | Deactivate labour; no new records | L1 | pending |
 | `DELETE` | `/api/v1/labours/{id}` | Delete labour; requires zero balance; RESTRICT if referenced | L1 | pending |
 
-## F8 — Manage Labour Payments (Advance, Fooding & Return)
+## F7 — Manage Labour Payments (Advance, Fooding & Return)
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -124,7 +109,7 @@
 | `DELETE` | `/api/v1/labour-returns/{id}` | Soft-delete unsealed row in window; activity-logged; recompute totals | L1 | pending |
 
 
-## F9 — Manage Labour Work Session
+## F8 — Manage Labour Work Session
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -135,7 +120,7 @@
 | `GET` | `/api/v1/labour-sessions/current-session` | labour most last sessions + running nonsealed earnings/advance/fooding/returns/net balance | L1 | pending |
 
 
-## F10 — Manage Daily Attendance & Extra Work
+## F9 — Manage Daily Attendance & Extra Work
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -149,7 +134,7 @@
 | `PATCH` | `/api/v1/extra-works/{id}` | Edit unsealed row in window; activity-logged; recompute totals | L1 | pending |
 | `DELETE` | `/api/v1/extra-works/{id}` | Soft-delete unsealed row in window; activity-logged; recompute totals | L1 | pending |
 
-## F11 — Manage Site Expense
+## F10 — Manage Site Expense
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -162,7 +147,7 @@
 | `PATCH` | `/api/v1/hidden-costs/{id}` | Edit hidden cost; activity-logged; recompute totals | L1 | pending |
 | `DELETE` | `/api/v1/hidden-costs/{id}` | Soft-delete hidden cost; activity-logged; recompute totals | L1 | pending |
 
-## F12 — Manage Site Cash
+## F11 — Manage Site Cash
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -175,7 +160,7 @@
 | `PATCH` | `/api/v1/site-cash-returns/{id}` | Edit unsealed return in window; activity-logged; recompute totals | L1 | pending |
 | `DELETE` | `/api/v1/site-cash-returns/{id}` | Soft-delete unsealed return in window; activity-logged; recompute totals | L1 | pending |
 
-## F13 — Manage Site Bills
+## F12 — Manage Site Bills
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -184,7 +169,7 @@
 | `PATCH` | `/api/v1/site-bills/{id}` | Edit bill; activity-logged; recompute totals | MVP | pending |
 | `DELETE` | `/api/v1/site-bills/{id}` | Soft-delete bill; activity-logged; recompute totals | MVP | pending |
 
-## F14 — Generate Reports
+## F13 — Generate Reports
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
@@ -195,7 +180,7 @@
 | `GET` | `/api/v1/reports/summary` | Company & site roll-up between two dates | L1 | pending |
 | `GET` | `/api/v1/reports/billing-category-costing` | Per-category contract/billed/cost/profit/cost-per-sqft | L2 | pending |
 
-## F15 — Record Edits & Activity Log
+## F14 — Record Edits & Activity Log
 
 | Method | Endpoint | Description | Priority | Progress |
 |---|---|---|---|---|
