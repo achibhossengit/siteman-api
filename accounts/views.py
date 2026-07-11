@@ -13,7 +13,6 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
 from core import notifications, verifications
-from core.permissions import COMPANY_ADMIN_GROUP
 from company.models import Company
 from .models import User
 from .serializers import (
@@ -36,6 +35,7 @@ from .serializers import (
 
 REGISTER_PURPOSE = "register"
 PASSWORD_RESET_PURPOSE = "password_reset"
+COMPANY_ADMIN_GROUP = "Company Admin"
 
 def _set_refresh_token_cookie(response, refresh_token=None):
     if refresh_token is not None:

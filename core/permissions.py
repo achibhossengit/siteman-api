@@ -1,21 +1,8 @@
 from django.utils import timezone
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
+from core.exceptions import SubscriptionExpired
 from subscription.models import Subscription
-
-COMPANY_ADMIN_GROUP = "Company Admin"
-
-
-class NoSubscription(PermissionDenied):
-    default_detail = "Company has no subscription."
-    default_code = "no_subscription"
-
-
-class SubscriptionExpired(PermissionDenied):
-    default_detail = "Company subscription is expired!"
-    default_code = "subscription_expired"
-
 
 def get_subscription(request):
     """
@@ -51,11 +38,10 @@ class ActiveSubscriptionOrReadOnly(BasePermission):
             return False  # let IsAuthenticated produce the 401
 
         subscription = get_subscription(request)
-        if subscription is None:
-            raise NoSubscription()
         if (
-            subscription.paid_until is None
-            or subscription.paid_until < timezone.localdate()
+            subscription is None or 
+            subscription.paid_until is None or 
+            subscription.paid_until < timezone.localdate()
         ):
             raise SubscriptionExpired()
         return True

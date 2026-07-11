@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib import admin
 from django.db import transaction
+from core.exceptions import SubscriptionError
 
 from core.services import SubscriptionService
 from .models import BillingCategory, Site, SiteConfig
@@ -10,7 +11,7 @@ class SiteAdminForm(forms.ModelForm):
     class Meta:
         model = Site
         exclude = ("created_by",)
-
+        
     def clean(self):
         cleaned = super().clean()
 
@@ -22,13 +23,15 @@ class SiteAdminForm(forms.ModelForm):
 
         is_add = self.instance.pk is None
 
-        if (is_add and not is_closed) or (
-            self.instance.pk and self.instance.is_closed and not is_closed
-        ):
-            SubscriptionService.validate_open_site_limit(company)
+        try:
+            if (is_add and not is_closed) or (
+                self.instance.pk and self.instance.is_closed and not is_closed
+            ):
+                SubscriptionService.validate_open_site_limit(company)
 
+        except SubscriptionError as e:
+            raise forms.ValidationError(e)
         return cleaned
-
 
 class SiteConfigInline(admin.StackedInline):
     model = SiteConfig
@@ -68,7 +71,7 @@ class SiteAdmin(admin.ModelAdmin):
         # post_save signal, so it doesn't exist until the site is saved.
         return (SiteConfigInline, BillingCategoryInline) if obj else ()
 
-    
+    @transaction.atomic
     def save_model(self, request, obj, form, change):
         if not change and not obj.created_by_id:
             obj.created_by = request.user

@@ -1,10 +1,8 @@
-from django.core.exceptions import ValidationError
 from django.utils import timezone
-
 from subscription.models import Subscription
 from sites.models import Site
 from accounts.models import User
-
+from core.exceptions import SubscriptionLimitExceededError, SubscriptionExpiredError
 
 class SubscriptionService:
     @classmethod
@@ -19,11 +17,8 @@ class SubscriptionService:
                 .select_related("company")
                 .get(company=company)
             )
-        except Subscription.DoesNotExist as exc:
-            raise ValidationError(
-                "Company has no subscription.",
-                code="no_subscription",
-            ) from exc
+        except Subscription.DoesNotExist:
+            raise SubscriptionExpiredError(f"Company {company.name} has no subscription.")
 
     @classmethod
     def _validate_limit(cls, *, current_count, limit, resource_name):
@@ -34,13 +29,7 @@ class SubscriptionService:
             return
 
         if current_count >= limit:
-            raise ValidationError(
-                (
-                    f"{resource_name.capitalize()} subscription limit is exceeded; "
-                    "upgrade your plan."
-                ),
-                code="subscription_limit_exceeded",
-            )
+            raise SubscriptionLimitExceededError()
 
     @classmethod
     def _validate_active_subscription(cls, company):
@@ -52,10 +41,7 @@ class SubscriptionService:
             subscription.paid_until is None
             or subscription.paid_until < timezone.localdate()
         ):
-            raise ValidationError(
-                "Company subscription is expired!",
-                code="subscription_expired",
-            )
+            raise SubscriptionExpiredError()
         return subscription
 
     @classmethod
