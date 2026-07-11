@@ -18,10 +18,6 @@ class Site(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     is_closed = models.BooleanField(default=False)
     closed_at = models.DateTimeField(null=True, blank=True)
 
-    def save(self, *args, **kwargs):
-        self.is_closed = self.closed_at is not None
-        super().save(*args, **kwargs)
-
     def __str__(self):
         return self.name
     
