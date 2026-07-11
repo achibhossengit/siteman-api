@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'drf_standardized_errors',
     'drf_spectacular',
+    'django_filters',
 
     # Local
     'core',
@@ -117,7 +118,11 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
-        'core.permissions.HasActiveSubscription',
+        'rest_framework.permissions.DjangoModelPermissions',
+        'core.permissions.ActiveSubscriptionOrReadOnly',
+    ),
+    'DEFAULT_FILTER_BACKENDS': (
+        'django_filters.rest_framework.DjangoFilterBackend',
     ),
     'EXCEPTION_HANDLER': 'drf_standardized_errors.handler.exception_handler',
     'DEFAULT_SCHEMA_CLASS': 'drf_standardized_errors.openapi.AutoSchema',

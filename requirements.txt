@@ -1,6 +1,7 @@
 asgiref==3.11.1
 attrs==26.1.0
 Django==5.1.15
+django-filter==24.3
 djangorestframework==3.17.1
 djangorestframework_simplejwt==5.5.1
 drf-spectacular==0.29.0
