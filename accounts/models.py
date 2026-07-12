@@ -1,7 +1,9 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
+from django.core.exceptions import ValidationError
 from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
+from core.phone import normalize_bd_phone
 from .managers import UserManager
 
 
@@ -41,6 +43,19 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
     def __str__(self):
         return f"{self.name} ({self.phone_number})"
 
+    def clean(self):
+        super().clean()
+
+        try:
+            self.phone_number = normalize_bd_phone(self.phone_number)
+        except ValidationError as exc:
+            raise ValidationError({
+                "phone_number": exc.messages,
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 class UserSite(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     user = models.ForeignKey(
