@@ -412,6 +412,19 @@ Table labour {
   }
 }
 
+Table labour_detail {
+  id           bigint    [pk]
+  company_id   bigint    [ref: > company.id, not null]
+  labour_id    bigint    [ref: - labour.id, not null, unique, note: 'one-to-one']
+  phone        varchar   [null]
+  father_name  varchar   [null]
+  mother_name  varchar   [null]
+  address      varchar   [null]
+  nid          varchar   [null]
+  gender       varchar   [null]
+  updated_at   timestamp [not null]
+}
+
 // ============================================================
 // F8 — Labour work session
 // ============================================================
