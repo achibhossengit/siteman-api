@@ -79,3 +79,24 @@ class SubscriptionService:
             limit=subscription.active_user_limit,
             resource_name="active users",
         )
+
+    @classmethod
+    def validate_active_labour_limit(cls, company):
+        """
+        Check whether another active labour can be created / reactivated.
+        """
+        # Local import avoids circular import at app load (labours → core → labours).
+        from labours.models import Labour
+
+        subscription = cls._validate_active_subscription(company)
+
+        current_count = Labour.objects.filter(
+            company=company,
+            is_active=True,
+        ).count()
+
+        cls._validate_limit(
+            current_count=current_count,
+            limit=subscription.active_labour_limit,
+            resource_name="active labour",
+        )
