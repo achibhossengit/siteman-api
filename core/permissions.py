@@ -1,8 +1,28 @@
 from django.utils import timezone
-from rest_framework.permissions import SAFE_METHODS, BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission, DjangoModelPermissions
 
 from core.exceptions import SubscriptionExpired
 from subscription.models import Subscription
+
+
+class DjangoModelPermissionsWithView(DjangoModelPermissions):
+    """
+    Like DjangoModelPermissions, but GET/HEAD also require view_<model>.
+
+    Stock DjangoModelPermissions leaves GET/HEAD/OPTIONS with an empty
+    perms_map, so any authenticated user can list/retrieve without view_*.
+    """
+
+    perms_map = {
+        "GET": ["%(app_label)s.view_%(model_name)s"],
+        "OPTIONS": [],
+        "HEAD": ["%(app_label)s.view_%(model_name)s"],
+        "POST": ["%(app_label)s.add_%(model_name)s"],
+        "PUT": ["%(app_label)s.change_%(model_name)s"],
+        "PATCH": ["%(app_label)s.change_%(model_name)s"],
+        "DELETE": ["%(app_label)s.delete_%(model_name)s"],
+    }
+
 
 def get_subscription(request):
     """

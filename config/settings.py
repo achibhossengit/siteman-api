@@ -118,7 +118,7 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
-        'rest_framework.permissions.DjangoModelPermissions',
+        'core.permissions.DjangoModelPermissionsWithView',
         'core.permissions.ActiveSubscriptionOrReadOnly',
     ),
     'DEFAULT_FILTER_BACKENDS': (
