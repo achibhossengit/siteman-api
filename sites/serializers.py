@@ -36,6 +36,18 @@ class SiteSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def validate_name(self, value):
+        company = self.context["request"].user.company
+        qs = Site.objects.filter(company=company, name=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "A site with this name already exists.",
+                code="site_name_exists",
+            )
+        return value
+
     def validate(self, attrs):
         if self.instance is not None and self.instance.closed_at is not None:
             raise serializers.ValidationError(

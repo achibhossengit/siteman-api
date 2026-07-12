@@ -23,10 +23,10 @@ class SiteViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]  # no PUT
     filterset_fields = ["is_active", "is_closed"]
 
-    def get_serializer(self, *args, **kwargs):
+    def get_serializer_class(self):
         if self.action == "list":
-            return SiteListSerializer(*args, **kwargs)
-        return SiteSerializer(*args, **kwargs)
+            return SiteListSerializer
+        return SiteSerializer
 
     def get_queryset(self):
         user = self.request.user

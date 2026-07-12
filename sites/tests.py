@@ -166,6 +166,30 @@ class SiteCRUDTests(SiteAPITestCase):
         response = self.client.put(self._detail_url(site.pk), {"name": "Put"})
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
+    def test_duplicate_name_rejected(self):
+        self._create_site(name="Padma Bridge")
+        response = self.client.post(self.list_url, {"name": "Padma Bridge"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data["errors"][0]["attr"])
+
+    def test_duplicate_name_allowed_across_companies(self):
+        other = Company.objects.create(name="Other Co")
+        Site.objects.create(
+            name="Shared",
+            company=other,
+            created_by=self.user,
+        )
+        response = self.client.post(self.list_url, {"name": "Shared"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_patch_same_name_allowed(self):
+        site = self._create_site(name="Keep")
+        response = self.client.patch(
+            self._detail_url(site.pk),
+            {"is_active": False},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
 
 class SiteFilterIsolationTests(SiteAPITestCase):
     def test_filter_by_is_active(self):

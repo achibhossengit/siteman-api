@@ -10,6 +10,13 @@ class Site(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     is_closed = models.BooleanField(default=False)
     closed_at = models.DateTimeField(null=True, blank=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "name"], name="uq_site_company_name"
+            )
+        ]
+
     def __str__(self):
         return self.name
     

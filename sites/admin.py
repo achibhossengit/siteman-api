@@ -19,8 +19,15 @@ class SiteAdminForm(forms.ModelForm):
         if company is None:
             return cleaned
 
-        is_closed = cleaned.get("is_closed", self.instance.is_closed)
+        name = cleaned.get("name")
+        if name:
+            qs = Site.objects.filter(company=company, name=name)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                self.add_error("name", "A site with this name already exists.")
 
+        is_closed = cleaned.get("is_closed", self.instance.is_closed)
         is_add = self.instance.pk is None
 
         try:

@@ -292,7 +292,7 @@ Table site {
   updated_at  timestamp [not null]
 
   Indexes {
-    company_id
+    (company_id, name) [unique]
   }
 }
 
