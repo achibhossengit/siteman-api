@@ -33,7 +33,7 @@ class SiteAdminForm(forms.ModelForm):
             raise forms.ValidationError(e)
         return cleaned
 
-class SiteConfigInline(admin.StackedInline):
+class SiteConfigInline(admin.TabularInline):
     model = SiteConfig
     can_delete = False
     exclude = ("company",)
