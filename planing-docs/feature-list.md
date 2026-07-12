@@ -104,10 +104,10 @@ See also [endpoints.md](endpoints.md) (tenant) and [system-endpoint.md](system-e
 ### F7 → Manage Labour Payments (Advance, Fooding & Return)
 | # | Feature |
 |---|---|
-| F7.1 | Issue advance pay |
-| F7.2 | Issue fooding pay |
+| F7.1 | Issue advance payment (`labour_payment.type = advance`) |
+| F7.2 | Issue fooding payment (`labour_payment.type = fooding`) |
 | F7.3 | Track labour balance |
-| F7.4 | View payment history |
+| F7.4 | View payment history (filter by type) |
 | F7.5 | Record labour return |
 | F7.6 | View return history |
 

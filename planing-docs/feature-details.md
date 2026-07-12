@@ -3,7 +3,7 @@
 ## Conventions
 - **Tenant isolation** — every tenant row carries `company_id`; See **Access Control & User Model**.
 - **Running totals** — ledger rows store a **per-site** cumulative `site_total*` only; **per-billing-category figures are aggregated on read (no stored `billing_total*`)**. Update all later rows' `site_total*` after a relevant update/delete.
-- **`is_sealed` flag** — every labour-linked row (attendance, extra work, advance pay, fooding pay, return) starts `is_sealed = false` (editable); a work-session seal (F8) sets `is_sealed = true` (immutable).
+- **`is_sealed` flag** — every labour-linked row (attendance, extra work, labour payment, return) starts `is_sealed = false` (editable); a work-session seal (F8) sets `is_sealed = true` (immutable).
 - **Direct edit + activity log** — authorized users edit/delete directly; the system auto-writes an **activity log** entry (actor, time, before/after, note). Ledger rows are **soft-deleted**. Activity logs are **permanent** — no one, not even Company Admin, can edit or delete them (F14.3).
 - every model keeps `created_at`, `created_by`, `updated_at`
 - **Removing a category** — `billing_category` / `custom_category` are nullable. Deleting one prompts the admin to either (a) **delete & set the FK null** on all its rows (`ON DELETE SET NULL`), or (b) **merge** — re-point its rows to another same-scope category, then delete it. The action is **activity-logged and not undoable**; the admin must confirm first. `updated_at` is untouched (it is not a per-row user edit). See F2.4 / F5.9 / F5.15.
@@ -34,7 +34,7 @@
 - **Capability** (*what*) — Django **groups + permissions** (`group_permissions`). System tier: System Admin / System Manager. Tenant tier roles **nest**: **Site Auditor** (view) ⊂ **Site Manager** (CRUD) ⊂ **Company Admin** (all). Multiple groups allowed — effective capability = **union** (= the highest). Permissions are **model-level / global** (e.g. `change_dailyattendance`).
 - **Scope** (*which sites*) — **`UserSite`** links a tenant user to sites. A site can have many users; a user many sites.
 - **Two authorization modes:**
-  1. **Site-scoped records** — every ledger (attendance, extra work, advance, fooding, return, site cost, hidden cost, site cash, cash return, bill; F7 / F9–F12): allowed when **has the permission** **AND** **assigned to that site** (`UserSite`) **AND** the row is **unsealed** (`is_sealed = false`) **AND**, for the eight daily ledgers, inside the daily-record window (F5.12). The site-scope check is enforced in **app code** (queryset / object filter by `UserSite`), not by the model-level permission.
+  1. **Site-scoped records** — every ledger (attendance, extra work, labour payment, return, site cost, hidden cost, site cash, cash return, bill; F7 / F9–F12): allowed when **has the permission** **AND** **assigned to that site** (`UserSite`) **AND** the row is **unsealed** (`is_sealed = false`) **AND**, for the seven daily ledgers, inside the daily-record window (F5.12). The site-scope check is enforced in **app code** (queryset / object filter by `UserSite`), not by the model-level permission.
   2. **Everything else** — company / site config, users, subscription, plans, categories, site lifecycle, reports: **permission only** (no `UserSite`).
 - **Company Admin** holds **all** permissions, but **site-scoped records still require a `UserSite` assignment** for that site — capability alone is not enough there. "**Managed by admin**" = **assign the admin to the specific site** (F5.14); the admin then records on it like a manager. Non-site operations need no assignment. Every write is traceable via `created_by` / `activity_log.actor_id`.
 ---
@@ -280,7 +280,7 @@ Two independent state axes for a site:
 ### Site Configuration (reference)
 Every site has a one-to-one `SiteConfig` (managed in F5.12), auto-created with sensible defaults and editable by the Company Admin. It lets each site tune how strictly records may be created and edited — without code changes.
 
-**Daily-record window** — one shared triplet `daily_record_create_window` / `daily_record_update_window` / `daily_record_delete_window` (default `1` each) gates **all eight daily ledgers**: daily attendance, extra work, advance pay, fooding pay, return, site cost, site cash, site cash return. Scale:
+**Daily-record window** — one shared triplet `daily_record_create_window` / `daily_record_update_window` / `daily_record_delete_window` (default `1` each) gates **all seven daily ledgers**: daily attendance, extra work, labour payment (advance/fooding), return, site cost, site cash, site cash return. Scale:
 
 | Value | Meaning |
 |---|---|
@@ -308,8 +308,8 @@ Defaults: attendance `1`, extra work `1`, fooding `1`, advance `-1`.
 **Validation ranges** — per-site, customizable by Company Admin. `labour.default_salary` / `default_fooding` are validated against the labour's **current_site** config at create/edit time:
 - `attendance_present_choices` — explicit allowed set for the `present` value, e.g. `[0, 0.5, 1, 1.5, 2, 3]` (only these accepted; the set is not a uniform step, so it is a list not a min/max).
 - `salary_min` / `salary_max` — bounds for attendance `salary` and `labour.default_salary` (e.g. 500–1500).
-- `fooding_min` / `fooding_max` — bounds for fooding pay amount and `labour.default_fooding` (e.g. 50–200).
-- `advance_min` / `advance_max` — bounds for a **single** advance row amount (e.g. 0–10000); caps the per-row amount, not the daily count (`advance_per_labour_per_day_limit`).
+- `fooding_min` / `fooding_max` — bounds for `labour_payment` fooding amount and `labour.default_fooding` (e.g. 50–200).
+- `advance_min` / `advance_max` — bounds for a **single** advance `labour_payment` amount (e.g. 0–10000); caps the per-row amount, not the daily count (`advance_per_labour_per_day_limit`).
 
 ### F5.1 — Create / edit site
 - Admin provides site name (and detail fields). New site starts open + active.
@@ -352,11 +352,11 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 - Admin sees all sites; othere users see only assigned sites. Filters: open/closed, active/inactive.
 
 ### F5.8 — View site Report
-- Shows current cash balance (per Conventions: `deposits − returns − site cost − advance pay − fooding pay`).
+- Shows current cash balance (per Conventions: `deposits − returns − site cost − labour payments (advance + fooding)`).
 - Shows site revenue (bills vs billing-category contract).
 - Show site total attendance count and total salary.
 - Show site total cost.
-- Show site labour payouts (advance + fooding).
+- Show site labour payouts (`labour_payment` advance + fooding).
 - Billing-category breakdown line: per-billing-category contract value, billed, cost and profit (detail in F13.8).
 
 ### F5.9 — Manage billing categories
@@ -376,7 +376,7 @@ A site typically runs ~2 years, then work is done. Closing frees a plan slot and
 
 ### F5.12 — Manage site configuration
 - Company Admin views/edits the site's `SiteConfig` (one row per site, auto-created at F5.1 with the defaults above).
-- Controls: one shared daily-record create / update / delete window (gates the eight daily ledgers) + the per-labour/day quotas (attendance, extra work, fooding, advance) — see **Site Configuration** above.
+- Controls: one shared daily-record create / update / delete window (gates the seven daily ledgers) + the per-labour/day quotas (attendance, extra work, fooding, advance) — see **Site Configuration** above.
 - Changes apply to **future** create / edit checks only — existing rows are untouched. Every change is activity-logged (F14).
 - Setting `daily_record_create_window = 0` freezes new daily-ledger entries at the site without deactivating the whole site.
 - **Reset to defaults** — Company Admin can reset this site's `SiteConfig` back to its built-in defaults in one action; config-only (no entity data touched), applies to future checks only, activity-logged.
@@ -444,24 +444,26 @@ Many labourers work short engagements and never return; their accounts accumulat
 
 ## F7 — Manage Labour Payments (Advance, Fooding & Return)
 
-A labour is paid through two payout ledgers — **advance pay** (cash advances) and **fooding pay** (meal allowance) — both draw down site cash and reduce the labour's balance. A third ledger, **labour return** (F7.5/F7.6), records money the labour gives back, which increases the balance.
+A labour is paid through one payout ledger — **`LabourPayment`** — with `type = advance` (cash advances) or `type = fooding` (meal allowance). Both draw down site cash and reduce the labour's balance. A separate ledger, **labour return** (F7.5/F7.6), records money the labour gives back, which increases the balance.
 
-### F7.1 — Issue advance pay
-- Manager picks labour, enters amount, note, date → creates a `LabourAdvancePay` row (`is_sealed = false`).
+### F7.1 — Issue advance payment
+- Manager picks labour, enters amount, note, date → creates a `LabourPayment` row with `type = advance` (`is_sealed = false`).
+- Amount validated against `advance_min` / `advance_max`.
 - Blocked if labour is inactive.
-- Running `site_total` (site's cumulative advance) computed from the previous row.
+- Running `site_total` (site's cumulative **advance** series) computed from the previous advance row.
 
-### F7.2 — Issue fooding pay
-- Manager picks labour, enters amount (seeded from `default_fooding`), note, date → creates a `LabourFoodingPay` row (`is_sealed = false`).
+### F7.2 — Issue fooding payment
+- Manager picks labour, enters amount (seeded from `default_fooding`), note, date → creates a `LabourPayment` row with `type = fooding` (`is_sealed = false`).
+- Amount validated against `fooding_min` / `fooding_max`.
 - Blocked if labour is inactive.
-- Running `site_total` (site's cumulative fooding) computed from the previous row.
+- Running `site_total` (site's cumulative **fooding** series) computed from the previous fooding row.
 
 ### F7.3 — Track labour balance
-- `balance = balance (from last work session) + earnings from dailyattendence(is_sealed=false) − advance(is_sealed=false) − fooding(is_sealed=false) + returns(is_sealed=false)`.
+- `balance = balance (from last work session) + earnings from dailyattendance(is_sealed=false) − labour_payment(advance|fooding, is_sealed=false) + returns(is_sealed=false)`.
 - Read from the latest carried balance / running totals — no full scan needed.
 
 ### F7.4 — View payment history
-- Advance and fooding ledgers per labour or per site, ordered by date; each row shows amount + running totals.
+- `LabourPayment` rows per labour or per site, filterable by `type`, ordered by date; each row shows amount + type-scoped running `site_total`.
 
 ### F7.5 — Record labour return
 - Labour may return overpaid money. Manager creates a `LabourReturn` (amount, note, date; `is_sealed = false`).
@@ -477,7 +479,7 @@ A labour works continuously — moving site to site — then takes a vacation. T
 
 ### F8.1 — Create / seal a labour work session (vacation flow)
 Triggered when the labour wants to go on vacation:
-1. **Review** — all still-**unsealed** (`is_sealed = false`) rows (attendance, extra work, advance, fooding, return) are reviewed; any correction is applied now, while they are still unsealed.
+1. **Review** — all still-**unsealed** (`is_sealed = false`) rows (attendance, extra work, labour payment, return) are reviewed; any correction is applied now, while they are still unsealed.
 2. **Settle** — a final payment is made based on the current balance (pay out the payable, or collect an overpayment) so the balance reflects reality.
 3. **Per-site rollup** — for each site the labour touched this session, create a `LabourSiteSession` aggregating that site's `present`, `extrawork`, `fooding`, `advance`, `salary`, `earnings`, `payable`.
 4. **Session record** — create one `LabourSession` (links its LabourSiteSessions), with:
@@ -512,7 +514,7 @@ Rules:
 - **Optional attendance custom category** (`custom_category`, `scope = attendance` — F2.4; prompted when any exist for the company).
 - Validations: labour active and assigned to this site, site active, billing category active (if chosen), and the site config gates (`daily_record_create_window`, `attendance_per_labour_per_day_limit` — F5.12). New row is `is_sealed = false`.
 - Row stores the salary snapshot and **per-site** running totals: `site_total_present`, `site_total_salary`.
-> The shared daily-record window + the per-labour/day limits gate the eight daily ledgers — see **Site Configuration** (F5) / F5.12. A creatable date must additionally be **> the last work session's `created_at` date** and **never in the future** (F8).
+> The shared daily-record window + the per-labour/day limits gate the seven daily ledgers — see **Site Configuration** (F5) / F5.12. A creatable date must additionally be **> the last work session's `created_at` date** and **never in the future** (F8).
 
 ### F9.2 — Record extra work
 - Separate ledger (`ExtraWork`): site, **optional** billing category (F5.9), **optional extrawork custom category** (`custom_category`, `scope = extrawork` — F2.4), labour, date, amount, note; `is_sealed = false`.
@@ -585,7 +587,7 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 - Costs grouped by ledger category (sitecost / hiddencost) / billing category for a site and date range (SiteCost and HiddenCost shown separately).
 
 ### F13.3 — Site balance report
-- `deposits − returns − site cost total − advance pay total − fooding pay total` per site — current spendable cash (matches F5.8; hidden cost excluded).
+- `deposits − returns − site cost total − labour_payment total (advance + fooding)` per site — current spendable cash (matches F5.8; hidden cost excluded).
 
 ### F13.4 — Site profit report
 - Profit per site: `bills − (labour cost + site cost + hidden cost)`, where labour cost = attendance salary + extra work (payouts are cash, not cost).
@@ -594,7 +596,7 @@ All reports are tenant-scoped and respect site assignments (managers see only th
 ### F13.5 — Site labour cost report
 - Attendance salary per site / date / billing category.
 - Extra work per site / date / billing category.
-- Advance pay and fooding pay per site / date.
+- Labour payments (`type = advance | fooding`) per site / date.
 - Labour cost per site: `latest attendance site_total_salary` + extra work total.
 - Labour cost per billing category of site.
 
@@ -618,7 +620,7 @@ Edits happen directly; the `is_sealed` flag is the hard lock, and the **activity
 
 ### F14.1 — Edit / delete a record (direct, with auto activity log)
 - Allowed only on rows that are still **unsealed** (`is_sealed = false`; sealed rows are immutable — see F8) **and** whose date is inside the site's `daily_record_update_window` (for edits) or `daily_record_delete_window` (for deletes) — F5.12. Hidden cost / site bill are not window-gated. Sealed always blocks; otherwise the window limit applies.
-- An authorized user edits or deletes a record from its own module (attendance F9, extra work F9, advance/fooding/return F7, cash F11, cost/hidden cost F10, bill F12, plus master data).
+- An authorized user edits or deletes a record from its own module (attendance F9, extra work F9, labour payment/return F7, cash F11, cost/hidden cost F10, bill F12, plus master data).
 - In one transaction the system:
   1. Applies the change (financial/ledger rows are **soft-deleted**, not hard-deleted).
   2. Writes an **activity log entry**: company, actor, timestamp, target (`content_type` + `object_id`, a Django generic FK), `action_flag` (`addition` / `change` / `deletion` / `merge` — Django LogEntry style: addition=create, change=update, deletion=delete), **before snapshot**, **after snapshot**, and a **note (required for change/deletion of financial records)**.

@@ -20,6 +20,11 @@ Enum payment_status {
   failed
 }
 
+Enum labour_payment_type {
+  advance
+  fooding
+}
+
 Enum custom_category_scope {
   attendance
   extrawork
@@ -301,7 +306,7 @@ Table site_config {
   company_id  bigint    [ref: > company.id, not null]
   site_id bigint [ref: - site.id, not null, unique, note: 'one-to-one (F5.12)']
 
-  // these are affected on sitecost, sitecash, sitecashreturn, dailyattendance, extrawork, labouradvancepay, labourfoodingpay, labourreturn.
+  // these are affected on sitecost, sitecash, sitecashreturn, dailyattendance, extrawork, labour_payment, labourreturn.
 
   daily_record_create_window     int [not null, default: 1]
   daily_record_update_window     int [not null, default: 1]
@@ -515,37 +520,28 @@ Table extra_work {
 }
 
 // ============================================================
-// F7 — Advance, fooding, return ledgers (categoryless cash)
+// F7 — Labour payment (advance | fooding) + return ledgers
 // ============================================================
 
-Table labour_advance_pay {
+Table labour_payment {
   id              bigint    [pk]
   company_id      bigint    [not null]
   labour_id       bigint    [ref: > labour.id, not null]
   site_id         bigint    [ref: > site.id, not null]
   date            date      [not null]
-  amount          int       [not null, note: 'validated against advance_min/max']
+  type            labour_payment_type [not null, note: 'advance | fooding — former LabourAdvancePay / LabourFoodingPay']
+  amount          int       [not null, note: 'advance => advance_min/max; fooding => fooding_min/max (seeded from labour.default_fooding)']
   note            varchar   [null]
-  site_total      bigint    [not null]
+  site_total      bigint    [not null, note: 'per-site running total for this type only (advance and fooding series are independent)']
   created_at      timestamp [not null]
   created_by      bigint    [ref: > user.id, not null]
   updated_at      timestamp [not null]
   is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F8)']
-}
 
-Table labour_fooding_pay {
-  id              bigint    [pk]
-  company_id      bigint    [not null]
-  labour_id       bigint    [ref: > labour.id, not null]
-  site_id         bigint    [ref: > site.id, not null]
-  date            date      [not null]
-  amount          int       [not null, note: 'seeded from default_fooding; validated against fooding_min/max']
-  note            varchar   [null]
-  site_total      bigint    [not null]
-  created_at      timestamp [not null]
-  created_by      bigint    [ref: > user.id, null]
-  updated_at      timestamp [not null]
-  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F8)']
+  Indexes {
+    (labour_id, date)
+    (site_id, type, date)
+  }
 }
 
 Table labour_return {
@@ -739,8 +735,7 @@ TableGroup labour_group {
 TableGroup ledgers {
   daily_attendance
   extra_work
-  labour_advance_pay
-  labour_fooding_pay
+  labour_payment
   labour_return
   site_cost
   hidden_cost
@@ -766,8 +761,7 @@ DiagramView Default {
     site_bill
     activity_log
     custom_category
-    labour_advance_pay
-    labour_fooding_pay
+    labour_payment
     labour_session
     labour_return
     labour_site_session
