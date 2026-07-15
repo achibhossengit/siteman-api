@@ -61,12 +61,12 @@ class UserSite(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="site_assignments",
+        related_name="sites",
     )
     site = models.ForeignKey(
         "sites.Site",
         on_delete=models.CASCADE,
-        related_name="user_assignments",
+        related_name="users",
     )
 
     class Meta:

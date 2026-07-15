@@ -18,12 +18,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='usersite',
             name='site',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='user_assignments', to='sites.site'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='users', to='sites.site'),
         ),
         migrations.AddField(
             model_name='usersite',
             name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='site_assignments', to=settings.AUTH_USER_MODEL),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='sites', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AddConstraint(
             model_name='user',
