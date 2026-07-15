@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('company', '0002_companyconfig'),
-        ('sites', '0002_site_is_closed_siteconfig_billingcategory'),
+        ('sites', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

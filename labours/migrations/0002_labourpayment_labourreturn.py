@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('company', '0002_companyconfig'),
         ('labours', '0001_initial'),
-        ('sites', '0003_site_uq_site_company_name'),
+        ('sites', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

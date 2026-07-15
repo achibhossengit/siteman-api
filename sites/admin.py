@@ -4,7 +4,7 @@ from django.db import transaction
 from core.exceptions import SubscriptionError
 
 from core.services import SubscriptionService
-from .models import BillingCategory, Site, SiteConfig
+from .models import BillingCategory, Site
 
 
 class SiteAdminForm(forms.ModelForm):
@@ -40,13 +40,6 @@ class SiteAdminForm(forms.ModelForm):
             raise forms.ValidationError(e)
         return cleaned
 
-class SiteConfigInline(admin.TabularInline):
-    model = SiteConfig
-    can_delete = False
-    exclude = ("company",)
-    readonly_fields = ("updated_at",)
-
-
 class BillingCategoryInline(admin.TabularInline):
     model = BillingCategory
     extra = 0
@@ -72,11 +65,6 @@ class SiteAdmin(admin.ModelAdmin):
     autocomplete_fields = ("company",)
     exclude = ("created_by",)
     readonly_fields = ("closed_at", "created_at", "updated_at")
-
-    def get_inlines(self, request, obj=None):
-        # Inlines only on the change page: the config row is created by the
-        # post_save signal, so it doesn't exist until the site is saved.
-        return (SiteConfigInline, BillingCategoryInline) if obj else ()
 
     @transaction.atomic
     def save_model(self, request, obj, form, change):

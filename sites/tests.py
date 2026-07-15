@@ -9,7 +9,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from company.models import Company
-from sites.models import Site, SiteConfig
+from sites.models import Site
 from subscription.models import Subscription
 from core.exceptions import SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE, SUBSCRIPTION_EXPIRED_RESPONSE_CODE
 
@@ -101,9 +101,6 @@ class SiteCRUDTests(SiteAPITestCase):
         self.assertIsNone(response.data["closed_at"])
         self.assertEqual(response.data["company"], self.company.pk)
         self.assertEqual(response.data["created_by"], self.user.pk)
-
-        site = Site.objects.get(pk=response.data["id"])
-        self.assertTrue(SiteConfig.objects.filter(site=site).exists())
 
     def test_create_forces_open_and_active(self):
         response = self.client.post(

@@ -1,8 +1,6 @@
 from django.db import models
-from django.core.validators import MinValueValidator
 from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
 
-LIMIT_FLOOR = MinValueValidator(-1)
 
 class Site(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     name = models.CharField(max_length=255)
@@ -19,41 +17,6 @@ class Site(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
 
     def __str__(self):
         return self.name
-    
-
-class SiteConfig(CompanyOwnedMixin):
-    site = models.OneToOneField(
-        Site,
-        on_delete=models.CASCADE,
-        related_name="config",
-    )
-
-    # Windows (in days) gating create/update/delete of daily financial records:
-    # sitecost, sitecash, sitecashreturn, dailyattendance, extrawork,
-    # labouradvancepay, labourfoodingpay, labourreturn.
-    daily_record_create_window = models.IntegerField(default=1)
-    daily_record_update_window = models.IntegerField(default=1)
-    daily_record_delete_window = models.IntegerField(default=1)
-
-    attendance_limit_per_day = models.IntegerField(
-        default=1,
-        validators=[LIMIT_FLOOR],
-        help_text="-1 means no limit.",
-    )
-    extra_limit_per_day = models.IntegerField(
-        default=1, validators=[LIMIT_FLOOR], help_text="-1 means no limit."
-    )
-    fooding_limit_per_day = models.IntegerField(
-        default=1, validators=[LIMIT_FLOOR], help_text="-1 means no limit."
-    )
-    advance_limit_per_day = models.IntegerField(
-        default=-1, validators=[LIMIT_FLOOR], help_text="-1 means no limit."
-    )
-
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    def __str__(self):
-        return f"Config for {self.site}"
 
 
 class BillingCategory(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
