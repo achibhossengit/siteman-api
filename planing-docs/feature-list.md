@@ -86,7 +86,7 @@ See also [endpoints.md](endpoints.md) (tenant) and [system-endpoint.md](system-e
 | F5.9 | Manage site floors |
 | F5.10 | Activate / deactivate site floors |
 | F5.11 | Mark floor as done |
-| F5.12 | Manage site configuration |
+| F5.12 | _(removed)_ Site configuration — use CompanyConfig |
 | F5.13 | View site activity log |
 | F5.14 | Admin records on a site |
 | F5.15 | Remove a billing category (delete or merge) |

@@ -192,6 +192,16 @@ Table company_config {
   company_id            bigint    [ref: - company.id, not null, unique, note: 'one-to-one']
   allow_labour_transfer boolean   [not null, default: true, note: 'false => block labour transfer company-wide (F6.2)']
   auto_renew            boolean   [not null, default: false, note: 'F3.3: on expiry auto-charge + extend using the latest subscription variant; false = let the term lapse (this is "cancel")']
+
+  // Company-wide validation ranges / choices (formerly SiteConfig — kept company-level for flexibility)
+  attendance_present_choices jsonb [not null, note: 'allowed present set, e.g. [0,0.5,1,1.5,2,3]']
+  salary_min                 int   [not null]
+  salary_max                 int   [not null]
+  fooding_min                int   [not null]
+  fooding_max                int   [not null]
+  advance_min                int   [not null]
+  advance_max                int   [not null]
+
   updated_at            timestamp [not null]
 }
 
@@ -283,7 +293,7 @@ Table payment {
 }
 
 // ============================================================
-// F5 — Site, site config, billing category, closure summary
+// F5 — Site, billing category, closure summary
 // ============================================================
 
 Table site {
@@ -299,34 +309,6 @@ Table site {
   Indexes {
     (company_id, name) [unique]
   }
-}
-
-Table site_config {
-  id      bigint [pk]
-  company_id  bigint    [ref: > company.id, not null]
-  site_id bigint [ref: - site.id, not null, unique, note: 'one-to-one (F5.12)']
-
-  // these are affected on sitecost, sitecash, sitecashreturn, dailyattendance, extrawork, labour_payment, labourreturn.
-
-  daily_record_create_window     int [not null, default: 1]
-  daily_record_update_window     int [not null, default: 1]
-  daily_record_delete_window     int [not null, default: 1]
-
-
-  attendance_per_labour_per_day_limit int [not null, default: 1, note: 'gates NEW attendance rows per labour/date (F9.1); existing rows unaffected']
-  extra_per_labour_per_day_limit      int [not null, default: 1]
-  fooding_per_labour_per_day_limit    int [not null, default: 1]
-  advance_per_labour_per_day_limit    int [not null, default: -1]
-
-  attendance_present_choices jsonb [not null, note: 'allowed present set, e.g. [0,0.5,1,1.5,2,3]']
-  salary_min                 int   [not null]
-  salary_max                 int   [not null]
-  fooding_min                int   [not null]
-  fooding_max                int   [not null]
-  advance_min                int   [not null]
-  advance_max                int   [not null]
-
-  updated_at timestamp [not null]
 }
 
 Table billing_category {
@@ -494,7 +476,7 @@ Table daily_attendance {
   is_sealed           boolean       [not null, default: false, note: 'true = immutable; set by work-session seal (F8)']
   
   Indexes {
-    (labour_id, date) [note: 'non-unique; multiple rows per labour/date allowed, gated by attendance_per_labour_per_day_limit (F9.1)']
+    (labour_id, date) [note: 'non-unique; multiple rows per labour/date allowed']
   }
 }
 
@@ -532,7 +514,7 @@ Table labour_payment {
   type            labour_payment_type [not null, note: 'advance | fooding — former LabourAdvancePay / LabourFoodingPay']
   amount          int       [not null, note: 'advance => advance_min/max; fooding => fooding_min/max (seeded from labour.default_fooding)']
   note            varchar   [null]
-  site_total      bigint    [not null, note: 'per-site running total for this type only (advance and fooding series are independent)']
+  site_total      bigint    [not null, note: 'per-site cumulative total across all payment types']
   created_at      timestamp [not null]
   created_by      bigint    [ref: > user.id, not null]
   updated_at      timestamp [not null]
@@ -719,7 +701,6 @@ TableGroup company_and_subscription {
 
 TableGroup sites_and_billing {
   site
-  site_config
   billing_category
   billing_category_details
   custom_category
