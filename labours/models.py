@@ -60,7 +60,7 @@ class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     amount = models.IntegerField(validators=[MinValueValidator(0)])
     note = models.CharField(max_length=255, null=True, blank=True)
     site_total = models.BigIntegerField(
-        help_text="Per-site running total.",
+        help_text="Per-site running total across all payment types.",
     )
     is_sealed = models.BooleanField(
         default=False,
@@ -68,7 +68,13 @@ class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     )
 
     class Meta:
-        ordering = ["-date", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["labour", "date"],
+                name="uq_labour_payment_labour_date",
+            ),
+        ]
+        ordering = ["-date"]
 
     def __str__(self):
         return f"{self.get_type_display()} {self.amount} ({self.labour})"
@@ -95,7 +101,13 @@ class LabourReturn(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     )
 
     class Meta:
-        ordering = ["-date", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["labour", "date"],
+                name="uq_labour_return_labour_date",
+            ),
+        ]
+        ordering = ["-date"]
 
     def __str__(self):
         return f"Return {self.amount} ({self.labour})"
