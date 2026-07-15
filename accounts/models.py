@@ -78,4 +78,12 @@ class UserSite(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
         ]
 
     def __str__(self):
-        return f"{self.user_id} -> {self.site_id}"
+        return f"User:{self.user_id} - Site:{self.site_id}"
+
+    def clean(self):
+        if self.user.company_id != self.site.company_id:
+            raise ValidationError({
+                'user': "User and site must be in the same company.",
+                'site': "User and site must be in the same company."
+            })
+        super().clean()
