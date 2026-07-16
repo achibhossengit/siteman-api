@@ -35,7 +35,7 @@ class Migration(migrations.Migration):
                 ('site', models.ForeignKey(on_delete=django.db.models.deletion.RESTRICT, related_name='labour_payments', to='sites.site')),
             ],
             options={
-                'constraints': [models.CheckConstraint(condition=models.Q(('category__isnull', True), ('type', 'return')), name='chk_labour_payment_category_by_type'), models.UniqueConstraint(fields=('date', 'labour', 'type'), name='uq_labour_payment_date_labour_type')],
+                'constraints': [models.UniqueConstraint(fields=('date', 'labour', 'type'), name='uq_labour_payment_date_labour_type')],
             },
         ),
     ]

@@ -83,15 +83,6 @@ class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
 
     class Meta:
         constraints = [
-            models.CheckConstraint(
-                condition=(
-                    models.Q(
-                        type=LabourPaymentType.RETURN,
-                        category__isnull=True,
-                    )
-                ),
-                name="chk_labour_payment_category_by_type",
-            ),
             models.UniqueConstraint(
                 fields=["date", "labour", "type"],
                 name="uq_labour_payment_date_labour_type",
