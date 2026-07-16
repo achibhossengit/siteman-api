@@ -57,6 +57,10 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
         self.full_clean()
         super().save(*args, **kwargs)
 
+    @property
+    def is_site_member(self, site_id: int) -> bool:
+        return self.sites.filter(site_id=site_id).exists()
+
 class UserSite(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
