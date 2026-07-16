@@ -37,3 +37,66 @@ class Labour(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
 
     def __str__(self):
         return self.name
+
+
+class LabourPaymentType(models.TextChoices):
+    PAYMENT = "payment", "Payment"
+    RETURN = "return", "Return"
+
+
+class LabourPaymentCategory(models.TextChoices):
+    ADVANCE = "advance", "Advance"
+    FOODING = "fooding", "Fooding"
+
+
+class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+    labour = models.ForeignKey(
+        Labour,
+        on_delete=models.RESTRICT,
+        related_name="payments",
+    )
+    site = models.ForeignKey(
+        "sites.Site",
+        on_delete=models.RESTRICT,
+        related_name="labour_payments",
+    )
+    date = models.DateField(default=timezone.localdate)
+    type = models.CharField(
+        max_length=16, 
+        choices=LabourPaymentType.choices,
+        default=LabourPaymentType.PAYMENT,
+        help_text="Payment or Return",
+    )
+    category = models.CharField(
+        max_length=16,
+        choices=LabourPaymentCategory.choices,
+        null=True,
+        blank=True,
+        help_text="Must be empty for returns.",
+    )
+    amount = models.IntegerField(validators=[MinValueValidator(0)])
+    note = models.CharField(max_length=255, null=True, blank=True)
+    is_sealed = models.BooleanField(
+        default=False,
+        help_text="True = immutable",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        type=LabourPaymentType.RETURN,
+                        category__isnull=True,
+                    )
+                ),
+                name="chk_labour_payment_category_by_type",
+            ),
+            models.UniqueConstraint(
+                fields=["date", "labour", "type"],
+                name="uq_labour_payment_date_labour_type",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Note: {self.note} Amount: {self.amount} Type: {self.get_type_display()}"
