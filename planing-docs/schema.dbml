@@ -197,16 +197,6 @@ Table company_config {
   id                    bigint    [pk]
   company_id            bigint    [ref: - company.id, not null, unique, note: 'one-to-one']
   allow_labour_transfer boolean   [not null, default: true, note: 'false => block labour transfer company-wide (F6.2)']
-  auto_renew            boolean   [not null, default: false, note: 'F3.3: on expiry auto-charge + extend using the latest subscription variant; false = let the term lapse (this is "cancel")']
-
-  // Company-wide validation ranges / choices (formerly SiteConfig — kept company-level for flexibility)
-  attendance_present_choices jsonb [not null, note: 'allowed present set, e.g. [0,0.5,1,1.5,2,3]']
-  salary_min                 int   [not null]
-  salary_max                 int   [not null]
-  fooding_min                int   [not null]
-  fooding_max                int   [not null]
-  advance_min                int   [not null]
-  advance_max                int   [not null]
 
   updated_at            timestamp [not null]
 }

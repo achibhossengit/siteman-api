@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 from django import forms
 from django.contrib import admin
 from django.db import transaction
@@ -22,7 +20,6 @@ class LabourAdminForm(forms.ModelForm):
             return cleaned
 
         self._validate_current_site(cleaned, company)
-        self._validate_defaults(cleaned, company)
         self._validate_labour_limit(cleaned, company)
 
         return cleaned
@@ -35,38 +32,6 @@ class LabourAdminForm(forms.ModelForm):
             self.add_error("current_site", "Site does not belong to this company.")
         elif site.is_closed:
             self.add_error("current_site", "Cannot assign labour to a closed site.")
-
-    def _validate_defaults(self, cleaned, company):
-        config = getattr(company, "config", None)
-        if config is None:
-            return
-
-        salary = cleaned.get("default_salary")
-        fooding = cleaned.get("default_fooding")
-        attendance = cleaned.get("default_attendance")
-
-        if salary is not None and not (config.salary_min <= salary <= config.salary_max):
-            self.add_error(
-                "default_salary",
-                f"Must be between {config.salary_min} and {config.salary_max}.",
-            )
-
-        if fooding is not None and not (
-            config.fooding_min <= fooding <= config.fooding_max
-        ):
-            self.add_error(
-                "default_fooding",
-                f"Must be between {config.fooding_min} and {config.fooding_max}.",
-            )
-
-        if attendance is not None:
-            allowed = [Decimal(str(c)) for c in config.attendance_present_choices]
-            if Decimal(str(attendance)) not in allowed:
-                allowed_display = ", ".join(str(c) for c in allowed)
-                self.add_error(
-                    "default_attendance",
-                    f"Must be one of: {allowed_display}.",
-                )
 
     def _validate_labour_limit(self, cleaned, company):
         is_active = cleaned.get("is_active", self.instance.is_active)

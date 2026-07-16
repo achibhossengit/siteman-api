@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from company.models import Company, CompanyConfig
+from company.models import Company
 from core import status_codes
 from labours.models import Labour
 from sites.models import Site
@@ -23,7 +23,6 @@ class LabourAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.config = CompanyConfig.objects.get(company=self.company)
         self.subscription = Subscription.objects.get(company=self.company)
         # Trial default is unlimited labour (-1); cap for most CRUD tests.
         self.subscription.active_labour_limit = 10
@@ -245,75 +244,6 @@ class LabourValidationTests(LabourAPITestCase):
             {"name": "On Closed", "current_site": closed.pk, "default_salary": 500},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_salary_above_max_rejected(self):
-        response = self.client.post(
-            self.list_url,
-            {"name": "High Pay", "default_salary": self.config.salary_max + 1},
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        attrs = {e["attr"] for e in response.data["errors"]}
-        self.assertIn("default_salary", attrs)
-
-    def test_salary_below_min_rejected(self):
-        self.config.salary_min = 400
-        self.config.save(update_fields=["salary_min"])
-        # user.company is the same instance as self.company; clear the
-        # reverse OneToOne cache left by the create signal.
-        self.company.refresh_from_db()
-        response = self.client.post(
-            self.list_url,
-            {"name": "Low Pay", "default_salary": 100},
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_fooding_out_of_range_rejected(self):
-        response = self.client.post(
-            self.list_url,
-            {
-                "name": "High Food",
-                "default_salary": 500,
-                "default_fooding": self.config.fooding_max + 1,
-            },
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        attrs = {e["attr"] for e in response.data["errors"]}
-        self.assertIn("default_fooding", attrs)
-
-    def test_attendance_not_in_choices_rejected(self):
-        response = self.client.post(
-            self.list_url,
-            {
-                "name": "Bad Present",
-                "default_salary": 500,
-                "default_attendance": "0.25",
-            },
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        attrs = {e["attr"] for e in response.data["errors"]}
-        self.assertIn("default_attendance", attrs)
-
-    def test_valid_defaults_within_company_config(self):
-        response = self.client.post(
-            self.list_url,
-            {
-                "name": "Valid",
-                "default_attendance": "1.5",
-                "default_salary": self.config.salary_max,
-                "default_fooding": self.config.fooding_min,
-            },
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    def test_patch_invalid_salary_rejected(self):
-        labour = self._create_labour()
-        response = self.client.patch(
-            self._detail_url(labour.pk),
-            {"default_salary": self.config.salary_max + 50},
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        labour.refresh_from_db()
-        self.assertEqual(labour.default_salary, 500)
 
 
 class LabourFilterIsolationTests(LabourAPITestCase):
