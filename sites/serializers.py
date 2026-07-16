@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from core import status_codes
 from .models import Site
 
 
@@ -44,13 +45,13 @@ class SiteSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError(
                 "A site with this name already exists.",
-                code="site_name_exists",
+                code=status_codes.SITE_NAME_EXISTS,
             )
         return value
 
     def validate(self, attrs):
         if self.instance is not None and self.instance.closed_at is not None:
             raise serializers.ValidationError(
-                "Closed sites cannot be edited.", code="site_closed"
+                "Closed sites cannot be edited.", code=status_codes.SITE_CLOSED
             )
         return attrs

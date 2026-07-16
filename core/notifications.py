@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from rest_framework import status
 from rest_framework.exceptions import APIException
 
+from . import status_codes
+
 logger = logging.getLogger("siteman.notifications")
 
 SMS = "sms"
@@ -13,7 +15,7 @@ class NotificationDeliveryError(APIException):
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     default_detail = "Could not send the notification. Please try again later."
-    default_code = "notification_delivery_failed"
+    default_code = status_codes.NOTIFICATION_DELIVERY_FAILED
 
 
 @dataclass

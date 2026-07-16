@@ -10,10 +10,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from company.models import Company, CompanyConfig
-from core.exceptions import (
-    SUBSCRIPTION_EXPIRED_RESPONSE_CODE,
-    SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE,
-)
+from core import status_codes
 from labours.models import Labour
 from sites.models import Site
 from subscription.models import Subscription
@@ -418,7 +415,7 @@ class LabourSubscriptionTests(LabourAPITestCase):
         self.assertFalse(Labour.objects.filter(name="Overflow").exists())
         self.assertEqual(
             response.data["errors"][0]["code"],
-            SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE,
+            status_codes.SUBSCRIPTION_LIMIT_EXCEEDED,
         )
 
     def test_inactive_labour_does_not_count_toward_limit(self):
@@ -444,7 +441,7 @@ class LabourSubscriptionTests(LabourAPITestCase):
         self.assertFalse(Labour.objects.filter(name="Too Late").exists())
         self.assertEqual(
             response.data["errors"][0]["code"],
-            SUBSCRIPTION_EXPIRED_RESPONSE_CODE,
+            status_codes.SUBSCRIPTION_EXPIRED,
         )
 
     def test_list_allowed_when_subscription_expired(self):
@@ -468,7 +465,7 @@ class LabourSubscriptionTests(LabourAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
             response.data["errors"][0]["code"],
-            SUBSCRIPTION_EXPIRED_RESPONSE_CODE,
+            status_codes.SUBSCRIPTION_EXPIRED,
         )
         labour.refresh_from_db()
         self.assertEqual(labour.name, "Editable")

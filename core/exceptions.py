@@ -1,7 +1,11 @@
 from rest_framework.exceptions import ValidationError
 
-SUBSCRIPTION_EXPIRED_RESPONSE_CODE = "subscription_expired"
-SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE = "subscription_limit_exceeded"
+from . import status_codes
+
+# Backward-compatible aliases (prefer status_codes.*)
+SUBSCRIPTION_EXPIRED_RESPONSE_CODE = status_codes.SUBSCRIPTION_EXPIRED
+SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE = status_codes.SUBSCRIPTION_LIMIT_EXCEEDED
+
 
 # Internal business exceptions
 class SubscriptionError(Exception):
@@ -22,9 +26,9 @@ class SubscriptionLimitExceededError(SubscriptionError):
 # DRF exceptions
 class SubscriptionExpired(ValidationError):
     default_detail = "Company subscription has expired."
-    default_code = SUBSCRIPTION_EXPIRED_RESPONSE_CODE
+    default_code = status_codes.SUBSCRIPTION_EXPIRED
 
 
 class SubscriptionLimitExceeded(ValidationError):
     default_detail = "Subscription limit exceeded for this company."
-    default_code = SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE
+    default_code = status_codes.SUBSCRIPTION_LIMIT_EXCEEDED

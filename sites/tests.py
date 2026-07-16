@@ -11,7 +11,7 @@ from rest_framework.test import APITestCase
 from company.models import Company
 from sites.models import Site
 from subscription.models import Subscription
-from core.exceptions import SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE, SUBSCRIPTION_EXPIRED_RESPONSE_CODE
+from core import status_codes
 
 User = get_user_model()
 
@@ -271,7 +271,7 @@ class SiteSubscriptionTests(SiteAPITestCase):
         response = self.client.post(self.list_url, {"name": "Overflow"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(Site.objects.filter(name="Overflow").exists())
-        self.assertEqual(response.data["errors"][0]["code"], SUBSCRIPTION_LIMIT_EXCEEDED_RESPONSE_CODE)
+        self.assertEqual(response.data["errors"][0]["code"], status_codes.SUBSCRIPTION_LIMIT_EXCEEDED)
 
     def test_closed_site_does_not_count_toward_open_limit(self):
         self.subscription.open_site_limit = 1
@@ -292,7 +292,7 @@ class SiteSubscriptionTests(SiteAPITestCase):
         response = self.client.post(self.list_url, {"name": "Too Late"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(Site.objects.filter(name="Too Late").exists())
-        self.assertEqual(response.data["errors"][0]["code"], SUBSCRIPTION_EXPIRED_RESPONSE_CODE)
+        self.assertEqual(response.data["errors"][0]["code"], status_codes.SUBSCRIPTION_EXPIRED)
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_site(name="Readable")
@@ -313,6 +313,6 @@ class SiteSubscriptionTests(SiteAPITestCase):
             {"name": "No Write"},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["errors"][0]["code"], SUBSCRIPTION_EXPIRED_RESPONSE_CODE)
+        self.assertEqual(response.data["errors"][0]["code"], status_codes.SUBSCRIPTION_EXPIRED)
         site.refresh_from_db()
         self.assertEqual(site.name, "Editable")

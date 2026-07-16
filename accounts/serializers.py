@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.serializers import TokenBlacklistSerializer, TokenObtainPairSerializer, TokenRefreshSerializer
+from core import status_codes
 from core.phone import normalize_bd_phone
 
 User = get_user_model()
@@ -24,7 +25,7 @@ class RegisterSerializer(serializers.Serializer):
         if attrs.get("channel") == "email" and not attrs.get("email"):
             # code= kwarg is dropped by DRF when detail is a dict; ErrorDetail keeps it.
             raise serializers.ValidationError(
-                code= "required_email", detail={"email": "Email channel requires an email address."}
+                code=status_codes.REQUIRED_EMAIL, detail={"email": "Email channel requires an email address."}
             )
         return attrs
 
@@ -34,7 +35,7 @@ class RegisterSerializer(serializers.Serializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.messages[0])
         if User.objects.filter(phone_number=phone).exists():
-            raise serializers.ValidationError(code="already_registered", detail="This phone number is already registered.")
+            raise serializers.ValidationError(code=status_codes.ALREADY_REGISTERED, detail="This phone number is already registered.")
         return phone
 
     def validate_password(self, value):

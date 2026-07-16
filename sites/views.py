@@ -2,6 +2,7 @@ from django.db import transaction
 from django.db.models import ProtectedError, RestrictedError
 from rest_framework import serializers, viewsets
 
+from core import status_codes
 from core.services import SubscriptionService
 from core.exceptions import SubscriptionLimitExceededError, SubscriptionExpiredError, SubscriptionExpired, SubscriptionLimitExceeded
 from .models import Site
@@ -64,5 +65,5 @@ class SiteViewSet(viewsets.ModelViewSet):
         except (ProtectedError, RestrictedError):
             raise serializers.ValidationError(
                 detail="This site has existing records; delete them or close the site first.",
-                code="site_has_records",
+                code=status_codes.SITE_HAS_RECORDS,
             )

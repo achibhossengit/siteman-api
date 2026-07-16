@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from core import status_codes
 from .models import Labour
 
 
@@ -52,7 +53,7 @@ class LabourSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError(
                 "A labour with this name already exists.",
-                code="labour_name_exists",
+                code=status_codes.LABOUR_NAME_EXISTS,
             )
         return value
 
@@ -62,12 +63,12 @@ class LabourSerializer(serializers.ModelSerializer):
         if site.company_id != self._company().id:
             raise serializers.ValidationError(
                 "Site does not belong to your company.",
-                code="site_wrong_company",
+                code=status_codes.SITE_WRONG_COMPANY,
             )
         if site.is_closed:
             raise serializers.ValidationError(
                 "Cannot assign labour to a closed site.",
-                code="site_closed",
+                code=status_codes.SITE_CLOSED,
             )
         return site
 

@@ -12,7 +12,7 @@ from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
-from core import notifications, verifications
+from core import notifications, status_codes, verifications
 from company.models import Company
 from .models import User
 from .serializers import (
@@ -134,7 +134,7 @@ class RegisterConfirmView(GenericAPIView):
         try:
             user = self._confirm_registration(payload)
         except IntegrityError:
-            raise ValidationError(code="already_registered", detail={"phone_number": "This phone number is already registered."})
+            raise ValidationError(code=status_codes.ALREADY_REGISTERED, detail={"phone_number": "This phone number is already registered."})
         serialized_user = UserProfileSerializer(user)
         return Response(data=serialized_user.data, status=status.HTTP_201_CREATED)
 
@@ -231,7 +231,7 @@ class PasswordResetConfirmView(GenericAPIView):
         ).first()
         if user is None:
             # ghost ticket, or the account was deactivated mid-flow
-            raise ValidationError(code="invalid", detail={"ticket": "This verification ticket is invalid."})
+            raise ValidationError(code=status_codes.INVALID, detail={"ticket": "This verification ticket is invalid."})
 
         with transaction.atomic():
             user.set_password(serializer.validated_data["new_password"])

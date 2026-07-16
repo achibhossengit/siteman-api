@@ -1,6 +1,7 @@
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
+from core import status_codes
 from .models import Labour
 
 
@@ -52,12 +53,12 @@ class LabourSitePermissions(BasePermission):
         if not labour.is_active:
             raise PermissionDenied(
                 detail="This labour is inactive; no changes can be made.",
-                code="labour_inactive",
+                code=status_codes.LABOUR_INACTIVE,
             )
         if not site.is_active:
             raise PermissionDenied(
                 detail="This labour's current site is inactive; no changes can be made.",
-                code="site_inactive",
+                code=status_codes.SITE_INACTIVE,
             )
         return True
 
@@ -69,7 +70,7 @@ class LabourSitePermissions(BasePermission):
         if not request.user.is_site_member(site.id):
             raise PermissionDenied(
                 detail="You are not a member of this payment's site.",
-                code="site_member_required",
+                code=status_codes.SITE_MEMBER_REQUIRED,
             )
             
         return True
