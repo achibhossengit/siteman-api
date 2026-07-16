@@ -20,19 +20,25 @@ Enum payment_status {
   failed
 }
 
-Enum labour_payment_type {
+
+Enum labour_payment_category {
   advance
   fooding
 }
 
-Enum custom_category_scope {
-  attendance
-  extrawork
-  sitecost
-  hiddencost
-  sitecash
-  sitecashreturn
-  sitebill
+Enum site_cost_category {
+  food
+  equipment
+}
+
+Enum labour_payment_type {
+  payment
+  return
+}
+
+Enum site_cash_type {
+  cash
+  return
 }
 
 Enum activity_action {
@@ -316,16 +322,11 @@ Table billing_category {
   company_id    bigint    [ref: > company.id, not null]
   site_id       bigint    [ref: > site.id, not null]
   name          varchar   [not null, note: 'e.g. Basement, Floor-1 (F5.9)']
-  display_order int       [not null, default: 0]
   is_active     boolean   [not null, default: true]
   is_done       boolean   [not null, default: false, note: 'mark as done => deactivates (F5.11)']
   created_at    timestamp [not null]
   created_by    bigint    [ref: > user.id, not null]
   updated_at    timestamp [not null]
-
-  Indexes {
-    (site_id, name) [unique]
-  }
 }
 
 Table billing_category_details {
@@ -345,7 +346,7 @@ Table site_closure_summary {
   total_present              decimal(12,2) [not null]
   total_salary               bigint        [not null]
   total_extrawork            bigint        [not null]
-  total_cost                 bigint        [not null]
+  total_site_cost            bigint        [not null]
   total_hidden_cost          bigint        [not null]
   total_bills                bigint        [not null]
   total_paid_bills           bigint        [not null]
@@ -354,27 +355,6 @@ Table site_closure_summary {
   created_at                 timestamp     [not null]
   created_by                 bigint        [ref: > user.id, not null]
   updated_at                 timestamp     [not null]
-}
-
-// ============================================================
-// F2.4 — Custom category
-// ============================================================
-
-Table custom_category {
-  id            bigint                [pk]
-  company_id    bigint                [ref: > company.id, not null]
-  scope         custom_category_scope [not null, note: 'which ledger it serves (F2.4)']
-  name          varchar               [not null]
-  note          varchar               [null]
-  display_order int                   [not null, default: 0]
-  is_active     boolean               [not null, default: true]
-  created_at    timestamp             [not null]
-  created_by    bigint                [ref: > user.id, not null]
-  updated_at    timestamp             [not null]
-
-  Indexes {
-    (company_id, scope, name) [unique]
-  }
 }
 
 // ============================================================
@@ -393,10 +373,6 @@ Table labour {
   created_at      timestamp     [not null]
   created_by      bigint        [ref: > user.id, not null]
   updated_at      timestamp     [not null]
-
-  Indexes {
-    (company_id, name) [unique]
-  }
 }
 
 Table labour_detail {
@@ -425,17 +401,13 @@ Table labour_session {
 
   total_present      decimal(12,2) [not null, note: 'intotal present days carried']
   total_salary       bigint    [not null, note: 'intotal salary carried']
-  total_extrawork    bigint    [not null, note: 'intotal extra work days carried']
+  total_extra        bigint    [not null, note: 'intotal extra work days carried']
   total_earnings     bigint    [not null, note: 'intotal earnings carried']
   total_taken        bigint    [not null, note: 'intotal taken carried']
   balance            bigint    [not null, note: 'balance carried forward to next session']
   created_at         timestamp [not null, note: 'index will use created_at::date for session uniqueness']
   created_by         bigint    [ref: > user.id, not null]
   updated_at         timestamp [not null]
-
-  Indexes {
-    (labour_id, created_at) [unique]
-  }
 }
 
 Table labour_site_session {
@@ -455,109 +427,65 @@ Table labour_site_session {
 }
 
 // ============================================================
-// F9 — Daily attendance & extra work
+// F9 — Attendance (daily attendance + extra work)
+// Totals / running balances: aggregate on read (SUM), not stored.
 // ============================================================
 
-Table daily_attendance {
-  id                  bigint        [pk]
-  company_id          bigint        [not null]
-  labour_id           bigint        [ref: > labour.id, not null]
-  site_id             bigint        [ref: > site.id, not null]
-  billing_id          bigint        [null, note: 'optional billing category; site may run without categories (F5.9)']
-  custom_category_id  bigint        [null, note: 'optional billing category; site may run without categories ']
-  date                date          [not null]
-  present             decimal(12,2) [not null, note: 'validated against attendance_present_choices']
-  salary              int           [not null, note: 'snapshot; seeded from labour.default_salary']
-  site_total_present  decimal(12,2) [not null]
-  site_total_salary   bigint        [not null]
-  created_at          timestamp     [not null]
-  created_by          bigint        [ref: > user.id, null]
-  updated_at          timestamp     [not null]
-  is_sealed           boolean       [not null, default: false, note: 'true = immutable; set by work-session seal (F8)']
-  
-  Indexes {
-    (labour_id, date) [note: 'non-unique; multiple rows per labour/date allowed']
-  }
-}
-
-Table extra_work {
-  id                  bigint    [pk]
-  company_id          bigint    [not null]
-  labour_id           bigint    [ref: > labour.id, not null]
-  site_id             bigint    [ref: > site.id, not null]
-  billing_id          bigint    [null, note: 'optional billing category (F5.9)']
-  custom_category_id  bigint    [null, note: 'optional custom category']
-  date                date      [not null]
-  amount              int       [not null]
+Table attendance {
+  id                  bigint          [pk]
+  company_id          bigint          [not null]
+  labour_id           bigint          [ref: > labour.id, not null]
+  site_id             bigint          [ref: > site.id, not null]
+  billing_id          bigint          [null, note: 'optional billing category; site may run without categories (F5.9)']
+  date                date            [not null]
+  present             decimal(12,2)   [null, note: 'validated against attendance_present_choices']
+  salary              int             [null, note: 'snapshot from labour.default_salary']
+  extra               int             [null, note: 'validated against company config extrawork_limit']
   note                varchar   [null]
-  site_total_amount   bigint    [not null]
   created_at          timestamp [not null]
-  created_by          bigint    [ref: > user.id, not null]
+  created_by          bigint    [ref: > user.id, null]
   updated_at          timestamp [not null]
   is_sealed           boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F8)']
-
-  Indexes {
-    (labour_id, date)
-  }
 }
 
 // ============================================================
-// F7 — Labour payment (advance | fooding) + return ledgers
+// F7 — Labour pay / return (advance | fooding | return)
 // ============================================================
 
 Table labour_payment {
-  id              bigint    [pk]
-  company_id      bigint    [not null]
-  labour_id       bigint    [ref: > labour.id, not null]
-  site_id         bigint    [ref: > site.id, not null]
-  date            date      [not null]
-  type            labour_payment_type [not null, note: 'advance | fooding — former LabourAdvancePay / LabourFoodingPay']
-  amount          int       [not null, note: 'advance => advance_min/max; fooding => fooding_min/max (seeded from labour.default_fooding)']
-  note            varchar   [null]
-  site_total      bigint    [not null, note: 'per-site cumulative total across all payment types']
-  created_at      timestamp [not null]
-  created_by      bigint    [ref: > user.id, not null]
-  updated_at      timestamp [not null]
-  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F8)']
-
-  Indexes {
-    (labour_id, date)
-    (site_id, type, date)
-  }
-}
-
-Table labour_return {
-  id              bigint    [pk]
-  company_id      bigint    [not null]
-  labour_id       bigint    [ref: > labour.id, not null]
-  site_id         bigint    [ref: > site.id, not null]
-  date            date      [not null]
-  amount          int       [not null]
-  note            varchar   [null]
-  site_total      bigint    [not null]
-  created_at      timestamp [not null]
-  created_by      bigint    [ref: > user.id, not null]
-  updated_at      timestamp [not null]
-  is_sealed       boolean   [not null, default: false, note: 'true = immutable; set by work-session seal (F8)']
+  id              bigint                  [pk]
+  company_id      bigint                  [not null]
+  labour_id       bigint                  [ref: > labour.id, not null]
+  site_id         bigint                  [ref: > site.id, not null]
+  date            date                    [not null]
+  type            labour_payment_type     [not null, note: 'payment | return']
+  category        labour_payment_category [null, note: 'advance | fooding']
+  amount          int                     [not null, note: 'amount paid or returned']
+  note            varchar                 [null]
+  created_at      timestamp               [not null]
+  created_by      bigint                  [ref: > user.id, not null]
+  updated_at      timestamp               [not null]
+  is_sealed       boolean                 [not null, default: false, note: 'true = immutable; set by work-session seal (F8)']
 }
 
 // ============================================================
 // F10 — Site expense (construction cost + hidden cost)
+// Totals: aggregate on read (SUM), not stored.
 // ============================================================
 
 Table site_cost {
-  id                  bigint    [pk]
-  company_id          bigint    [not null]
-  site_id             bigint    [ref: > site.id, not null]
-  billing_id          bigint    [null, note: 'optional billing category (F5.9)']
-  custom_category_id  bigint    [null, note: 'optional sitecost category; prompt when scope count > 0 (F2.4)']
-  date                date      [not null]
-  amount              int       [not null]
-  note                varchar   [null]
-  site_total          bigint    [not null]
-  created_at          timestamp [not null]
-  created_by          bigint    [ref: > user.id, not null]
-  updated_at          timestamp [not null]
+  id                  bigint         [pk]
+  company_id          bigint         [not null]
+  site_id             bigint         [ref: > site.id, not null]
+  billing_id          bigint         [null, note: 'optional billing category (F5.9)']
+  date                date           [not null]
+  category            site_cost_category [null, note: 'food | equipment)']
+  amount              int            [not null]
+  note                varchar        [null]
+  created_at          timestamp      [not null]
+  created_by          bigint         [ref: > user.id, not null]
+  updated_at          timestamp      [not null]
+
 }
 
 Table hidden_cost {
@@ -565,11 +493,9 @@ Table hidden_cost {
   company_id          bigint    [not null]
   site_id             bigint    [ref: > site.id, not null]
   billing_id          bigint    [null, note: 'null => site-general (not pro-rated, F13.8); optional (F5.9)']
-  custom_category_id  bigint    [null, note: 'optional hiddencost category (F2.4)']
   date                date      [not null]
   amount              int       [not null]
   note                varchar   [null]
-  site_total          bigint    [not null]
   created_at          timestamp [not null]
   created_by          bigint    [ref: > user.id, not null]
   updated_at          timestamp [not null]
@@ -580,31 +506,16 @@ Table hidden_cost {
 // ============================================================
 
 Table site_cash {
-  id                  bigint    [pk]
-  company_id          bigint    [not null]
-  site_id             bigint    [ref: > site.id, not null]
-  custom_category_id  bigint    [null, note: 'optional sitecash category (F2.4)']
-  date                date      [not null]
-  amount              int       [not null]
-  note                varchar   [null]
-  site_total          bigint    [not null]
-  created_at          timestamp [not null]
-  created_by          bigint    [ref: > user.id, not null]
-  updated_at          timestamp [not null]
-}
-
-Table site_cash_return {
-  id                  bigint    [pk]
-  company_id          bigint    [not null]
-  site_id             bigint    [ref: > site.id, not null]
-  custom_category_id  bigint    [null, note: 'optional sitecashreturn category (F2.4)']
-  date                date      [not null]
-  amount              int       [not null]
-  note                varchar   [null]
-  site_total          bigint    [not null]
-  created_at          timestamp [not null]
-  created_by          bigint    [ref: > user.id, not null]
-  updated_at          timestamp [not null]
+  id                  bigint         [pk]
+  company_id          bigint         [not null]
+  site_id             bigint         [ref: > site.id, not null]
+  date                date           [not null]
+  type                site_cash_type [not null, note: 'cash = deposit; return = withdrawal']
+  amount              int            [not null]
+  note                varchar        [null]
+  created_at          timestamp      [not null]
+  created_by          bigint         [ref: > user.id, not null]
+  updated_at          timestamp      [not null]
 }
 
 // ============================================================
@@ -616,11 +527,9 @@ Table site_bill {
   company_id          bigint    [not null]
   site_id             bigint    [ref: > site.id, not null]
   billing_id          bigint    [null, note: 'optional billing category (F5.9)']
-  custom_category_id  bigint    [null, note: 'optional sitebill category (F2.4)']
   date                date      [not null]
   amount              int       [not null]
   note                varchar   [null]
-  site_total          bigint    [not null]
   created_at          timestamp [not null]
   created_by          bigint    [ref: > user.id, not null]
   updated_at          timestamp [not null]
@@ -641,37 +550,23 @@ Table activity_log {
   after        jsonb           [null, note: 'snapshot after create/update/merge']
   note         varchar         [null, note: 'required for update/delete of financial records']
   created_at   timestamp       [not null, note: 'event time; never updated or deleted (F14.3)']
-
-  Indexes {
-    (company_id, content_type_id, object_id)
-    (company_id, action_flag)
-  }
 }
 
 // ============================================================
 // FK delete actions (standalone — inline refs cannot carry delete:)
-// Category FKs are SET NULL: deleting a category nulls the FK on its rows;
-// to consolidate instead, re-point rows to another category first (F2.4 / F5.15).
+// Category FKs are SET NULL: deleting a billing category nulls the FK on its rows;
+// to consolidate instead, re-point rows to another category first (F5.15).
 // ============================================================
 
 Ref: billing_category_details.billing_id - billing_category.id [delete: cascade]
 
-Ref: daily_attendance.billing_id  > billing_category.id   [delete: set null]
-Ref: extra_work.billing_id > billing_category.id   [delete: set null]
-Ref: site_cost.billing_id         > billing_category.id   [delete: set null]
-Ref: hidden_cost.billing_id       > billing_category.id   [delete: set null]
-Ref: site_bill.billing_id         > billing_category.id   [delete: set null]
+Ref: attendance.billing_id  > billing_category.id   [delete: set null]
+Ref: site_cost.billing_id   > billing_category.id   [delete: set null]
+Ref: hidden_cost.billing_id > billing_category.id   [delete: set null]
+Ref: site_bill.billing_id   > billing_category.id   [delete: set null]
 
 Ref: payment.variant_id     > plan_variant.id [delete: set null]
 Ref: payment.custom_plan_id > custom_plan.id  [delete: set null]
-
-Ref: daily_attendance.custom_category_id > custom_category.id  [delete: set null]
-Ref: extra_work.custom_category_id       > custom_category.id  [delete: set null]
-Ref: site_cost.custom_category_id        > custom_category.id  [delete: set null]
-Ref: hidden_cost.custom_category_id      > custom_category.id  [delete: set null]
-Ref: site_cash.custom_category_id        > custom_category.id  [delete: set null]
-Ref: site_cash_return.custom_category_id > custom_category.id  [delete: set null]
-Ref: site_bill.custom_category_id        > custom_category.id  [delete: set null]
 
 // ============================================================
 // Table groups (visual grouping in dbdiagram.io)
@@ -703,25 +598,22 @@ TableGroup sites_and_billing {
   site
   billing_category
   billing_category_details
-  custom_category
   site_closure_summary
 }
 
 TableGroup labour_group {
   labour
+  labour_detail
   labour_session
   labour_site_session
 }
 
 TableGroup ledgers {
-  daily_attendance
-  extra_work
+  attendance
   labour_payment
-  labour_return
   site_cost
   hidden_cost
   site_cash
-  site_cash_return
   site_bill
 }
 
@@ -733,18 +625,14 @@ TableGroup activity {
 DiagramView Default {
   Tables {
     billing_category
-    daily_attendance
-    extra_work
+    attendance
+    labour_payment
     site_cost
     hidden_cost
     site_cash
-    site_cash_return
     site_bill
     activity_log
-    custom_category
-    labour_payment
     labour_session
-    labour_return
     labour_site_session
   }
   Notes { * }

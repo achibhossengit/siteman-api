@@ -108,20 +108,17 @@
 
 ## F7 — Manage Labour Payments (Advance, Fooding & Return)
 
-> Advance and fooding share one `labour_payment` table (`type = advance | fooding`). Returns stay on `labour_return`.
-> Nested under labour: `/api/v1/labours/{labour_pk}/payments` — single-row CRUD.
-
-| Method   | Endpoint                                    | Description                                                                                                      | Priority | Progress |
-| -------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------- | -------- |
+| Method   | Endpoint| Description | Priority | Progress |
+| -------- | ------- | ----------- | -------- | -------- |
 | `GET`    | `/api/v1/labours/{labour_pk}/payments`      | List this labour's payments; filters date, date_after/before, site, type; limit/offset (default unlimited)       | MVP      | done     |
-| `POST`   | `/api/v1/labours/{labour_pk}/payments`      | Create one payment; site from labour.current_site; create-window; bump site_total                                | MVP      | done     |
+| `POST`   | `/api/v1/labours/{labour_pk}/payments`      | Create one payment; site from labour.current_site                                                                | MVP      | done     |
 | `GET`    | `/api/v1/labours/{labour_pk}/payments/{id}` | Retrieve payment                                                                                                 | MVP      | done     |
-| `PATCH`  | `/api/v1/labours/{labour_pk}/payments/{id}` | Edit unsealed row; update-window on date                                                                         | L1       | done     |
-| `DELETE` | `/api/v1/labours/{labour_pk}/payments/{id}` | Delete unsealed row; delete-window                                                                               | L1       | done     |
+| `PATCH`  | `/api/v1/labours/{labour_pk}/payments/{id}` | Edit unsealed row                                                                                                | L1       | done     |
+| `DELETE` | `/api/v1/labours/{labour_pk}/payments/{id}` | Delete unsealed row                                                                                              | L1       | done     |
 | `GET`    | `/api/v1/labour-returns`                    | List returns filtered by labour, site, sealed, non-sealed                                                        | MVP      | pending  |
-| `POST`   | `/api/v1/labour-returns`                    | Record return (amount/note/date); increases balance; running site_total                                          | MVP      | pending  |
-| `PATCH`  | `/api/v1/labour-returns/{id}`               | Edit unsealed row in window; activity-logged; recompute totals                                                   | L1       | pending  |
-| `DELETE` | `/api/v1/labour-returns/{id}`               | Soft-delete unsealed row in window; activity-logged; recompute totals                                            | L1       | pending  |
+| `POST`   | `/api/v1/labour-returns`                    | Record return (amount/note/date); balance aggregated on read                                                     | MVP      | pending  |
+| `PATCH`  | `/api/v1/labour-returns/{id}`               | Edit unsealed row; activity-logged                                                                               | L1       | pending  |
+| `DELETE` | `/api/v1/labour-returns/{id}`               | Soft-delete unsealed row; activity-logged                                                                        | L1       | pending  |
 
 
 
