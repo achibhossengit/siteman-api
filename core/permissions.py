@@ -1,7 +1,9 @@
 from django.utils import timezone
 from rest_framework.permissions import SAFE_METHODS, BasePermission, DjangoModelPermissions
+from rest_framework.exceptions import PermissionDenied
 
 from core.exceptions import SubscriptionExpired
+from core import status_codes
 from subscription.models import Subscription
 
 
@@ -64,4 +66,24 @@ class ActiveSubscriptionOrReadOnly(BasePermission):
             subscription.paid_until < timezone.localdate()
         ):
             raise SubscriptionExpired()
+        return True
+
+
+class RecordUpdateDeletePermissions(BasePermission):
+    
+    def has_object_permission(self, request, view, obj):
+        if request.method in SAFE_METHODS:
+            return True
+        
+        if not request.user.is_authorized_site(obj.site_id):
+            raise PermissionDenied(
+                detail="You are not allowed to update or delete other site records",
+                code=status_codes.UNAUTHORIZED_SITE,
+            )
+
+        if obj.is_sealed:
+            raise PermissionDenied(
+                detail="Sealed records cannot be updated or deleted.",
+                code=status_codes.RECORD_SEALED,
+            )
         return True

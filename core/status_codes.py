@@ -24,8 +24,16 @@ SITE_CLOSED = "site_closed"
 SITE_HAS_RECORDS = "site_has_records"
 SITE_INACTIVE = "site_inactive"
 SITE_WRONG_COMPANY = "site_wrong_company"
-SITE_MEMBER_REQUIRED = "site_member_required"
+UNAUTHORIZED_SITE = "unauthorized_site"
 
 # Labours
 LABOUR_INACTIVE = "labour_inactive"
 LABOUR_NAME_EXISTS = "labour_name_exists"
+
+# Common
+RECORD_FUTURE_DATE = "record_future_date"
+RECORD_SEALED = "record_sealed"
+RECORD_UNIQUE_CONSTRAINT_VIOLATION = "record_unique_constraint_violation"
+
+# Labour payments
+CATEGORY_NOT_ALLOWED = "category_not_allowed"

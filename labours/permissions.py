@@ -30,7 +30,6 @@ class LabourSitePermissions(BasePermission):
 
     - List/create: member of labour.current_site; writes also require labour +
       current site active.
-    - Object writes (PATCH/DELETE): member of payment.site (not just current site).
     """
 
     message = "You are not a member of this labour's current site."
@@ -44,7 +43,7 @@ class LabourSitePermissions(BasePermission):
         if site is None:
             return False
 
-        if not request.user.is_site_member(site.id):
+        if not request.user.is_authorized_site(site.id):
             return False
 
         if request.method in SAFE_METHODS:
@@ -60,17 +59,4 @@ class LabourSitePermissions(BasePermission):
                 detail="This labour's current site is inactive; no changes can be made.",
                 code=status_codes.SITE_INACTIVE,
             )
-        return True
-
-    def has_object_permission(self, request, view, obj):
-        if request.method in SAFE_METHODS:
-            return True
-        
-        site = obj.site
-        if not request.user.is_site_member(site.id):
-            raise PermissionDenied(
-                detail="You are not a member of this payment's site.",
-                code=status_codes.SITE_MEMBER_REQUIRED,
-            )
-            
         return True

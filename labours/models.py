@@ -72,7 +72,6 @@ class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
         choices=LabourPaymentCategory.choices,
         null=True,
         blank=True,
-        help_text="Must be empty for returns.",
     )
     amount = models.IntegerField(validators=[MinValueValidator(0)])
     note = models.CharField(max_length=255, null=True, blank=True)

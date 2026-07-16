@@ -1,7 +1,9 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ErrorDetail
+from django.utils import timezone
 
 from core import status_codes
-from .models import Labour
+from .models import Labour, LabourPayment, LabourPaymentType
 
 
 class LabourListSerializer(serializers.ModelSerializer):
@@ -69,3 +71,57 @@ class LabourSerializer(serializers.ModelSerializer):
                 code=status_codes.SITE_CLOSED,
             )
         return site
+
+
+class LabourPaymentListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LabourPayment
+        fields = [
+            "id",
+            "date",
+            "type",
+            "category",
+            "amount",
+            "note",
+            "site",
+            "is_sealed",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class LabourPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LabourPayment
+        fields = [
+            "id",
+            "labour",
+            "site",
+            "date",
+            "type",
+            "category",
+            "amount",
+            "note",
+            "is_sealed",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "labour",
+            "site",
+            "is_sealed",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError(
+                "Date cannot be in the future.",
+                code=status_codes.RECORD_FUTURE_DATE,
+            )
+        return value
