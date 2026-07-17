@@ -16,14 +16,10 @@ TRIAL_DURATION_DAYS = 14
 
 
 @receiver(post_save, sender=Company)
-def create_company_config(sender, instance, created, **kwargs):
-    if created:
+def setup_company_defaults(sender, instance, created, **kwargs):
+    # Skip during loaddata (raw=True) so fixtures can supply CompanyConfig.
+    if created and not kwargs.get("raw", False):
         CompanyConfig.objects.create(company=instance)
-
-
-@receiver(post_save, sender=Company)
-def create_initial_subscription(sender, instance, created, **kwargs):
-    if created:
         Subscription.objects.create(
             company=instance,
             open_site_limit=TRIAL_OPEN_SITE_LIMIT,
