@@ -9,9 +9,10 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from accounts.models import UserSite
 from company.models import Company
 from core import status_codes
-from labours.models import Labour
+from labours.models import Labour, LabourPayment, LabourPaymentCategory, LabourPaymentType
 from sites.models import Site
 from subscription.models import Subscription
 
@@ -399,3 +400,615 @@ class LabourSubscriptionTests(LabourAPITestCase):
         )
         labour.refresh_from_db()
         self.assertEqual(labour.name, "Editable")
+
+
+class LabourPaymentAPITestCase(APITestCase):
+    """Shared fixtures for nested labour payment endpoints."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self._grant_payment_permissions(self.user)
+        self.client.force_authenticate(user=self.user)
+
+        self.site = Site.objects.create(
+            name="Padma Bridge",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, self.site)
+
+        self.labour = Labour.objects.create(
+            name="Karim",
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+            default_salary=500,
+            default_fooding=100,
+        )
+        self.list_url = self._list_url(self.labour.pk)
+
+    def _grant_payment_permissions(self, user, codenames=None):
+        codenames = codenames or [
+            "view_labourpayment",
+            "add_labourpayment",
+            "change_labourpayment",
+            "delete_labourpayment",
+        ]
+        ct = ContentType.objects.get_for_model(LabourPayment)
+        perms = Permission.objects.filter(content_type=ct, codename__in=codenames)
+        user.user_permissions.add(*perms)
+
+    def _assign_site(self, user, site):
+        return UserSite.objects.create(
+            user=user,
+            site=site,
+            company=user.company,
+            created_by=user,
+        )
+
+    def _list_url(self, labour_id):
+        return reverse(
+            "labour-payment-list",
+            kwargs={"version": "v1", "labour_pk": labour_id},
+        )
+
+    def _detail_url(self, labour_id, payment_id):
+        return reverse(
+            "labour-payment-detail",
+            kwargs={"version": "v1", "labour_pk": labour_id, "pk": payment_id},
+        )
+
+    def _create_payment(self, labour=None, site=None, **kwargs):
+        labour = labour or self.labour
+        site = site or labour.current_site or self.site
+        defaults = {
+            "company": labour.company,
+            "labour": labour,
+            "site": site,
+            "date": timezone.localdate(),
+            "type": LabourPaymentType.PAYMENT,
+            "category": LabourPaymentCategory.ADVANCE,
+            "amount": 1000,
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return LabourPayment.objects.create(**defaults)
+
+
+class LabourPaymentAuthPermissionTests(LabourPaymentAPITestCase):
+    def test_unauthenticated_list_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_missing_add_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_payment_permissions(self.user, ["view_labourpayment"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.ADVANCE,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_change_permission_returns_403(self):
+        payment = self._create_payment()
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_payment_permissions(
+            self.user, ["view_labourpayment", "add_labourpayment"]
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, payment.pk),
+            {"amount": 2000},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_not_site_member_returns_403(self):
+        UserSite.objects.filter(user=self.user, site=self.site).delete()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_labour_without_current_site_returns_403(self):
+        self.labour.current_site = None
+        self.labour.save(update_fields=["current_site"])
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_other_company_labour_returns_403(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811111111",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        foreign_labour = Labour.objects.create(
+            name="Secret",
+            company=other,
+            created_by=other_user,
+            current_site=other_site,
+            default_salary=500,
+        )
+        response = self.client.get(self._list_url(foreign_labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_inactive_labour_blocks_create(self):
+        self.labour.is_active = False
+        self.labour.save(update_fields=["is_active"])
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.ADVANCE,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_INACTIVE,
+        )
+
+    def test_inactive_site_blocks_create(self):
+        self.site.is_active = False
+        self.site.save(update_fields=["is_active"])
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.ADVANCE,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SITE_INACTIVE,
+        )
+
+    def test_inactive_labour_still_allows_list(self):
+        self._create_payment()
+        self.labour.is_active = False
+        self.labour.save(update_fields=["is_active"])
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+
+class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
+    def test_list_empty(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_create_payment_success(self):
+        today = timezone.localdate()
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(today),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.ADVANCE,
+                "amount": 1500,
+                "note": "Friday advance",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["labour"], self.labour.pk)
+        self.assertEqual(response.data["site"], self.site.pk)
+        self.assertEqual(response.data["company"], self.company.pk)
+        self.assertEqual(response.data["created_by"], self.user.pk)
+        self.assertEqual(response.data["amount"], 1500)
+        self.assertEqual(response.data["category"], LabourPaymentCategory.ADVANCE)
+        self.assertFalse(response.data["is_sealed"])
+        self.assertTrue(
+            LabourPayment.objects.filter(
+                labour=self.labour,
+                date=today,
+                type=LabourPaymentType.PAYMENT,
+            ).exists()
+        )
+
+    def test_create_return_without_category(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.RETURN,
+                "amount": 300,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["type"], LabourPaymentType.RETURN)
+        self.assertIsNone(response.data["category"])
+
+    def test_create_return_with_category_allowed(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.RETURN,
+                "category": LabourPaymentCategory.ADVANCE,
+                "amount": 300,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["category"], LabourPaymentCategory.ADVANCE)
+
+    def test_create_stamps_site_from_labour_current_site(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.FOODING,
+                "amount": 200,
+                "site": other_site.pk,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["site"], self.site.pk)
+
+    def test_create_ignores_client_is_sealed_true(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.ADVANCE,
+                "amount": 500,
+                "is_sealed": True,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(response.data["is_sealed"])
+
+    def test_list_uses_list_serializer_fields(self):
+        payment = self._create_payment()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertCountEqual(
+            response.data[0].keys(),
+            [
+                "id",
+                "date",
+                "type",
+                "category",
+                "amount",
+                "note",
+                "site",
+                "is_sealed",
+                "created_at",
+                "updated_at",
+            ],
+        )
+        self.assertEqual(response.data[0]["id"], payment.pk)
+
+    def test_retrieve_payment_detail(self):
+        payment = self._create_payment(note="detail")
+        response = self.client.get(self._detail_url(self.labour.pk, payment.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["note"], "detail")
+        self.assertIn("company", response.data)
+        self.assertIn("created_by", response.data)
+
+    def test_patch_amount_and_note(self):
+        payment = self._create_payment(amount=1000, note="old")
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, payment.pk),
+            {"amount": 1800, "note": "updated"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["amount"], 1800)
+        self.assertEqual(response.data["note"], "updated")
+        payment.refresh_from_db()
+        self.assertEqual(payment.amount, 1800)
+
+    def test_delete_payment(self):
+        payment = self._create_payment()
+        response = self.client.delete(self._detail_url(self.labour.pk, payment.pk))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(LabourPayment.objects.filter(pk=payment.pk).exists())
+
+    def test_put_not_allowed(self):
+        payment = self._create_payment()
+        response = self.client.put(
+            self._detail_url(self.labour.pk, payment.pk),
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.ADVANCE,
+                "amount": 1,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+class LabourPaymentValidationTests(LabourPaymentAPITestCase):
+    def test_future_date_rejected(self):
+        future = timezone.localdate() + timedelta(days=1)
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(future),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.ADVANCE,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_FUTURE_DATE,
+        )
+
+    def test_duplicate_date_labour_type_rejected(self):
+        today = timezone.localdate()
+        self._create_payment(date=today, type=LabourPaymentType.PAYMENT)
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(today),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.FOODING,
+                "amount": 200,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+        )
+
+    def test_payment_and_return_same_day_allowed(self):
+        today = timezone.localdate()
+        self._create_payment(date=today, type=LabourPaymentType.PAYMENT)
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(today),
+                "type": LabourPaymentType.RETURN,
+                "amount": 100,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_patch_to_duplicate_type_date_rejected(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._create_payment(date=today, type=LabourPaymentType.PAYMENT, amount=100)
+        other = self._create_payment(
+            date=yesterday,
+            type=LabourPaymentType.PAYMENT,
+            amount=200,
+        )
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, other.pk),
+            {"date": str(today)},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+        )
+
+
+class LabourPaymentObjectPermissionTests(LabourPaymentAPITestCase):
+    def test_sealed_payment_cannot_be_patched(self):
+        payment = self._create_payment(is_sealed=True)
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, payment.pk),
+            {"amount": 999},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_SEALED,
+        )
+
+    def test_sealed_payment_cannot_be_deleted(self):
+        payment = self._create_payment(is_sealed=True)
+        response = self.client.delete(self._detail_url(self.labour.pk, payment.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_SEALED,
+        )
+        self.assertTrue(LabourPayment.objects.filter(pk=payment.pk).exists())
+
+    def test_cannot_patch_payment_from_unauthorized_site(self):
+        other_site = Site.objects.create(
+            name="Old Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        # Historical payment recorded at other_site; user is only on current site.
+        payment = self._create_payment(site=other_site)
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, payment.pk),
+            {"amount": 50},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.UNAUTHORIZED_SITE,
+        )
+
+    def test_can_patch_when_member_of_payment_site(self):
+        other_site = Site.objects.create(
+            name="Old Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, other_site)
+        payment = self._create_payment(site=other_site, amount=100)
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, payment.pk),
+            {"amount": 250},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["amount"], 250)
+
+
+class LabourPaymentFilterIsolationTests(LabourPaymentAPITestCase):
+    def test_filter_by_type(self):
+        today = timezone.localdate()
+        self._create_payment(date=today, type=LabourPaymentType.PAYMENT)
+        self._create_payment(
+            date=today,
+            type=LabourPaymentType.RETURN,
+            category=None,
+            amount=50,
+        )
+        response = self.client.get(self.list_url, {"type": LabourPaymentType.RETURN})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["type"], LabourPaymentType.RETURN)
+
+    def test_filter_by_category(self):
+        today = timezone.localdate()
+        self._create_payment(
+            date=today,
+            type=LabourPaymentType.PAYMENT,
+            category=LabourPaymentCategory.ADVANCE,
+        )
+        self._create_payment(
+            date=today - timedelta(days=1),
+            type=LabourPaymentType.PAYMENT,
+            category=LabourPaymentCategory.FOODING,
+            amount=80,
+        )
+        response = self.client.get(
+            self.list_url, {"category": LabourPaymentCategory.FOODING}
+        )
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["category"], LabourPaymentCategory.FOODING)
+
+    def test_nested_under_other_labour_hides_payments(self):
+        other_labour = Labour.objects.create(
+            name="Rahim",
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+            default_salary=500,
+        )
+        payment = self._create_payment()
+        response = self.client.get(self._list_url(other_labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+        response = self.client.get(self._detail_url(other_labour.pk, payment.pk))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_cannot_see_other_company_payments(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811222333",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        other_labour = Labour.objects.create(
+            name="Foreign Labour",
+            company=other,
+            created_by=other_user,
+            current_site=other_site,
+            default_salary=500,
+        )
+        LabourPayment.objects.create(
+            company=other,
+            labour=other_labour,
+            site=other_site,
+            date=timezone.localdate(),
+            type=LabourPaymentType.PAYMENT,
+            category=LabourPaymentCategory.ADVANCE,
+            amount=999,
+            created_by=other_user,
+        )
+        self._create_payment(amount=100)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["amount"], 100)
+
+
+class LabourPaymentSubscriptionTests(LabourPaymentAPITestCase):
+    def test_create_blocked_when_subscription_expired(self):
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.PAYMENT,
+                "category": LabourPaymentCategory.ADVANCE,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )
+        self.assertFalse(LabourPayment.objects.exists())
+
+    def test_list_allowed_when_subscription_expired(self):
+        self._create_payment()
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_patch_blocked_when_subscription_expired(self):
+        payment = self._create_payment(amount=100)
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, payment.pk),
+            {"amount": 200},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )
+        payment.refresh_from_db()
+        self.assertEqual(payment.amount, 100)
