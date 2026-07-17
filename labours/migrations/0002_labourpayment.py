@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('date', models.DateField(default=django.utils.timezone.localdate)),
                 ('type', models.CharField(choices=[('payment', 'Payment'), ('return', 'Return')], default='payment', help_text='Payment or Return', max_length=16)),
-                ('category', models.CharField(blank=True, choices=[('advance', 'Advance'), ('fooding', 'Fooding')], help_text='Must be empty for returns.', max_length=16, null=True)),
+                ('category', models.CharField(blank=True, choices=[('advance', 'Advance'), ('fooding', 'Fooding')], max_length=16, null=True)),
                 ('amount', models.IntegerField(validators=[django.core.validators.MinValueValidator(0)])),
                 ('note', models.CharField(blank=True, max_length=255, null=True)),
                 ('is_sealed', models.BooleanField(default=False, help_text='True = immutable')),

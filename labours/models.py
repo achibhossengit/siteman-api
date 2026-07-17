@@ -90,3 +90,70 @@ class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
 
     def __str__(self):
         return f"Note: {self.note} Amount: {self.amount} Type: {self.get_type_display()}"
+
+
+class Attendance(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+    PRESENT_CHOICES = [
+        (Decimal("0"), "0"),
+        (Decimal("0.5"), "0.5"),
+        (Decimal("1"), "1"),
+        (Decimal("1.5"), "1.5"),
+        (Decimal("2"), "2"),
+        (Decimal("2.5"), "2.5"),
+        (Decimal("3"), "3"),
+    ]
+    
+    labour = models.ForeignKey(
+        Labour,
+        on_delete=models.RESTRICT,
+        related_name="attendances",
+    )
+    site = models.ForeignKey(
+        "sites.Site",
+        on_delete=models.RESTRICT,
+        related_name="attendances",
+    )
+    billing = models.ForeignKey(
+        "sites.BillingCategory",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="attendances",
+        help_text="Optional billing category; site may run without categories.",
+    )
+    date = models.DateField(default=timezone.localdate)
+    present = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        choices=PRESENT_CHOICES,
+    )
+    salary = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Snapshot from labour.default_salary.",
+    )
+    extra = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Extra work amount for the day.",
+    )
+    note = models.CharField(max_length=255, null=True, blank=True)
+    is_sealed = models.BooleanField(
+        default=False,
+        help_text="True = immutable; set by work-session seal.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["date", "labour"],
+                name="uq_attendance_date_labour",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.labour} @ {self.date} (present={self.present})"
