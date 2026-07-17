@@ -25,6 +25,7 @@ SITE_HAS_RECORDS = "site_has_records"
 SITE_INACTIVE = "site_inactive"
 SITE_WRONG_COMPANY = "site_wrong_company"
 UNAUTHORIZED_SITE = "unauthorized_site"
+BILLING_CATEGORY_INACTIVE = "billing_category_inactive"
 
 # Labours
 LABOUR_INACTIVE = "labour_inactive"

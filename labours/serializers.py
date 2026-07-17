@@ -3,7 +3,7 @@ from rest_framework.exceptions import ErrorDetail
 from django.utils import timezone
 
 from core import status_codes
-from .models import Labour, LabourPayment, LabourPaymentType
+from .models import Attendance, Labour, LabourPayment, LabourPaymentType
 
 
 class LabourListSerializer(serializers.ModelSerializer):
@@ -125,3 +125,79 @@ class LabourPaymentSerializer(serializers.ModelSerializer):
                 code=status_codes.RECORD_FUTURE_DATE,
             )
         return value
+
+
+class AttendanceListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Attendance
+        fields = [
+            "id",
+            "date",
+            "present",
+            "salary",
+            "extra",
+            "note",
+            "billing",
+            "site",
+            "is_sealed",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class AttendanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Attendance
+        fields = [
+            "id",
+            "labour",
+            "site",
+            "billing",
+            "date",
+            "present",
+            "salary",
+            "extra",
+            "note",
+            "is_sealed",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "labour",
+            "site",
+            "is_sealed",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError(
+                "Date cannot be in the future.",
+                code=status_codes.RECORD_FUTURE_DATE,
+            )
+        return value
+
+    def validate_billing(self, billing):
+        if billing is None:
+            return billing
+
+        labour = self.context["labour"]
+        site_id = self.instance.site_id if self.instance is not None else labour.current_site_id
+        if billing.company_id != labour.company_id or billing.site_id != site_id:
+            raise serializers.ValidationError(
+                "Billing category must belong to this labour's current site.",
+                code=status_codes.INVALID,
+            )
+
+        if self.instance is None and not billing.is_active:
+            raise serializers.ValidationError(
+                "Billing category must be active.",
+                code=status_codes.BILLING_CATEGORY_INACTIVE,
+            )
+
+        return billing
