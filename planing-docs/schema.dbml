@@ -26,7 +26,7 @@ Enum labour_payment_category {
   fooding
 }
 
-Enum site_cost_category {
+Enum site_cash_category {
   food
   equipment
 }
@@ -37,8 +37,9 @@ Enum labour_payment_type {
 }
 
 Enum site_cash_type {
-  cash
-  return
+  deposit
+  withdrawal
+  cost
 }
 
 Enum activity_action {
@@ -336,7 +337,7 @@ Table site_closure_summary {
   total_present              decimal(12,2) [not null]
   total_salary               bigint        [not null]
   total_extrawork            bigint        [not null]
-  total_site_cost            bigint        [not null]
+  total_site_cost            bigint        [not null, note: 'SUM(site_cash.amount) where type = cost']
   total_hidden_cost          bigint        [not null]
   total_bills                bigint        [not null]
   total_paid_bills           bigint        [not null]
@@ -459,23 +460,23 @@ Table labour_payment {
 }
 
 // ============================================================
-// F10 — Site expense (construction cost + hidden cost)
-// Totals: aggregate on read (SUM), not stored.
+// F10 — Site cash ledger (deposit, withdrawal, cost)
+// Former site_cost + site_cash merged — same permissions and lifecycle.
 // ============================================================
 
-Table site_cost {
-  id                  bigint         [pk]
-  company_id          bigint         [not null]
-  site_id             bigint         [ref: > site.id, not null]
-  billing_id          bigint         [null, note: 'optional billing category (F5.9)']
-  date                date           [not null]
-  category            site_cost_category [null, note: 'food | equipment)']
-  amount              int            [not null]
-  note                varchar        [null]
-  created_at          timestamp      [not null]
-  created_by          bigint         [ref: > user.id, not null]
-  updated_at          timestamp      [not null]
-
+Table site_cash {
+  id                  bigint             [pk]
+  company_id          bigint             [not null]
+  site_id             bigint             [ref: > site.id, not null]
+  billing_id          bigint             [null, note: 'optional billing category (F5.9); nullable for all types']
+  type                site_cash_type     [not null]
+  category            site_cash_category [null, note: 'food | equipment; meaningful when type = cost; nullable — client may hide or ignore for deposit/withdrawal']
+  date                date               [not null]
+  amount              int                [not null]
+  note                varchar            [null]
+  created_at          timestamp          [not null]
+  created_by          bigint             [ref: > user.id, not null]
+  updated_at          timestamp          [not null]
 }
 
 Table hidden_cost {
@@ -489,23 +490,6 @@ Table hidden_cost {
   created_at          timestamp [not null]
   created_by          bigint    [ref: > user.id, not null]
   updated_at          timestamp [not null]
-}
-
-// ============================================================
-// F11 — Site cash (deposit + return/withdrawal)
-// ============================================================
-
-Table site_cash {
-  id                  bigint         [pk]
-  company_id          bigint         [not null]
-  site_id             bigint         [ref: > site.id, not null]
-  date                date           [not null]
-  type                site_cash_type [not null, note: 'cash = deposit; return = withdrawal']
-  amount              int            [not null]
-  note                varchar        [null]
-  created_at          timestamp      [not null]
-  created_by          bigint         [ref: > user.id, not null]
-  updated_at          timestamp      [not null]
 }
 
 // ============================================================
@@ -551,7 +535,7 @@ Table activity_log {
 Ref: billing_category_details.billing_id - billing_category.id [delete: cascade]
 
 Ref: attendance.billing_id  > billing_category.id   [delete: set null]
-Ref: site_cost.billing_id   > billing_category.id   [delete: set null]
+Ref: site_cash.billing_id   > billing_category.id   [delete: set null]
 Ref: hidden_cost.billing_id > billing_category.id   [delete: set null]
 Ref: site_bill.billing_id   > billing_category.id   [delete: set null]
 
@@ -601,7 +585,6 @@ TableGroup labour_group {
 TableGroup ledgers {
   attendance
   labour_payment
-  site_cost
   hidden_cost
   site_cash
   site_bill
@@ -617,7 +600,6 @@ DiagramView Default {
     billing_category
     attendance
     labour_payment
-    site_cost
     hidden_cost
     site_cash
     site_bill
