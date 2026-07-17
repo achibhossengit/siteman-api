@@ -1,4 +1,7 @@
+from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils import timezone
+
 from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
 
 
@@ -42,3 +45,44 @@ class BillingCategory(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
 
     def __str__(self):
         return f"{self.name} ({self.site})"
+
+
+class SiteCashType(models.TextChoices):
+    DEPOSIT = "deposit", "Deposit"
+    WITHDRAWAL = "withdrawal", "Withdrawal"
+    COST = "cost", "Cost"
+
+
+class SiteCashCategory(models.TextChoices):
+    FOOD = "food", "Food"
+    EQUIPMENT = "equipment", "Equipment"
+
+
+class SiteCash(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+    site = models.ForeignKey(
+        Site,
+        on_delete=models.RESTRICT,
+        related_name="cash_entries",
+    )
+    billing = models.ForeignKey(
+        BillingCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cash_entries",
+        help_text="Optional billing category; nullable for all types.",
+    )
+    type = models.CharField(max_length=16, choices=SiteCashType.choices)
+    category = models.CharField(
+        max_length=16,
+        choices=SiteCashCategory.choices,
+        null=True,
+        blank=True,
+        help_text="Typically used for cost (food | equipment); optional for deposit/withdrawal.",
+    )
+    date = models.DateField(default=timezone.localdate)
+    amount = models.IntegerField(validators=[MinValueValidator(0)])
+    note = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.get_type_display()} {self.amount} @ {self.date}"
