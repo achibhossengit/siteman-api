@@ -5,6 +5,7 @@ from .views import (
     LabourAttendanceViewSet,
     LabourPaymentViewSet,
     LabourViewSet,
+    SiteLabourAttendanceViewSet,
     SiteLabourPaymentViewSet,
 )
 
@@ -20,6 +21,11 @@ payments_router.register(
 site_payments_router = SimpleRouter(trailing_slash=False)
 site_payments_router.register(
     "labour-payments", SiteLabourPaymentViewSet, basename="site-labour-payment"
+)
+site_payments_router.register(
+    "labour-attendances",
+    SiteLabourAttendanceViewSet,
+    basename="site-labour-attendance",
 )
 
 urlpatterns = [

@@ -2094,3 +2094,535 @@ class SiteLabourPaymentSubscriptionTests(SiteLabourPaymentAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
+
+
+class SiteLabourAttendanceAPITestCase(APITestCase):
+    """Shared fixtures for nested site labour-attendance endpoints."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self._grant_attendance_permissions(self.user)
+        self.client.force_authenticate(user=self.user)
+
+        self.site = Site.objects.create(
+            name="Padma Bridge",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, self.site)
+
+        self.labour = Labour.objects.create(
+            name="Karim",
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+            default_salary=500,
+            default_fooding=100,
+        )
+        self.labour_b = Labour.objects.create(
+            name="Rahim",
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+            default_salary=400,
+            default_fooding=80,
+        )
+        self.billing = self._create_billing(name="Basement")
+        self.list_url = self._list_url(self.site.pk)
+        self.today = str(timezone.localdate())
+
+    def _grant_attendance_permissions(self, user, codenames=None):
+        codenames = codenames or [
+            "view_attendance",
+            "add_attendance",
+            "change_attendance",
+            "delete_attendance",
+        ]
+        ct = ContentType.objects.get_for_model(Attendance)
+        perms = Permission.objects.filter(content_type=ct, codename__in=codenames)
+        user.user_permissions.add(*perms)
+
+    def _assign_site(self, user, site):
+        return UserSite.objects.create(
+            user=user,
+            site=site,
+            company=user.company,
+            created_by=user,
+        )
+
+    def _create_billing(self, name="Basement", site=None, **kwargs):
+        site = site or self.site
+        defaults = {
+            "company": site.company,
+            "site": site,
+            "name": name,
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return BillingCategory.objects.create(**defaults)
+
+    def _list_url(self, site_id):
+        return reverse(
+            "site-labour-attendance-list",
+            kwargs={"version": "v1", "site_pk": site_id},
+        )
+
+    def _create_attendance(self, labour=None, site=None, **kwargs):
+        labour = labour or self.labour
+        site = site or self.site
+        defaults = {
+            "company": labour.company,
+            "labour": labour,
+            "site": site,
+            "date": timezone.localdate(),
+            "present": Decimal("1"),
+            "salary": labour.default_salary,
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return Attendance.objects.create(**defaults)
+
+    def _attendance_payload(self, labour, **overrides):
+        data = {
+            "labour": labour.pk,
+            "date": self.today,
+            "present": "1",
+            "salary": labour.default_salary,
+        }
+        data.update(overrides)
+        return data
+
+
+class SiteLabourAttendanceAuthPermissionTests(SiteLabourAttendanceAPITestCase):
+    def test_unauthenticated_list_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_missing_add_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_attendance_permissions(self.user, ["view_attendance"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_not_site_member_returns_403(self):
+        UserSite.objects.filter(user=self.user, site=self.site).delete()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.UNAUTHORIZED_SITE,
+        )
+
+    def test_inactive_site_blocks_create(self):
+        self.site.is_active = False
+        self.site.save(update_fields=["is_active"])
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SITE_INACTIVE,
+        )
+
+    def test_inactive_site_still_allows_list(self):
+        self._create_attendance()
+        self.site.is_active = False
+        self.site.save(update_fields=["is_active"])
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_other_company_site_returns_403(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811111111",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        response = self.client.get(self._list_url(other_site.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class SiteLabourAttendanceCRUDTests(SiteLabourAttendanceAPITestCase):
+    def test_list_empty(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_bulk_create_success(self):
+        response = self.client.post(
+            self.list_url,
+            [
+                self._attendance_payload(self.labour, extra=50),
+                self._attendance_payload(self.labour_b, present="0.5"),
+            ],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(len(response.data), 2)
+        self.assertEqual(Attendance.objects.count(), 2)
+
+        by_labour = {row["labour"]: row for row in response.data}
+        self.assertEqual(by_labour[self.labour.pk]["site"], self.site.pk)
+        self.assertEqual(by_labour[self.labour.pk]["company"], self.company.pk)
+        self.assertEqual(by_labour[self.labour.pk]["created_by"], self.user.pk)
+        self.assertFalse(by_labour[self.labour.pk]["is_sealed"])
+        self.assertEqual(by_labour[self.labour.pk]["extra"], 50)
+        self.assertEqual(Decimal(by_labour[self.labour_b.pk]["present"]), Decimal("0.5"))
+
+    def test_bulk_create_with_billing(self):
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour, billing=self.billing.pk)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data[0]["billing"], self.billing.pk)
+
+    def test_create_stamps_site_from_url(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour, site=other_site.pk)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data[0]["site"], self.site.pk)
+
+    def test_list_uses_list_serializer_fields(self):
+        attendance = self._create_attendance()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertCountEqual(
+            response.data[0].keys(),
+            [
+                "id",
+                "labour",
+                "date",
+                "present",
+                "salary",
+                "extra",
+                "note",
+                "billing",
+                "is_sealed",
+                "created_at",
+                "updated_at",
+            ],
+        )
+        self.assertEqual(response.data[0]["id"], attendance.pk)
+
+    def test_retrieve_not_allowed(self):
+        attendance = self._create_attendance()
+        response = self.client.get(f"{self.list_url}/{attendance.pk}")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_patch_not_allowed(self):
+        attendance = self._create_attendance()
+        response = self.client.patch(
+            f"{self.list_url}/{attendance.pk}",
+            {"present": "2"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_not_allowed(self):
+        attendance = self._create_attendance()
+        response = self.client.delete(f"{self.list_url}/{attendance.pk}")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Attendance.objects.filter(pk=attendance.pk).exists())
+
+
+class SiteLabourAttendanceValidationTests(SiteLabourAttendanceAPITestCase):
+    def test_non_list_payload_rejected(self):
+        response = self.client.post(
+            self.list_url,
+            self._attendance_payload(self.labour),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_future_date_rejected_with_index(self):
+        future = str(timezone.localdate() + timedelta(days=1))
+        response = self.client.post(
+            self.list_url,
+            [
+                self._attendance_payload(self.labour),
+                self._attendance_payload(self.labour_b, date=future),
+            ],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "1.date")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_FUTURE_DATE,
+        )
+        self.assertFalse(Attendance.objects.exists())
+
+    def test_invalid_present_choice_rejected(self):
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour, present="1.7")],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.present")
+
+    def test_inactive_labour_rejected_with_index(self):
+        self.labour_b.is_active = False
+        self.labour_b.save(update_fields=["is_active"])
+        response = self.client.post(
+            self.list_url,
+            [
+                self._attendance_payload(self.labour),
+                self._attendance_payload(self.labour_b),
+            ],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "1.labour")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_INACTIVE,
+        )
+        self.assertFalse(Attendance.objects.exists())
+
+    def test_labour_from_other_site_rejected(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        self.labour_b.current_site = other_site
+        self.labour_b.save(update_fields=["current_site"])
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour_b)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.labour")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+
+    def test_labour_from_other_company_rejected(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811222333",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        foreign_labour = Labour.objects.create(
+            name="Foreign Worker",
+            company=other,
+            created_by=other_user,
+            current_site=other_site,
+        )
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(foreign_labour)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.labour")
+
+    def test_billing_from_other_site_rejected(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        other_billing = self._create_billing(name="Foreign Cat", site=other_site)
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour, billing=other_billing.pk)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.billing")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+
+    def test_inactive_billing_rejected(self):
+        inactive_billing = self._create_billing(name="Done Cat", is_active=False)
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour, billing=inactive_billing.pk)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.billing")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.BILLING_CATEGORY_INACTIVE,
+        )
+
+    def test_duplicate_unique_constraint_rejected(self):
+        self._create_attendance(labour=self.labour)
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        codes = {e["code"] for e in response.data["errors"]}
+        self.assertTrue(
+            codes
+            & {
+                status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+                "unique",
+            },
+            response.data,
+        )
+
+    def test_one_invalid_item_rolls_back_entire_batch(self):
+        future = str(timezone.localdate() + timedelta(days=1))
+        response = self.client.post(
+            self.list_url,
+            [
+                self._attendance_payload(self.labour),
+                self._attendance_payload(self.labour_b, date=future),
+            ],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Attendance.objects.exists())
+
+
+class SiteLabourAttendanceFilterIsolationTests(SiteLabourAttendanceAPITestCase):
+    def test_filter_by_date(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self._create_attendance()
+        self._create_attendance(labour=self.labour_b, date=yesterday)
+        response = self.client.get(self.list_url, {"date": str(yesterday)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["labour"], self.labour_b.pk)
+
+    def test_filter_by_labour(self):
+        self._create_attendance(labour=self.labour)
+        self._create_attendance(labour=self.labour_b)
+        response = self.client.get(self.list_url, {"labour": self.labour_b.pk})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["labour"], self.labour_b.pk)
+
+    def test_filter_by_billing(self):
+        self._create_attendance(labour=self.labour, billing=self.billing)
+        self._create_attendance(labour=self.labour_b)
+        response = self.client.get(self.list_url, {"billing": self.billing.pk})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["billing"], self.billing.pk)
+
+    def test_nested_under_other_site_hides_attendances(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, other_site)
+        self._create_attendance()
+        response = self.client.get(self._list_url(other_site.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_cannot_see_other_company_attendances(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811222333",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        other_labour = Labour.objects.create(
+            name="Foreign Worker",
+            company=other,
+            created_by=other_user,
+            current_site=other_site,
+        )
+        Attendance.objects.create(
+            company=other,
+            labour=other_labour,
+            site=other_site,
+            date=timezone.localdate(),
+            present=Decimal("1"),
+            created_by=other_user,
+        )
+        self._create_attendance(extra=100)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["extra"], 100)
+
+
+class SiteLabourAttendanceSubscriptionTests(SiteLabourAttendanceAPITestCase):
+    def test_create_blocked_when_subscription_expired(self):
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.post(
+            self.list_url,
+            [self._attendance_payload(self.labour)],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )
+        self.assertFalse(Attendance.objects.exists())
+
+    def test_list_allowed_when_subscription_expired(self):
+        self._create_attendance()
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)

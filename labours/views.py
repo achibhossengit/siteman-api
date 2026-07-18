@@ -25,6 +25,8 @@ from .serializers import (
     LabourPaymentListSerializer,
     LabourPaymentSerializer,
     LabourSerializer,
+    SiteLabourAttendanceListSerializer,
+    SiteLabourAttendanceSerializer,
     SiteLabourPaymentListSerializer,
     SiteLabourPaymentSerializer,
 )
@@ -190,6 +192,66 @@ class SiteLabourPaymentViewSet(
         except IntegrityError:
             raise ValidationError(
                 "A payment of this type already exists for a labour on this date.",
+                code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+            )
+
+
+class SiteLabourAttendanceViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Nested under ``/sites/<site_pk>/labour-attendances``.
+
+    Only list and bulk create; the create payload is a list of
+    attendances, each carrying its own ``labour``.
+    """
+
+    serializer_class = SiteLabourAttendanceSerializer
+    queryset = Attendance.objects.none()
+    permission_classes = [
+        *api_settings.DEFAULT_PERMISSION_CLASSES,
+        HasSitePermissions,
+    ]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["date", "billing", "is_sealed", "labour"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return SiteLabourAttendanceListSerializer
+        return SiteLabourAttendanceSerializer
+
+    def get_serializer(self, *args, **kwargs):
+        if self.action == "create":
+            kwargs.setdefault("many", True)
+        return super().get_serializer(*args, **kwargs)
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return Attendance.objects.none()
+
+        return (
+            Attendance.objects.filter(
+                company_id=user.company_id,
+                site_id=self.kwargs["site_pk"],
+            )
+            .select_related("labour", "site", "billing", "created_by")
+            .order_by("-date", "-id")
+        )
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        try:
+            serializer.save(
+                site_id=self.kwargs["site_pk"],
+                company=self.request.user.company,
+                created_by=self.request.user,
+                is_sealed=False,
+            )
+        except IntegrityError:
+            raise ValidationError(
+                "Attendance already exists for a labour on this date.",
                 code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
             )
 
