@@ -394,32 +394,38 @@ Table labour_session {
   labour_id    bigint    [ref: > labour.id, not null]
   start_date   date      [not null, note: 'first record after previous session end']
   end_date     date      [not null, note: 'last sealed record date']
+  created_date       date      [not null, note: 'Unique Constraint (created_date, labour)']
 
-  total_present      decimal(12,2) [not null, note: 'intotal present days carried']
-  total_salary       bigint    [not null, note: 'intotal salary carried']
-  total_extra        bigint    [not null, note: 'intotal extra work days carried']
-  total_earnings     bigint    [not null, note: 'intotal earnings carried']
-  total_taken        bigint    [not null, note: 'intotal taken carried']
-  balance            bigint    [not null, note: 'balance carried forward to next session']
+  present_days      decimal(12,2) [not null, note: 'intotal present days carried']
+  salary_earnings       bigint    [not null, note: 'intotal salary carried']
+  extra_earnings        bigint    [not null, note: 'intotal extra work days carried']
+  // total_earnings; not field create as a model method to calculate the total earnings
+  total_payment        bigint    [not null, note: 'total payment carried']
+  total_return         bigint    [not null, note: 'total return carried']
+  // payable; not field create as a model method to calculate the payable
   created_at         timestamp [not null, note: 'index will use created_at::date for session uniqueness']
   created_by         bigint    [ref: > user.id, not null]
   updated_at         timestamp [not null]
 }
 
-Table labour_site_session {
-  id              bigint        [pk]
-  work_session_id bigint        [ref: > labour_session.id, not null]
-  site_id         bigint        [ref: > site.id, not null]
-  present         decimal(12,2) [not null]
-  extrawork       bigint        [not null]
-  fooding         bigint        [not null]
-  advance         bigint        [not null]
-  salary          bigint        [not null]
-  earnings        bigint        [not null]
-  payable         bigint        [not null]
-  created_at      timestamp     [not null]
-  created_by      bigint        [ref: > user.id, not null]
-  updated_at      timestamp     [not null]
+Table labour_session_detail {
+  id                    bigint        [pk]
+  company_id            bigint        [ref: > company.id, not null]
+  session_id            bigint        [ref: > labour_session.id, not null, note: 'session id']
+  site_id               bigint        [ref: > site.id, null]
+  site_name             varchar       [not null, note: 'site name']
+
+  present_days               decimal(12,2) [not null]
+  salary_earnings         bigint        [not null, note: 'total salary earnings']
+  extra_earnings          bigint        [not null, note: 'total extra work days earnings']
+  // total_earnings; not field create as a model method to calculate the total earnings
+  total_payment           bigint        [not null, note: 'total taken payment']
+  total_return            bigint        [not null, note: 'total returned payment']
+  payment_details         jsonb         [not null, note: 'Payment and return breakdown by category (advance | fooding)']
+  // payable; not field create as a model method to calculate the payable
+  created_at            timestamp     [not null]
+  created_by            bigint        [ref: > user.id, not null]
+  updated_at            timestamp     [not null]
 }
 
 // ============================================================
@@ -572,7 +578,7 @@ TableGroup labour_group {
   labour
   labour_detail
   labour_session
-  labour_site_session
+  labour_session_detail
 }
 
 TableGroup ledgers {
@@ -596,7 +602,7 @@ DiagramView Default {
     private_site_cash
     activity_log
     labour_session
-    labour_site_session
+    labour_session_detail
   }
   Notes { * }
 }

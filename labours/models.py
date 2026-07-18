@@ -155,3 +155,84 @@ class Attendance(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
 
     def __str__(self):
         return f"{self.labour} @ {self.date} (present={self.present})"
+
+
+class LabourSession(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+    labour = models.ForeignKey(
+        Labour,
+        on_delete=models.RESTRICT,
+        related_name="sessions",
+    )
+    start_date = models.DateField(
+        help_text="First record date after the previous session ended.",
+    )
+    end_date = models.DateField(
+        help_text="Last sealed record date.",
+    )
+    created_date = models.DateField(default=timezone.localdate)
+    present_days = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    salary_earnings = models.BigIntegerField(validators=[MinValueValidator(0)])
+    extra_earnings = models.BigIntegerField(validators=[MinValueValidator(0)])
+    total_payment = models.BigIntegerField(validators=[MinValueValidator(0)])
+    total_return = models.BigIntegerField(validators=[MinValueValidator(0)])
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["created_date", "labour"],
+                name="uq_labour_session_created_date_labour",
+            ),
+        ]
+
+    @property
+    def total_earnings(self):
+        return self.salary_earnings + self.extra_earnings
+
+    @property
+    def payable(self):
+        return self.total_earnings + self.total_return - self.total_payment
+
+    def __str__(self):
+        return f"{self.labour} ({self.start_date} - {self.end_date})"
+
+
+class LabourSessionDetail(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+    session = models.ForeignKey(
+        LabourSession,
+        on_delete=models.CASCADE,
+        related_name="details",
+    )
+    site = models.ForeignKey(
+        "sites.Site",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="labour_session_details",
+    )
+    site_name = models.CharField(max_length=255)
+    present_days = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    salary_earnings = models.BigIntegerField(validators=[MinValueValidator(0)])
+    extra_earnings = models.BigIntegerField(validators=[MinValueValidator(0)])
+    # because type will never change they always payment and return.
+    total_payment = models.BigIntegerField(validators=[MinValueValidator(0)])
+    total_return = models.BigIntegerField(validators=[MinValueValidator(0)])
+    payment_details = models.JSONField()
+
+    @property
+    def total_earnings(self):
+        return self.salary_earnings + self.extra_earnings
+
+    @property
+    def payable(self):
+        return self.total_earnings + self.total_return - self.total_payment
+
+    def __str__(self):
+        return f"{self.site_name} — {self.session}"
