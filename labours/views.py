@@ -15,7 +15,7 @@ from core.exceptions import (
 )
 from core.services import SubscriptionService
 from core.permissions import RecordUpdateDeletePermissions
-from .permissions import LabourSitePermissions, get_labour
+from .permissions import HasSiteAndLabourPermissions, get_labour
 from .models import Attendance, Labour, LabourPayment
 from .serializers import (
     AttendanceListSerializer,
@@ -74,7 +74,7 @@ class LabourPaymentViewSet(viewsets.ModelViewSet):
     queryset = LabourPayment.objects.none()
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
-        LabourSitePermissions,
+        HasSiteAndLabourPermissions,
         RecordUpdateDeletePermissions,
     ]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
@@ -138,7 +138,7 @@ class LabourAttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.none()
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
-        LabourSitePermissions,
+        HasSiteAndLabourPermissions,
         RecordUpdateDeletePermissions,
     ]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]

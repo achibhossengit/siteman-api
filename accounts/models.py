@@ -32,6 +32,9 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
     USERNAME_FIELD = "phone_number"
     REQUIRED_FIELDS = ["name"]
 
+    def has_site_access(self, site_id: int) -> bool:
+        return self.sites.filter(site_id=site_id).exists()
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -56,9 +59,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
-
-    def is_authorized_site(self, site_id: int) -> bool:
-        return self.sites.filter(site_id=site_id).exists()
+        
 
 class UserSite(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     user = models.ForeignKey(
@@ -71,6 +72,10 @@ class UserSite(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
         on_delete=models.CASCADE,
         related_name="users",
     )
+
+    @classmethod
+    def exists(cls, user_id: int, site_id: int) -> bool:
+        return cls.objects.filter(user_id=user_id, site_id=site_id).exists()
 
     class Meta:
         constraints = [

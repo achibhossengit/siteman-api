@@ -75,7 +75,7 @@ class RecordUpdateDeletePermissions(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         
-        if not request.user.is_authorized_site(obj.site_id):
+        if not request.user.has_site_access(obj.site_id):
             raise PermissionDenied(
                 detail="You are not allowed to update or delete other site records",
                 code=status_codes.UNAUTHORIZED_SITE,
