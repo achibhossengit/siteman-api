@@ -9,8 +9,9 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from company.models import Company
-from sites.models import Site
+from sites.models import BillingCategory, Site, SiteCash, SiteCashCategory, SiteCashType
 from subscription.models import Subscription
+from accounts.models import UserSite
 from core import status_codes
 
 User = get_user_model()
@@ -316,3 +317,491 @@ class SiteSubscriptionTests(SiteAPITestCase):
         self.assertEqual(response.data["errors"][0]["code"], status_codes.SUBSCRIPTION_EXPIRED)
         site.refresh_from_db()
         self.assertEqual(site.name, "Editable")
+
+
+class SiteCashAPITestCase(APITestCase):
+    """Shared fixtures for nested site cash endpoints."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self._grant_cash_permissions(self.user)
+        self.client.force_authenticate(user=self.user)
+
+        self.site = Site.objects.create(
+            name="Padma Bridge",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, self.site)
+        self.billing = self._create_billing(name="Basement")
+        self.list_url = self._list_url(self.site.pk)
+
+    def _grant_cash_permissions(self, user, codenames=None):
+        codenames = codenames or [
+            "view_sitecash",
+            "add_sitecash",
+            "change_sitecash",
+            "delete_sitecash",
+        ]
+        ct = ContentType.objects.get_for_model(SiteCash)
+        perms = Permission.objects.filter(content_type=ct, codename__in=codenames)
+        user.user_permissions.add(*perms)
+
+    def _assign_site(self, user, site):
+        return UserSite.objects.create(
+            user=user,
+            site=site,
+            company=user.company,
+            created_by=user,
+        )
+
+    def _create_billing(self, name="Basement", site=None, **kwargs):
+        site = site or self.site
+        defaults = {
+            "company": site.company,
+            "site": site,
+            "name": name,
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return BillingCategory.objects.create(**defaults)
+
+    def _list_url(self, site_id):
+        return reverse(
+            "site-cash-list",
+            kwargs={"version": "v1", "site_pk": site_id},
+        )
+
+    def _detail_url(self, site_id, cash_id):
+        return reverse(
+            "site-cash-detail",
+            kwargs={"version": "v1", "site_pk": site_id, "pk": cash_id},
+        )
+
+    def _create_cash(self, site=None, **kwargs):
+        site = site or self.site
+        defaults = {
+            "company": site.company,
+            "site": site,
+            "date": timezone.localdate(),
+            "type": SiteCashType.DEPOSIT,
+            "amount": 1000,
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return SiteCash.objects.create(**defaults)
+
+
+class SiteCashAuthPermissionTests(SiteCashAPITestCase):
+    def test_unauthenticated_list_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_missing_add_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_cash_permissions(self.user, ["view_sitecash"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": SiteCashType.DEPOSIT,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_change_permission_returns_403(self):
+        cash = self._create_cash()
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_cash_permissions(self.user, ["view_sitecash", "add_sitecash"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(
+            self._detail_url(self.site.pk, cash.pk),
+            {"amount": 2000},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_not_site_member_returns_403(self):
+        UserSite.objects.filter(user=self.user, site=self.site).delete()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.UNAUTHORIZED_SITE,
+        )
+
+    def test_inactive_site_blocks_create(self):
+        self.site.is_active = False
+        self.site.save(update_fields=["is_active"])
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": SiteCashType.DEPOSIT,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SITE_INACTIVE,
+        )
+
+    def test_inactive_site_still_allows_list(self):
+        self._create_cash()
+        self.site.is_active = False
+        self.site.save(update_fields=["is_active"])
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_other_company_site_returns_403(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811111111",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        response = self.client.get(self._list_url(other_site.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class SiteCashCRUDTests(SiteCashAPITestCase):
+    def test_list_empty(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_create_deposit_success(self):
+        today = timezone.localdate()
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(today),
+                "type": SiteCashType.DEPOSIT,
+                "amount": 1500,
+                "note": "Owner deposit",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["site"], self.site.pk)
+        self.assertEqual(response.data["company"], self.company.pk)
+        self.assertEqual(response.data["created_by"], self.user.pk)
+        self.assertEqual(response.data["type"], SiteCashType.DEPOSIT)
+        self.assertEqual(response.data["amount"], 1500)
+        self.assertIsNone(response.data["category"])
+        self.assertTrue(
+            SiteCash.objects.filter(
+                site=self.site,
+                date=today,
+                type=SiteCashType.DEPOSIT,
+            ).exists()
+        )
+
+    def test_create_cost_with_billing_and_category(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": SiteCashType.COST,
+                "category": SiteCashCategory.FOOD,
+                "billing": self.billing.pk,
+                "amount": 800,
+                "note": "Lunch",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["type"], SiteCashType.COST)
+        self.assertEqual(response.data["category"], SiteCashCategory.FOOD)
+        self.assertEqual(response.data["billing"], self.billing.pk)
+
+    def test_create_stamps_site_from_url(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": SiteCashType.WITHDRAWAL,
+                "amount": 200,
+                "site": other_site.pk,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["site"], self.site.pk)
+
+    def test_list_uses_list_serializer_fields(self):
+        cash = self._create_cash()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertCountEqual(
+            response.data[0].keys(),
+            [
+                "id",
+                "date",
+                "type",
+                "category",
+                "amount",
+                "note",
+                "billing",
+                "created_at",
+                "updated_at",
+            ],
+        )
+        self.assertEqual(response.data[0]["id"], cash.pk)
+
+    def test_retrieve_cash_detail(self):
+        cash = self._create_cash(note="detail")
+        response = self.client.get(self._detail_url(self.site.pk, cash.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["note"], "detail")
+        self.assertIn("company", response.data)
+        self.assertIn("created_by", response.data)
+
+    def test_patch_amount_and_note(self):
+        cash = self._create_cash(amount=1000, note="old")
+        response = self.client.patch(
+            self._detail_url(self.site.pk, cash.pk),
+            {"amount": 1800, "note": "updated"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["amount"], 1800)
+        self.assertEqual(response.data["note"], "updated")
+        cash.refresh_from_db()
+        self.assertEqual(cash.amount, 1800)
+
+    def test_delete_cash(self):
+        cash = self._create_cash()
+        response = self.client.delete(self._detail_url(self.site.pk, cash.pk))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(SiteCash.objects.filter(pk=cash.pk).exists())
+
+    def test_put_not_allowed(self):
+        cash = self._create_cash()
+        response = self.client.put(
+            self._detail_url(self.site.pk, cash.pk),
+            {
+                "date": str(timezone.localdate()),
+                "type": SiteCashType.DEPOSIT,
+                "amount": 1,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+class SiteCashValidationTests(SiteCashAPITestCase):
+    def test_future_date_rejected(self):
+        future = timezone.localdate() + timedelta(days=1)
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(future),
+                "type": SiteCashType.DEPOSIT,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_FUTURE_DATE,
+        )
+
+    def test_create_with_billing_from_other_site_rejected(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        other_billing = self._create_billing(name="Foreign Cat", site=other_site)
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": SiteCashType.COST,
+                "category": SiteCashCategory.EQUIPMENT,
+                "billing": other_billing.pk,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+
+    def test_update_billing_from_other_site_rejected(self):
+        cash = self._create_cash(type=SiteCashType.COST)
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        other_billing = self._create_billing(name="Foreign Cat", site=other_site)
+        response = self.client.patch(
+            self._detail_url(self.site.pk, cash.pk),
+            {"billing": other_billing.pk},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+
+
+class SiteCashFilterIsolationTests(SiteCashAPITestCase):
+    def test_filter_by_type(self):
+        today = timezone.localdate()
+        self._create_cash(date=today, type=SiteCashType.DEPOSIT)
+        self._create_cash(
+            date=today - timedelta(days=1),
+            type=SiteCashType.COST,
+            category=SiteCashCategory.FOOD,
+            amount=50,
+        )
+        response = self.client.get(self.list_url, {"type": SiteCashType.COST})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["type"], SiteCashType.COST)
+
+    def test_filter_by_category(self):
+        today = timezone.localdate()
+        self._create_cash(
+            date=today,
+            type=SiteCashType.COST,
+            category=SiteCashCategory.FOOD,
+        )
+        self._create_cash(
+            date=today - timedelta(days=1),
+            type=SiteCashType.COST,
+            category=SiteCashCategory.EQUIPMENT,
+            amount=80,
+        )
+        response = self.client.get(
+            self.list_url, {"category": SiteCashCategory.EQUIPMENT}
+        )
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["category"], SiteCashCategory.EQUIPMENT)
+
+    def test_filter_by_billing(self):
+        cat_b = self._create_billing(name="Floor-1")
+        self._create_cash(date=timezone.localdate(), billing=self.billing)
+        self._create_cash(
+            date=timezone.localdate() - timedelta(days=1),
+            billing=cat_b,
+            amount=200,
+        )
+        response = self.client.get(self.list_url, {"billing": cat_b.pk})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["billing"], cat_b.pk)
+
+    def test_nested_under_other_site_hides_cash(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, other_site)
+        cash = self._create_cash()
+        response = self.client.get(self._list_url(other_site.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+        response = self.client.get(self._detail_url(other_site.pk, cash.pk))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_cannot_see_other_company_cash(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811222333",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        SiteCash.objects.create(
+            company=other,
+            site=other_site,
+            date=timezone.localdate(),
+            type=SiteCashType.DEPOSIT,
+            amount=999,
+            created_by=other_user,
+        )
+        self._create_cash(amount=100)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["amount"], 100)
+
+
+class SiteCashSubscriptionTests(SiteCashAPITestCase):
+    def test_create_blocked_when_subscription_expired(self):
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": SiteCashType.DEPOSIT,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )
+        self.assertFalse(SiteCash.objects.exists())
+
+    def test_list_allowed_when_subscription_expired(self):
+        self._create_cash()
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_patch_blocked_when_subscription_expired(self):
+        cash = self._create_cash(amount=100)
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.patch(
+            self._detail_url(self.site.pk, cash.pk),
+            {"amount": 200},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )
+        cash.refresh_from_db()
+        self.assertEqual(cash.amount, 100)
