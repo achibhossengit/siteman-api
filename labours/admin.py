@@ -60,6 +60,7 @@ class LabourAdmin(admin.ModelAdmin):
         "default_attendance",
         "default_salary",
         "default_fooding",
+        "last_session_date",
         "is_active",
     )
     list_display_links = ("name",)
@@ -67,7 +68,7 @@ class LabourAdmin(admin.ModelAdmin):
     search_fields = ("name",)
     autocomplete_fields = ("company", "current_site")
     exclude = ("created_by",)
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("last_session_date", "created_at", "updated_at")
 
     def save_model(self, request, obj, form, change):
         if not change and not obj.created_by_id:

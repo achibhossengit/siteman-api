@@ -22,6 +22,7 @@ class Labour(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     )
     default_salary = models.IntegerField(validators=[MinValueValidator(0)], default=0)
     default_fooding = models.IntegerField(validators=[MinValueValidator(0)], default=0)
+    last_session_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:

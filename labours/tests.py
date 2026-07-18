@@ -18,6 +18,7 @@ from labours.models import (
     LabourPayment,
     LabourPaymentCategory,
     LabourPaymentType,
+    LabourSession,
 )
 from sites.models import BillingCategory, Site
 from subscription.models import Subscription
@@ -156,6 +157,7 @@ class LabourCRUDTests(LabourAPITestCase):
                 "default_attendance",
                 "default_salary",
                 "default_fooding",
+                "last_session_date",
                 "is_active",
             ],
         )
@@ -460,6 +462,44 @@ class LabourSubscriptionTests(LabourAPITestCase):
         )
         labour.refresh_from_db()
         self.assertEqual(labour.name, "Editable")
+
+
+class LabourSessionCacheTests(LabourAPITestCase):
+    def _create_session(self, labour, created_date):
+        return LabourSession.objects.create(
+            company=self.company,
+            labour=labour,
+            start_date=created_date,
+            end_date=created_date,
+            created_date=created_date,
+            present_days=Decimal("1"),
+            salary_earnings=500,
+            extra_earnings=0,
+            total_payment=0,
+            total_return=0,
+            created_by=self.user,
+        )
+
+    def test_last_session_date_tracks_latest_session_save_and_delete(self):
+        labour = self._create_labour(name="Session Worker")
+        older_date = timezone.localdate() - timedelta(days=2)
+        latest_date = timezone.localdate() - timedelta(days=1)
+
+        older = self._create_session(labour, older_date)
+        labour.refresh_from_db()
+        self.assertEqual(labour.last_session_date, older_date)
+
+        latest = self._create_session(labour, latest_date)
+        labour.refresh_from_db()
+        self.assertEqual(labour.last_session_date, latest_date)
+
+        latest.delete()
+        labour.refresh_from_db()
+        self.assertEqual(labour.last_session_date, older_date)
+
+        older.delete()
+        labour.refresh_from_db()
+        self.assertIsNone(labour.last_session_date)
 
 
 class LabourPaymentAPITestCase(APITestCase):
@@ -824,6 +864,42 @@ class LabourPaymentValidationTests(LabourPaymentAPITestCase):
             response.data["errors"][0]["code"],
             status_codes.RECORD_FUTURE_DATE,
         )
+
+    def test_date_must_be_after_last_session_date(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self.labour.last_session_date = yesterday
+        self.labour.save(update_fields=["last_session_date"])
+
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(yesterday),
+                "type": LabourPaymentType.PAYMENT,
+                "amount": 500,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_DATE_NOT_AFTER_LAST_SESSION,
+        )
+
+    def test_date_after_last_session_date_is_allowed(self):
+        self.labour.last_session_date = timezone.localdate() - timedelta(days=1)
+        self.labour.save(update_fields=["last_session_date"])
+
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.PAYMENT,
+                "amount": 500,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_duplicate_date_labour_type_rejected(self):
         today = timezone.localdate()
@@ -1372,6 +1448,23 @@ class LabourAttendanceValidationTests(LabourAttendanceAPITestCase):
             status_codes.RECORD_FUTURE_DATE,
         )
 
+    def test_date_must_be_after_last_session_date(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self.labour.last_session_date = yesterday
+        self.labour.save(update_fields=["last_session_date"])
+
+        response = self.client.post(
+            self.list_url,
+            {"date": str(yesterday), "present": "1"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_DATE_NOT_AFTER_LAST_SESSION,
+        )
+
     def test_duplicate_date_labour_rejected(self):
         today = timezone.localdate()
         self._create_attendance(date=today)
@@ -1899,6 +1992,28 @@ class SiteLabourPaymentValidationTests(SiteLabourPaymentAPITestCase):
         )
         self.assertFalse(LabourPayment.objects.exists())
 
+    def test_last_session_date_error_has_item_index(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self.labour_b.last_session_date = yesterday
+        self.labour_b.save(update_fields=["last_session_date"])
+
+        response = self.client.post(
+            self.list_url,
+            [
+                self._payment_payload(self.labour),
+                self._payment_payload(self.labour_b, date=str(yesterday)),
+            ],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "1.date")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_DATE_NOT_AFTER_LAST_SESSION,
+        )
+        self.assertFalse(LabourPayment.objects.exists())
+
     def test_inactive_labour_rejected_with_index(self):
         self.labour_b.is_active = False
         self.labour_b.save(update_fields=["is_active"])
@@ -2385,6 +2500,28 @@ class SiteLabourAttendanceValidationTests(SiteLabourAttendanceAPITestCase):
         self.assertEqual(
             response.data["errors"][0]["code"],
             status_codes.RECORD_FUTURE_DATE,
+        )
+        self.assertFalse(Attendance.objects.exists())
+
+    def test_last_session_date_error_has_item_index(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self.labour_b.last_session_date = yesterday
+        self.labour_b.save(update_fields=["last_session_date"])
+
+        response = self.client.post(
+            self.list_url,
+            [
+                self._attendance_payload(self.labour),
+                self._attendance_payload(self.labour_b, date=str(yesterday)),
+            ],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "1.date")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_DATE_NOT_AFTER_LAST_SESSION,
         )
         self.assertFalse(Attendance.objects.exists())
 

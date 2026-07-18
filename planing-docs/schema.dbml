@@ -365,6 +365,7 @@ Table labour {
   default_salary  int           [not null]
   default_present decimal(12,2) [not null]
   default_fooding int           [not null]
+  last_session_date date        [null, note: 'cached latest labour_session.created_date; labour record dates must be greater']
   is_active       boolean       [not null, default: true, note: 'sealed work session auto-deactivates (F6.3)']
   created_at      timestamp     [not null]
   created_by      bigint        [ref: > user.id, not null]

@@ -6,6 +6,47 @@ from core import status_codes
 from .models import Attendance, Labour, LabourPayment, LabourPaymentType
 
 
+class LabourRecordDateValidationMixin:
+    """Shared date rules for labour payment and attendance records."""
+
+    def validate_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError(
+                "Date cannot be in the future.",
+                code=status_codes.RECORD_FUTURE_DATE,
+            )
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        labour = attrs.get("labour") or self.context.get("labour")
+        if labour is None and self.instance is not None:
+            labour = self.instance.labour
+
+        record_date = attrs.get("date")
+        if record_date is None:
+            record_date = (
+                self.instance.date
+                if self.instance is not None
+                else timezone.localdate()
+            )
+
+        if (
+            labour is not None
+            and labour.last_session_date is not None
+            and record_date <= labour.last_session_date
+        ):
+            raise serializers.ValidationError(
+                {
+                    "date": ErrorDetail(
+                        "Date must be after the labour's last session date.",
+                        code=status_codes.RECORD_DATE_NOT_AFTER_LAST_SESSION,
+                    )
+                }
+            )
+        return attrs
+
+
 class LabourListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Labour
@@ -16,6 +57,7 @@ class LabourListSerializer(serializers.ModelSerializer):
             "default_attendance",
             "default_salary",
             "default_fooding",
+            "last_session_date",
             "is_active",
         ]
 
@@ -30,6 +72,7 @@ class LabourSerializer(serializers.ModelSerializer):
             "default_attendance",
             "default_salary",
             "default_fooding",
+            "last_session_date",
             "is_active",
             "company",
             "created_by",
@@ -38,6 +81,7 @@ class LabourSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "company",
+            "last_session_date",
             "created_by",
             "created_at",
             "updated_at",
@@ -88,7 +132,9 @@ class LabourPaymentListSerializer(serializers.ModelSerializer):
         ]
 
 
-class LabourPaymentSerializer(serializers.ModelSerializer):
+class LabourPaymentSerializer(
+    LabourRecordDateValidationMixin, serializers.ModelSerializer
+):
     class Meta:
         model = LabourPayment
         fields = [
@@ -116,14 +162,6 @@ class LabourPaymentSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-    def validate_date(self, value):
-        if value > timezone.localdate():
-            raise serializers.ValidationError(
-                "Date cannot be in the future.",
-                code=status_codes.RECORD_FUTURE_DATE,
-            )
-        return value
-
 
 class SiteLabourPaymentListSerializer(serializers.ModelSerializer):
     class Meta:
@@ -142,7 +180,9 @@ class SiteLabourPaymentListSerializer(serializers.ModelSerializer):
         ]
 
 
-class SiteLabourPaymentSerializer(serializers.ModelSerializer):
+class SiteLabourPaymentSerializer(
+    LabourRecordDateValidationMixin, serializers.ModelSerializer
+):
     """Bulk-create item for ``/sites/<site_pk>/labour-payments``.
 
     Unlike LabourPaymentSerializer, ``labour`` comes from the payload
@@ -174,14 +214,6 @@ class SiteLabourPaymentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-
-    def validate_date(self, value):
-        if value > timezone.localdate():
-            raise serializers.ValidationError(
-                "Date cannot be in the future.",
-                code=status_codes.RECORD_FUTURE_DATE,
-            )
-        return value
 
     def validate_labour(self, labour):
         request = self.context["request"]
@@ -223,7 +255,9 @@ class SiteLabourAttendanceListSerializer(serializers.ModelSerializer):
         ]
 
 
-class SiteLabourAttendanceSerializer(serializers.ModelSerializer):
+class SiteLabourAttendanceSerializer(
+    LabourRecordDateValidationMixin, serializers.ModelSerializer
+):
     """Bulk-create item for ``/sites/<site_pk>/labour-attendances``.
 
     Unlike AttendanceSerializer, ``labour`` comes from the payload
@@ -256,14 +290,6 @@ class SiteLabourAttendanceSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-
-    def validate_date(self, value):
-        if value > timezone.localdate():
-            raise serializers.ValidationError(
-                "Date cannot be in the future.",
-                code=status_codes.RECORD_FUTURE_DATE,
-            )
-        return value
 
     def validate_labour(self, labour):
         request = self.context["request"]
@@ -326,7 +352,9 @@ class AttendanceListSerializer(serializers.ModelSerializer):
         ]
 
 
-class AttendanceSerializer(serializers.ModelSerializer):
+class AttendanceSerializer(
+    LabourRecordDateValidationMixin, serializers.ModelSerializer
+):
     class Meta:
         model = Attendance
         fields = [
@@ -354,14 +382,6 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-
-    def validate_date(self, value):
-        if value > timezone.localdate():
-            raise serializers.ValidationError(
-                "Date cannot be in the future.",
-                code=status_codes.RECORD_FUTURE_DATE,
-            )
-        return value
 
     def validate_billing(self, billing):
         if billing is None:

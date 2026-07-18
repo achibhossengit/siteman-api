@@ -33,6 +33,7 @@ LABOUR_NAME_EXISTS = "labour_name_exists"
 
 # Common
 RECORD_FUTURE_DATE = "record_future_date"
+RECORD_DATE_NOT_AFTER_LAST_SESSION = "record_date_not_after_last_session"
 RECORD_SEALED = "record_sealed"
 RECORD_UNIQUE_CONSTRAINT_VIOLATION = "record_unique_constraint_violation"
 
