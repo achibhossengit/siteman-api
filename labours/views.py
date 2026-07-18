@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.db.utils import IntegrityError
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import viewsets
+from rest_framework import mixins, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.filters import SearchFilter
 from rest_framework.settings import api_settings
@@ -15,6 +15,7 @@ from core.exceptions import (
 )
 from core.services import SubscriptionService
 from core.permissions import RecordUpdateDeletePermissions
+from sites.permissions import HasSitePermissions
 from .permissions import HasSiteAndLabourPermissions, get_labour
 from .models import Attendance, Labour, LabourPayment
 from .serializers import (
@@ -24,6 +25,8 @@ from .serializers import (
     LabourPaymentListSerializer,
     LabourPaymentSerializer,
     LabourSerializer,
+    SiteLabourPaymentListSerializer,
+    SiteLabourPaymentSerializer,
 )
 
 
@@ -127,6 +130,66 @@ class LabourPaymentViewSet(viewsets.ModelViewSet):
         except IntegrityError:
             raise ValidationError(
                 "A payment of this type already exists for this labour on this date.",
+                code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+            )
+
+
+class SiteLabourPaymentViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Nested under ``/sites/<site_pk>/labour-payments``.
+
+    Only list and bulk create; the create payload is a list of payments,
+    each carrying its own ``labour``.
+    """
+
+    serializer_class = SiteLabourPaymentSerializer
+    queryset = LabourPayment.objects.none()
+    permission_classes = [
+        *api_settings.DEFAULT_PERMISSION_CLASSES,
+        HasSitePermissions,
+    ]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["type", "category", "date", "is_sealed", "labour"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return SiteLabourPaymentListSerializer
+        return SiteLabourPaymentSerializer
+
+    def get_serializer(self, *args, **kwargs):
+        if self.action == "create":
+            kwargs.setdefault("many", True)
+        return super().get_serializer(*args, **kwargs)
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return LabourPayment.objects.none()
+
+        return (
+            LabourPayment.objects.filter(
+                company_id=user.company_id,
+                site_id=self.kwargs["site_pk"],
+            )
+            .select_related("labour", "site", "created_by")
+            .order_by("-date", "-id")
+        )
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        try:
+            serializer.save(
+                site_id=self.kwargs["site_pk"],
+                company=self.request.user.company,
+                created_by=self.request.user,
+                is_sealed=False,
+            )
+        except IntegrityError:
+            raise ValidationError(
+                "A payment of this type already exists for a labour on this date.",
                 code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
             )
 

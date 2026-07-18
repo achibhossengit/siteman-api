@@ -125,6 +125,86 @@ class LabourPaymentSerializer(serializers.ModelSerializer):
         return value
 
 
+class SiteLabourPaymentListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LabourPayment
+        fields = [
+            "id",
+            "labour",
+            "date",
+            "type",
+            "category",
+            "amount",
+            "note",
+            "is_sealed",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class SiteLabourPaymentSerializer(serializers.ModelSerializer):
+    """Bulk-create item for ``/sites/<site_pk>/labour-payments``.
+
+    Unlike LabourPaymentSerializer, ``labour`` comes from the payload
+    and ``site`` from the URL.
+    """
+
+    class Meta:
+        model = LabourPayment
+        fields = [
+            "id",
+            "labour",
+            "site",
+            "date",
+            "type",
+            "category",
+            "amount",
+            "note",
+            "is_sealed",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "site",
+            "is_sealed",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError(
+                "Date cannot be in the future.",
+                code=status_codes.RECORD_FUTURE_DATE,
+            )
+        return value
+
+    def validate_labour(self, labour):
+        request = self.context["request"]
+        site_id = int(self.context["view"].kwargs["site_pk"])
+
+        if labour.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Labour not found.",
+                code=status_codes.INVALID,
+            )
+        if not labour.is_active:
+            raise serializers.ValidationError(
+                "This labour is inactive; no changes can be made.",
+                code=status_codes.LABOUR_INACTIVE,
+            )
+        if labour.current_site_id != site_id:
+            raise serializers.ValidationError(
+                "Labour is not assigned to this site.",
+                code=status_codes.INVALID,
+            )
+        return labour
+
+
 class AttendanceListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
