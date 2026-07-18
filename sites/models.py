@@ -90,3 +90,31 @@ class SiteCash(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
 
     def __str__(self):
         return f"{self.get_type_display()} {self.amount} @ {self.date}"
+
+
+class PrivateSiteCashType(models.TextChoices):
+    BILL = "bill", "Bill"
+    COST = "cost", "Cost"
+
+
+class PrivateSiteCash(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+    site = models.ForeignKey(
+        Site,
+        on_delete=models.RESTRICT,
+        related_name="private_cash_entries",
+    )
+    billing = models.ForeignKey(
+        BillingCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="private_cash_entries",
+        help_text="Optional billing category; null means site-general.",
+    )
+    type = models.CharField(max_length=16, choices=PrivateSiteCashType.choices)
+    date = models.DateField(default=timezone.localdate)
+    amount = models.IntegerField(validators=[MinValueValidator(0)])
+    note = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.get_type_display()} {self.amount} @ {self.date}"

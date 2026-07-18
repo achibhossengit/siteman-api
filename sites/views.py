@@ -7,9 +7,11 @@ from rest_framework.settings import api_settings
 from core import status_codes
 from core.services import SubscriptionService
 from core.exceptions import SubscriptionLimitExceededError, SubscriptionExpiredError, SubscriptionExpired, SubscriptionLimitExceeded
-from .models import Site, SiteCash
+from .models import PrivateSiteCash, Site, SiteCash
 from .permissions import HasSitePermissions
 from .serializers import (
+    PrivateSiteCashListSerializer,
+    PrivateSiteCashSerializer,
     SiteCashListSerializer,
     SiteCashSerializer,
     SiteListSerializer,
@@ -101,6 +103,45 @@ class SiteCashViewSet(viewsets.ModelViewSet):
 
         return (
             SiteCash.objects.filter(
+                company_id=user.company_id,
+                site_id=self.kwargs["site_pk"],
+            )
+            .select_related("site", "billing", "created_by")
+            .order_by("-date", "-id")
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(
+            site_id=self.kwargs["site_pk"],
+            company=self.request.user.company,
+            created_by=self.request.user,
+        )
+
+
+class PrivateSiteCashViewSet(viewsets.ModelViewSet):
+    """Nested under ``/sites/<site_pk>/private-cash``."""
+
+    serializer_class = PrivateSiteCashSerializer
+    queryset = PrivateSiteCash.objects.none()
+    permission_classes = [
+        *api_settings.DEFAULT_PERMISSION_CLASSES,
+        HasSitePermissions,
+    ]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    filterset_fields = ["type", "date", "billing"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return PrivateSiteCashListSerializer
+        return PrivateSiteCashSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return PrivateSiteCash.objects.none()
+
+        return (
+            PrivateSiteCash.objects.filter(
                 company_id=user.company_id,
                 site_id=self.kwargs["site_pk"],
             )

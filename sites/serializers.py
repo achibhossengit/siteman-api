@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from core import status_codes
-from .models import Site, SiteCash
+from .models import PrivateSiteCash, Site, SiteCash
 
 
 class SiteListSerializer(serializers.ModelSerializer):
@@ -58,46 +58,8 @@ class SiteSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class SiteCashListSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SiteCash
-        fields = [
-            "id",
-            "date",
-            "type",
-            "category",
-            "amount",
-            "note",
-            "billing",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class SiteCashSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SiteCash
-        fields = [
-            "id",
-            "site",
-            "billing",
-            "type",
-            "category",
-            "date",
-            "amount",
-            "note",
-            "company",
-            "created_by",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "site",
-            "company",
-            "created_by",
-            "created_at",
-            "updated_at",
-        ]
+class SiteLedgerValidationMixin:
+    """Date + billing validation shared by site-nested ledger serializers."""
 
     def validate_date(self, value):
         if value > timezone.localdate():
@@ -122,3 +84,85 @@ class SiteCashSerializer(serializers.ModelSerializer):
                 code=status_codes.INVALID,
             )
         return billing
+
+
+class SiteCashListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SiteCash
+        fields = [
+            "id",
+            "date",
+            "type",
+            "category",
+            "amount",
+            "note",
+            "billing",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class SiteCashSerializer(SiteLedgerValidationMixin, serializers.ModelSerializer):
+    class Meta:
+        model = SiteCash
+        fields = [
+            "id",
+            "site",
+            "billing",
+            "type",
+            "category",
+            "date",
+            "amount",
+            "note",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "site",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class PrivateSiteCashListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PrivateSiteCash
+        fields = [
+            "id",
+            "date",
+            "type",
+            "amount",
+            "note",
+            "billing",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class PrivateSiteCashSerializer(SiteLedgerValidationMixin, serializers.ModelSerializer):
+    class Meta:
+        model = PrivateSiteCash
+        fields = [
+            "id",
+            "site",
+            "billing",
+            "type",
+            "date",
+            "amount",
+            "note",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "site",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
