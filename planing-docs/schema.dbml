@@ -42,6 +42,11 @@ Enum site_cash_type {
   cost
 }
 
+Enum private_site_cash_type {
+  bill
+  cost
+}
+
 Enum activity_action {
   addition
   change
@@ -338,8 +343,8 @@ Table site_closure_summary {
   total_salary               bigint        [not null]
   total_extrawork            bigint        [not null]
   total_site_cost            bigint        [not null, note: 'SUM(site_cash.amount) where type = cost']
-  total_hidden_cost          bigint        [not null]
-  total_bills                bigint        [not null]
+  total_private_cost          bigint        [not null, note: 'SUM(private_site_cash.amount) where type = cost']
+  total_bills                 bigint        [not null, note: 'SUM(private_site_cash.amount) where type = bill']
   total_paid_bills           bigint        [not null]
   profit                     bigint        [not null]
   billing_category_breakdown jsonb         [not null, note: 'per-billing_category contract vs billed snapshot']
@@ -479,34 +484,23 @@ Table site_cash {
   updated_at          timestamp          [not null]
 }
 
-Table hidden_cost {
-  id                  bigint    [pk]
-  company_id          bigint    [not null]
-  site_id             bigint    [ref: > site.id, not null]
-  billing_id          bigint    [null, note: 'null => site-general (not pro-rated, F13.8); optional (F5.9)']
-  date                date      [not null]
-  amount              int       [not null]
-  note                varchar   [null]
-  created_at          timestamp [not null]
-  created_by          bigint    [ref: > user.id, not null]
-  updated_at          timestamp [not null]
-}
-
 // ============================================================
-// F12 — Site bill
+// F12/F13 — Private site cash ledger (bill, hidden/private cost)
+// Former hidden_cost + site_bill merged — same permissions and schema.
 // ============================================================
 
-Table site_bill {
-  id                  bigint    [pk]
-  company_id          bigint    [not null]
-  site_id             bigint    [ref: > site.id, not null]
-  billing_id          bigint    [null, note: 'optional billing category (F5.9)']
-  date                date      [not null]
-  amount              int       [not null]
-  note                varchar   [null]
-  created_at          timestamp [not null]
-  created_by          bigint    [ref: > user.id, not null]
-  updated_at          timestamp [not null]
+Table private_site_cash {
+  id                  bigint                 [pk]
+  company_id          bigint                 [not null]
+  site_id             bigint                 [ref: > site.id, not null]
+  billing_id          bigint                 [null, note: 'optional billing category (F5.9); null means site-general']
+  type                private_site_cash_type [not null, note: 'bill | cost']
+  date                date                   [not null]
+  amount              int                    [not null]
+  note                varchar                [null]
+  created_at          timestamp              [not null]
+  created_by          bigint                 [ref: > user.id, not null]
+  updated_at          timestamp              [not null]
 }
 
 // ============================================================
@@ -536,8 +530,7 @@ Ref: billing_category_details.billing_id - billing_category.id [delete: cascade]
 
 Ref: attendance.billing_id  > billing_category.id   [delete: set null]
 Ref: site_cash.billing_id   > billing_category.id   [delete: set null]
-Ref: hidden_cost.billing_id > billing_category.id   [delete: set null]
-Ref: site_bill.billing_id   > billing_category.id   [delete: set null]
+Ref: private_site_cash.billing_id > billing_category.id   [delete: set null]
 
 Ref: payment.variant_id     > plan_variant.id [delete: set null]
 Ref: payment.custom_plan_id > custom_plan.id  [delete: set null]
@@ -585,9 +578,8 @@ TableGroup labour_group {
 TableGroup ledgers {
   attendance
   labour_payment
-  hidden_cost
   site_cash
-  site_bill
+  private_site_cash
 }
 
 TableGroup activity {
@@ -600,9 +592,8 @@ DiagramView Default {
     billing_category
     attendance
     labour_payment
-    hidden_cost
     site_cash
-    site_bill
+    private_site_cash
     activity_log
     labour_session
     labour_site_session
