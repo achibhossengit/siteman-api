@@ -71,6 +71,7 @@ class LabourAPITestCase(APITestCase):
             "name": name,
             "company": company,
             "created_by": self.user,
+            "current_site": self.site,
             "default_attendance": Decimal("1.0"),
             "default_salary": 500,
             "default_fooding": 100,
@@ -131,7 +132,12 @@ class LabourCRUDTests(LabourAPITestCase):
     def test_create_forces_is_active_true(self):
         response = self.client.post(
             self.list_url,
-            {"name": "Forced", "is_active": False, "default_salary": 500},
+            {
+                "name": "Forced",
+                "current_site": self.site.pk,
+                "is_active": False,
+                "default_salary": 500,
+            },
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(response.data["is_active"])
@@ -194,26 +200,48 @@ class LabourCRUDTests(LabourAPITestCase):
 
 
 class LabourValidationTests(LabourAPITestCase):
+    def test_current_site_is_required(self):
+        response = self.client.post(
+            self.list_url,
+            {"name": "Unassigned", "default_salary": 500},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("current_site", response.data["errors"][0]["attr"])
+
     def test_duplicate_name_rejected(self):
         self._create_labour(name="Karim")
         response = self.client.post(
             self.list_url,
-            {"name": "Karim", "default_salary": 500},
+            {
+                "name": "Karim",
+                "current_site": self.site.pk,
+                "default_salary": 500,
+            },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("name", response.data["errors"][0]["attr"])
 
     def test_duplicate_name_allowed_across_companies(self):
         other = Company.objects.create(name="Other Co")
+        other_site = Site.objects.create(
+            name="Other Site",
+            company=other,
+            created_by=self.user,
+        )
         Labour.objects.create(
             name="Shared",
             company=other,
             created_by=self.user,
+            current_site=other_site,
             default_salary=500,
         )
         response = self.client.post(
             self.list_url,
-            {"name": "Shared", "default_salary": 500},
+            {
+                "name": "Shared",
+                "current_site": self.site.pk,
+                "default_salary": 500,
+            },
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -275,7 +303,6 @@ class LabourFilterIsolationTests(LabourAPITestCase):
         )
         self._create_labour(name="On Padma", current_site=self.site)
         self._create_labour(name="On Other", current_site=other_site)
-        self._create_labour(name="Unassigned", current_site=None)
 
         response = self.client.get(self.list_url, {"current_site": self.site.pk})
         self.assertEqual(len(response.data), 1)
@@ -294,7 +321,12 @@ class LabourFilterIsolationTests(LabourAPITestCase):
         other = Company.objects.create(name="Other Co")
         response = self.client.post(
             self.list_url,
-            {"name": "Hijack", "company": other.pk, "default_salary": 500},
+            {
+                "name": "Hijack",
+                "company": other.pk,
+                "current_site": self.site.pk,
+                "default_salary": 500,
+            },
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["company"], self.company.pk)
@@ -311,6 +343,11 @@ class LabourFilterIsolationTests(LabourAPITestCase):
             name="Secret",
             company=other,
             created_by=other_user,
+            current_site=Site.objects.create(
+                name="Other Site",
+                company=other,
+                created_by=other_user,
+            ),
             default_salary=500,
         )
         self._create_labour(name="Mine")
@@ -332,6 +369,11 @@ class LabourFilterIsolationTests(LabourAPITestCase):
             name="Secret",
             company=other,
             created_by=other_user,
+            current_site=Site.objects.create(
+                name="Other Site",
+                company=other,
+                created_by=other_user,
+            ),
             default_salary=500,
         )
         response = self.client.get(self._detail_url(foreign.pk))
@@ -346,7 +388,11 @@ class LabourSubscriptionTests(LabourAPITestCase):
 
         response = self.client.post(
             self.list_url,
-            {"name": "Overflow", "default_salary": 500},
+            {
+                "name": "Overflow",
+                "current_site": self.site.pk,
+                "default_salary": 500,
+            },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(Labour.objects.filter(name="Overflow").exists())
@@ -362,7 +408,11 @@ class LabourSubscriptionTests(LabourAPITestCase):
 
         response = self.client.post(
             self.list_url,
-            {"name": "New Active", "default_salary": 500},
+            {
+                "name": "New Active",
+                "current_site": self.site.pk,
+                "default_salary": 500,
+            },
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -372,7 +422,11 @@ class LabourSubscriptionTests(LabourAPITestCase):
 
         response = self.client.post(
             self.list_url,
-            {"name": "Too Late", "default_salary": 500},
+            {
+                "name": "Too Late",
+                "current_site": self.site.pk,
+                "default_salary": 500,
+            },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(Labour.objects.filter(name="Too Late").exists())
@@ -474,7 +528,7 @@ class LabourPaymentAPITestCase(APITestCase):
 
     def _create_payment(self, labour=None, site=None, **kwargs):
         labour = labour or self.labour
-        site = site or labour.current_site or self.site
+        site = site or labour.current_site
         defaults = {
             "company": labour.company,
             "labour": labour,
@@ -527,12 +581,6 @@ class LabourPaymentAuthPermissionTests(LabourPaymentAPITestCase):
 
     def test_not_site_member_returns_403(self):
         UserSite.objects.filter(user=self.user, site=self.site).delete()
-        response = self.client.get(self.list_url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_labour_without_current_site_returns_403(self):
-        self.labour.current_site = None
-        self.labour.save(update_fields=["current_site"])
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -1098,7 +1146,7 @@ class LabourAttendanceAPITestCase(APITestCase):
 
     def _create_attendance(self, labour=None, site=None, **kwargs):
         labour = labour or self.labour
-        site = site or labour.current_site or self.site
+        site = site or labour.current_site
         defaults = {
             "company": labour.company,
             "labour": labour,
@@ -1145,12 +1193,6 @@ class LabourAttendanceAuthPermissionTests(LabourAttendanceAPITestCase):
 
     def test_not_site_member_returns_403(self):
         UserSite.objects.filter(user=self.user, site=self.site).delete()
-        response = self.client.get(self.list_url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_labour_without_current_site_returns_403(self):
-        self.labour.current_site = None
-        self.labour.save(update_fields=["current_site"])
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 

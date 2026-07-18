@@ -355,7 +355,7 @@ Table site_closure_summary {
 Table labour {
   id              bigint        [pk]
   company_id      bigint        [ref: > company.id, not null]
-  current_site_id bigint        [ref: > site.id, null, note: 'one site at a time; reassign = move (F6.2)']
+  current_site_id bigint        [ref: > site.id, not null, note: 'one site at a time; reassign = move (F6.2)']
   name            varchar       [not null]
   default_salary  int           [not null]
   default_present decimal(12,2) [not null]

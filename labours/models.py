@@ -9,9 +9,7 @@ from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
 class Labour(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     current_site = models.ForeignKey(
         "sites.Site",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        on_delete=models.RESTRICT,
         related_name="labours",
         help_text="One site at a time; reassign = move.",
     )

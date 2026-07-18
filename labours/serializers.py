@@ -58,8 +58,6 @@ class LabourSerializer(serializers.ModelSerializer):
         return value
 
     def validate_current_site(self, site):
-        if site is None:
-            return site
         if site.company_id != self._company().id:
             raise serializers.ValidationError(
                 "Site does not belong to your company.",

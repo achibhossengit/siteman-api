@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
                 ('is_active', models.BooleanField(default=True)),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='company.company')),
                 ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(app_label)s_%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('current_site', models.ForeignKey(blank=True, help_text='One site at a time; reassign = move.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='labours', to='sites.site')),
+                ('current_site', models.ForeignKey(help_text='One site at a time; reassign = move.', on_delete=django.db.models.deletion.RESTRICT, related_name='labours', to='sites.site')),
             ],
             options={
                 'ordering': ['name'],
