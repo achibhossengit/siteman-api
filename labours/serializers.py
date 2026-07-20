@@ -429,3 +429,21 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+
+class RunningLabourSessionSerializer(serializers.Serializer):
+    """Live open-period preview (not a persisted LabourSession)."""
+
+    labour = serializers.IntegerField()
+    start_date = serializers.DateField(allow_null=True)
+    end_date = serializers.DateField(allow_null=True)
+    present_days = serializers.DecimalField(max_digits=12, decimal_places=2)
+    salary_earnings = serializers.IntegerField()
+    extra_earnings = serializers.IntegerField()
+    total_payment = serializers.IntegerField()
+    total_return = serializers.IntegerField()
+    total_earnings = serializers.IntegerField()
+    payable = serializers.IntegerField()
+    last_session_payable = serializers.IntegerField()
+    total_payable = serializers.IntegerField()
+    company = serializers.IntegerField()

@@ -52,6 +52,14 @@ class SessionSnapshot:
     total_return: int
     site_breakdowns: list
 
+    @property
+    def total_earnings(self):
+        return self.salary_earnings + self.extra_earnings
+
+    @property
+    def payable(self):
+        return self.total_earnings + self.total_return - self.total_payment
+
 
 def _date_filter(*, after=None, start_date=None, end_date=None):
     filters = {}
@@ -264,3 +272,48 @@ def delete_labour_session(session):
         )
 
     session.delete()
+
+
+def get_running_session(labour):
+    """Build the open (unsealed) period preview for a labour.
+
+    Returns session-shaped totals for records after ``last_session_date``,
+    plus ``last_session_payable`` (most recent closed session) and
+    ``total_payable`` (last + running).
+    """
+    latest = labour.sessions.order_by("-created_date", "-id").first()
+    last_session_date = latest.created_date if latest is not None else None
+    snapshot = build_session_snapshot(labour, after=last_session_date)
+    if snapshot is None:
+        running = {
+            "labour": labour.pk,
+            "start_date": None,
+            "end_date": None,
+            "present_days": Decimal("0"),
+            "salary_earnings": 0,
+            "extra_earnings": 0,
+            "total_payment": 0,
+            "total_return": 0,
+            "total_earnings": 0,
+            "payable": 0,
+            "company": labour.company_id,
+        }
+    else:
+        running = {
+            "labour": labour.pk,
+            "start_date": snapshot.start_date,
+            "end_date": snapshot.end_date,
+            "present_days": snapshot.present_days,
+            "salary_earnings": snapshot.salary_earnings,
+            "extra_earnings": snapshot.extra_earnings,
+            "total_payment": snapshot.total_payment,
+            "total_return": snapshot.total_return,
+            "total_earnings": snapshot.total_earnings,
+            "payable": snapshot.payable,
+            "company": labour.company_id,
+        }
+
+    last_session_payable = latest.payable if latest is not None else 0
+    running["last_session_payable"] = last_session_payable
+    running["total_payable"] = last_session_payable + running["payable"]
+    return running

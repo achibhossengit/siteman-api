@@ -2829,6 +2829,12 @@ class LabourSessionAPITestCase(APITestCase):
             kwargs={"version": "v1", "labour_pk": labour_id, "pk": session_id},
         )
 
+    def _running_url(self, labour_id):
+        return reverse(
+            "labour-session-running-session",
+            kwargs={"version": "v1", "labour_pk": labour_id},
+        )
+
     def _create_attendance(self, date, present="1", salary=500, extra=0, **kwargs):
         labour = kwargs.pop("labour", self.labour)
         defaults = {
@@ -3200,6 +3206,72 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual([row["id"] for row in response.data], [mine.pk])
+
+
+class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
+    def test_running_session_empty_when_no_records(self):
+        response = self.client.get(self._running_url(self.labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["start_date"])
+        self.assertIsNone(response.data["end_date"])
+        self.assertEqual(Decimal(response.data["present_days"]), Decimal("0"))
+        self.assertEqual(response.data["payable"], 0)
+        self.assertEqual(response.data["last_session_payable"], 0)
+        self.assertEqual(response.data["total_payable"], 0)
+        self.assertEqual(response.data["labour"], self.labour.pk)
+        self.assertEqual(response.data["company"], self.company.pk)
+
+    def test_running_session_with_open_period(self):
+        self._seed_open_period()
+        # present=1.5, salary=750, extra=100, payment=1000, return=200
+        # payable = 850 + 200 - 1000 = 50
+        response = self.client.get(self._running_url(self.labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["start_date"], str(self.day1))
+        self.assertEqual(response.data["end_date"], str(self.day2))
+        self.assertEqual(Decimal(response.data["present_days"]), Decimal("1.5"))
+        self.assertEqual(response.data["salary_earnings"], 750)
+        self.assertEqual(response.data["extra_earnings"], 100)
+        self.assertEqual(response.data["total_payment"], 1000)
+        self.assertEqual(response.data["total_return"], 200)
+        self.assertEqual(response.data["total_earnings"], 850)
+        self.assertEqual(response.data["payable"], 50)
+        self.assertEqual(response.data["last_session_payable"], 0)
+        self.assertEqual(response.data["total_payable"], 50)
+
+    def test_running_session_includes_last_session_payable(self):
+        # Closed session: earnings 500, payment 200 → payable 300
+        self._create_session_via_orm(
+            created_date=timezone.localdate() - timedelta(days=5),
+            salary_earnings=500,
+            extra_earnings=0,
+            total_payment=200,
+            total_return=0,
+        )
+        self.labour.refresh_from_db()
+
+        day = timezone.localdate() - timedelta(days=1)
+        self._create_attendance(day, present="1", salary=500)
+        # running payable = 500
+
+        response = self.client.get(self._running_url(self.labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["payable"], 500)
+        self.assertEqual(response.data["last_session_payable"], 300)
+        self.assertEqual(response.data["total_payable"], 800)
+
+    def test_running_session_after_close_is_empty_but_keeps_last_payable(self):
+        self._seed_open_period()
+        create = self.client.post(self.list_url)
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED)
+        closed_payable = create.data["payable"]
+
+        response = self.client.get(self._running_url(self.labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["start_date"])
+        self.assertEqual(response.data["payable"], 0)
+        self.assertEqual(response.data["last_session_payable"], closed_payable)
+        self.assertEqual(response.data["total_payable"], closed_payable)
 
 
 class LabourSessionDeleteTests(LabourSessionAPITestCase):

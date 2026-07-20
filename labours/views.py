@@ -2,6 +2,7 @@ from django.db import transaction
 from django.db.utils import IntegrityError
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
@@ -27,12 +28,17 @@ from .serializers import (
     LabourPaymentSerializer,
     LabourSerializer,
     LabourSessionSerializer,
+    RunningLabourSessionSerializer,
     SiteLabourAttendanceListSerializer,
     SiteLabourAttendanceSerializer,
     SiteLabourPaymentListSerializer,
     SiteLabourPaymentSerializer,
 )
-from .services import create_labour_session, delete_labour_session
+from .services import (
+    create_labour_session,
+    delete_labour_session,
+    get_running_session,
+)
 
 
 class LabourViewSet(viewsets.ModelViewSet):
@@ -372,3 +378,10 @@ class LabourSessionViewSet(
 
     def perform_destroy(self, instance):
         delete_labour_session(instance)
+
+    @action(detail=False, methods=["get"], url_path="running_session")
+    def running_session(self, request, *args, **kwargs):
+        labour = get_labour(request, self)
+        payload = get_running_session(labour)
+        serializer = RunningLabourSessionSerializer(payload)
+        return Response(serializer.data)
