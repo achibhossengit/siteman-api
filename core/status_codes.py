@@ -31,6 +31,11 @@ BILLING_CATEGORY_INACTIVE = "billing_category_inactive"
 LABOUR_INACTIVE = "labour_inactive"
 LABOUR_NAME_EXISTS = "labour_name_exists"
 
+# Labour work sessions
+SESSION_NO_RECORDS = "session_no_records"
+SESSION_NOT_LATEST = "session_not_latest"
+SESSION_SNAPSHOT_MISMATCH = "session_snapshot_mismatch"
+
 # Common
 RECORD_FUTURE_DATE = "record_future_date"
 RECORD_DATE_NOT_AFTER_LAST_SESSION = "record_date_not_after_last_session"

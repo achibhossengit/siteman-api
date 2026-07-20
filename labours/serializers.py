@@ -3,7 +3,7 @@ from rest_framework.exceptions import ErrorDetail
 from django.utils import timezone
 
 from core import status_codes
-from .models import Attendance, Labour, LabourPayment, LabourPaymentType
+from .models import Attendance, Labour, LabourPayment, LabourSession
 
 
 class LabourRecordDateValidationMixin:
@@ -402,3 +402,30 @@ class AttendanceSerializer(
             )
 
         return billing
+
+
+class LabourSessionSerializer(serializers.ModelSerializer):
+    total_earnings = serializers.IntegerField(read_only=True)
+    payable = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = LabourSession
+        fields = [
+            "id",
+            "labour",
+            "start_date",
+            "end_date",
+            "created_date",
+            "present_days",
+            "salary_earnings",
+            "extra_earnings",
+            "total_payment",
+            "total_return",
+            "total_earnings",
+            "payable",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields

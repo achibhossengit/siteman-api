@@ -19,6 +19,7 @@ from labours.models import (
     LabourPaymentCategory,
     LabourPaymentType,
     LabourSession,
+    LabourSessionDetail,
 )
 from sites.models import BillingCategory, Site
 from subscription.models import Subscription
@@ -2757,6 +2758,563 @@ class SiteLabourAttendanceSubscriptionTests(SiteLabourAttendanceAPITestCase):
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_attendance()
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+
+class LabourSessionAPITestCase(APITestCase):
+    """Shared fixtures for ``/labours/<labour_pk>/sessions`` tests."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self._grant_session_permissions(self.user)
+        self.client.force_authenticate(user=self.user)
+
+        self.site = Site.objects.create(
+            name="Padma Bridge",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, self.site)
+
+        self.labour = Labour.objects.create(
+            name="Karim",
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+            default_salary=500,
+            default_fooding=100,
+        )
+        self.list_url = self._list_url(self.labour.pk)
+
+    def _grant_session_permissions(self, user, codenames=None):
+        codenames = codenames or [
+            "view_laboursession",
+            "add_laboursession",
+            "delete_laboursession",
+        ]
+        ct = ContentType.objects.get_for_model(LabourSession)
+        perms = Permission.objects.filter(content_type=ct, codename__in=codenames)
+        user.user_permissions.add(*perms)
+
+    def _assign_site(self, user, site):
+        return UserSite.objects.create(
+            user=user,
+            site=site,
+            company=user.company,
+            created_by=user,
+        )
+
+    def _list_url(self, labour_id):
+        return reverse(
+            "labour-session-list",
+            kwargs={"version": "v1", "labour_pk": labour_id},
+        )
+
+    def _detail_url(self, labour_id, session_id):
+        return reverse(
+            "labour-session-detail",
+            kwargs={"version": "v1", "labour_pk": labour_id, "pk": session_id},
+        )
+
+    def _create_attendance(self, date, present="1", salary=500, extra=0, **kwargs):
+        labour = kwargs.pop("labour", self.labour)
+        defaults = {
+            "company": labour.company,
+            "labour": labour,
+            "site": labour.current_site,
+            "date": date,
+            "present": Decimal(present),
+            "salary": salary,
+            "extra": extra,
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return Attendance.objects.create(**defaults)
+
+    def _create_payment(
+        self,
+        date,
+        amount,
+        type=LabourPaymentType.PAYMENT,
+        category=LabourPaymentCategory.ADVANCE,
+        **kwargs,
+    ):
+        labour = kwargs.pop("labour", self.labour)
+        defaults = {
+            "company": labour.company,
+            "labour": labour,
+            "site": labour.current_site,
+            "date": date,
+            "type": type,
+            "category": category,
+            "amount": amount,
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return LabourPayment.objects.create(**defaults)
+
+    def _create_session_via_orm(self, labour=None, created_date=None, **kwargs):
+        labour = labour or self.labour
+        defaults = {
+            "company": labour.company,
+            "labour": labour,
+            "start_date": timezone.localdate() - timedelta(days=3),
+            "end_date": timezone.localdate() - timedelta(days=1),
+            "created_date": created_date or timezone.localdate(),
+            "present_days": Decimal("1"),
+            "salary_earnings": 500,
+            "extra_earnings": 0,
+            "total_payment": 0,
+            "total_return": 0,
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return LabourSession.objects.create(**defaults)
+
+    def _seed_open_period(self):
+        """Two attendances + two payments in the open (unsealed) period."""
+        self.day1 = timezone.localdate() - timedelta(days=3)
+        self.day2 = timezone.localdate() - timedelta(days=1)
+        self._create_attendance(self.day1, present="1", salary=500)
+        self._create_attendance(self.day2, present="0.5", salary=500, extra=100)
+        self._create_payment(
+            self.day2, 1000, type=LabourPaymentType.PAYMENT,
+            category=LabourPaymentCategory.ADVANCE,
+        )
+        self._create_payment(
+            self.day1, 200, type=LabourPaymentType.RETURN, category=None,
+        )
+
+
+class LabourSessionAuthPermissionTests(LabourSessionAPITestCase):
+    def test_unauthenticated_list_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_missing_add_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_session_permissions(self.user, ["view_laboursession"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_delete_permission_returns_403(self):
+        session = self._create_session_via_orm()
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_session_permissions(self.user, ["view_laboursession"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete(self._detail_url(self.labour.pk, session.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_not_site_member_returns_403(self):
+        UserSite.objects.filter(user=self.user, site=self.site).delete()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_other_company_labour_returns_403(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811111111",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        foreign_labour = Labour.objects.create(
+            name="Secret",
+            company=other,
+            created_by=other_user,
+            current_site=other_site,
+        )
+        response = self.client.get(self._list_url(foreign_labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_inactive_labour_blocks_create(self):
+        self._seed_open_period()
+        self.labour.is_active = False
+        self.labour.save(update_fields=["is_active"])
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_INACTIVE,
+        )
+
+
+class LabourSessionCreateTests(LabourSessionAPITestCase):
+    def test_create_session_success(self):
+        self._seed_open_period()
+
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        data = response.data
+        self.assertEqual(data["start_date"], str(self.day1))
+        self.assertEqual(data["end_date"], str(self.day2))
+        self.assertEqual(data["created_date"], str(timezone.localdate()))
+        self.assertEqual(Decimal(data["present_days"]), Decimal("1.5"))
+        self.assertEqual(data["salary_earnings"], 750)  # 1*500 + 0.5*500
+        self.assertEqual(data["extra_earnings"], 100)
+        self.assertEqual(data["total_payment"], 1000)
+        self.assertEqual(data["total_return"], 200)
+        self.assertEqual(data["total_earnings"], 850)
+        self.assertEqual(data["payable"], 850 + 200 - 1000)
+        self.assertNotIn("details", data)
+
+        # Detail rows are still persisted for the future nested viewset.
+        self.assertEqual(LabourSessionDetail.objects.count(), 1)
+        detail = LabourSessionDetail.objects.get()
+        self.assertEqual(detail.site_id, self.site.pk)
+        self.assertEqual(detail.site_name, self.site.name)
+        self.assertEqual(detail.present_days, Decimal("1.5"))
+        self.assertEqual(detail.salary_earnings, 750)
+        self.assertEqual(detail.extra_earnings, 100)
+        self.assertEqual(detail.total_payment, 1000)
+        self.assertEqual(detail.total_return, 200)
+        self.assertEqual(
+            detail.payment_details,
+            {"payment": {"advance": 1000}, "return": {"uncategorized": 200}},
+        )
+
+        self.labour.refresh_from_db()
+        self.assertEqual(self.labour.last_session_date, timezone.localdate())
+
+    def test_create_builds_per_site_details(self):
+        other_site = Site.objects.create(
+            name="Metro Rail",
+            company=self.company,
+            created_by=self.user,
+        )
+        day1 = timezone.localdate() - timedelta(days=2)
+        day2 = timezone.localdate() - timedelta(days=1)
+        self._create_attendance(day1, present="1", salary=500, site=other_site)
+        self._create_attendance(day2, present="1", salary=500)
+        self._create_payment(day2, 300, site=other_site)
+
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(LabourSessionDetail.objects.count(), 2)
+
+        by_site = {
+            d.site_id: d for d in LabourSessionDetail.objects.all()
+        }
+        self.assertEqual(by_site[self.site.pk].salary_earnings, 500)
+        self.assertEqual(by_site[self.site.pk].total_payment, 0)
+        self.assertEqual(by_site[other_site.pk].salary_earnings, 500)
+        self.assertEqual(by_site[other_site.pk].total_payment, 300)
+
+        # Session totals aggregate both sites.
+        self.assertEqual(response.data["salary_earnings"], 1000)
+        self.assertEqual(response.data["total_payment"], 300)
+
+    def test_create_seals_records_without_touching_updated_at(self):
+        self._seed_open_period()
+        attendance = Attendance.objects.get(date=self.day1)
+        payment = LabourPayment.objects.get(type=LabourPaymentType.RETURN)
+        attendance_updated_at = attendance.updated_at
+        payment_updated_at = payment.updated_at
+
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        attendance.refresh_from_db()
+        payment.refresh_from_db()
+        self.assertTrue(attendance.is_sealed)
+        self.assertTrue(payment.is_sealed)
+        self.assertEqual(attendance.updated_at, attendance_updated_at)
+        self.assertEqual(payment.updated_at, payment_updated_at)
+        self.assertFalse(
+            Attendance.objects.filter(labour=self.labour, is_sealed=False).exists()
+        )
+        self.assertFalse(
+            LabourPayment.objects.filter(labour=self.labour, is_sealed=False).exists()
+        )
+
+    def test_create_does_not_touch_other_labour_records(self):
+        self._seed_open_period()
+        other_labour = Labour.objects.create(
+            name="Rahim",
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+        )
+        other_attendance = self._create_attendance(
+            self.day1, present="1", labour=other_labour
+        )
+
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        other_attendance.refresh_from_db()
+        self.assertFalse(other_attendance.is_sealed)
+        other_labour.refresh_from_db()
+        self.assertIsNone(other_labour.last_session_date)
+
+    def test_create_only_counts_records_after_last_session_date(self):
+        boundary = timezone.localdate() - timedelta(days=2)
+        Labour.objects.filter(pk=self.labour.pk).update(last_session_date=boundary)
+        old_attendance = self._create_attendance(
+            boundary - timedelta(days=1), present="1", salary=500
+        )
+        self._create_attendance(
+            timezone.localdate() - timedelta(days=1), present="1", salary=500
+        )
+
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            response.data["start_date"],
+            str(timezone.localdate() - timedelta(days=1)),
+        )
+        self.assertEqual(response.data["salary_earnings"], 500)
+        self.assertEqual(Decimal(response.data["present_days"]), Decimal("1"))
+
+        old_attendance.refresh_from_db()
+        self.assertFalse(old_attendance.is_sealed)
+
+    def test_create_without_records_returns_400(self):
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SESSION_NO_RECORDS,
+        )
+        self.assertFalse(LabourSession.objects.exists())
+
+    def test_create_after_session_without_new_records_returns_400(self):
+        self._seed_open_period()
+        self.assertEqual(
+            self.client.post(self.list_url).status_code, status.HTTP_201_CREATED
+        )
+
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SESSION_NO_RECORDS,
+        )
+        self.assertEqual(LabourSession.objects.count(), 1)
+
+    def test_same_date_duplicate_session_returns_400(self):
+        self._seed_open_period()
+        self.assertEqual(
+            self.client.post(self.list_url).status_code, status.HTTP_201_CREATED
+        )
+        # Force the boundary back so the same records are visible again;
+        # the (created_date, labour) constraint must reject a second
+        # session on the same day.
+        Labour.objects.filter(pk=self.labour.pk).update(last_session_date=None)
+
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+        )
+        self.assertEqual(LabourSession.objects.count(), 1)
+        self.assertEqual(LabourSessionDetail.objects.count(), 1)
+
+
+class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
+    def test_list_empty(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_list_uses_list_serializer_fields(self):
+        self._create_session_via_orm()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertCountEqual(
+            list(response.data[0].keys()),
+            [
+                "id",
+                "labour",
+                "start_date",
+                "end_date",
+                "created_date",
+                "present_days",
+                "salary_earnings",
+                "extra_earnings",
+                "total_payment",
+                "total_return",
+                "total_earnings",
+                "payable",
+                "company",
+                "created_by",
+                "created_at",
+                "updated_at",
+            ],
+        )
+
+    def test_list_orders_latest_first(self):
+        older = self._create_session_via_orm(
+            created_date=timezone.localdate() - timedelta(days=5)
+        )
+        latest = self._create_session_via_orm(created_date=timezone.localdate())
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [row["id"] for row in response.data], [latest.pk, older.pk]
+        )
+
+    def test_retrieve_session(self):
+        session = self._create_session_via_orm()
+        response = self.client.get(self._detail_url(self.labour.pk, session.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], session.pk)
+        self.assertNotIn("details", response.data)
+
+    def test_cannot_see_other_labour_sessions(self):
+        other_labour = Labour.objects.create(
+            name="Rahim",
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+        )
+        self._create_session_via_orm(labour=other_labour)
+        mine = self._create_session_via_orm(
+            created_date=timezone.localdate() - timedelta(days=1)
+        )
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["id"] for row in response.data], [mine.pk])
+
+
+class LabourSessionDeleteTests(LabourSessionAPITestCase):
+    def _create_session_via_api(self):
+        self._seed_open_period()
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return LabourSession.objects.get(pk=response.data["id"])
+
+    def test_delete_latest_session_success(self):
+        session = self._create_session_via_api()
+
+        response = self.client.delete(
+            self._detail_url(self.labour.pk, session.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(LabourSession.objects.exists())
+        self.assertFalse(LabourSessionDetail.objects.exists())
+
+        # Records are unsealed and the boundary reverts.
+        self.assertFalse(Attendance.objects.filter(is_sealed=True).exists())
+        self.assertFalse(LabourPayment.objects.filter(is_sealed=True).exists())
+        self.labour.refresh_from_db()
+        self.assertIsNone(self.labour.last_session_date)
+
+    def test_delete_non_latest_session_returns_400(self):
+        older = self._create_session_via_orm(
+            created_date=timezone.localdate() - timedelta(days=5)
+        )
+        self._create_session_via_orm(created_date=timezone.localdate())
+
+        response = self.client.delete(self._detail_url(self.labour.pk, older.pk))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SESSION_NOT_LATEST,
+        )
+        self.assertEqual(LabourSession.objects.count(), 2)
+
+    def test_delete_blocked_when_record_amount_changed(self):
+        session = self._create_session_via_api()
+        LabourPayment.objects.filter(type=LabourPaymentType.PAYMENT).update(
+            amount=9999
+        )
+
+        response = self.client.delete(
+            self._detail_url(self.labour.pk, session.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SESSION_SNAPSHOT_MISMATCH,
+        )
+        self.assertTrue(LabourSession.objects.filter(pk=session.pk).exists())
+
+    def test_delete_blocked_when_record_removed(self):
+        session = self._create_session_via_api()
+        Attendance.objects.filter(date=self.day2).delete()
+
+        response = self.client.delete(
+            self._detail_url(self.labour.pk, session.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SESSION_SNAPSHOT_MISMATCH,
+        )
+
+    def test_recreate_after_delete_produces_same_totals(self):
+        session = self._create_session_via_api()
+        original_salary_earnings = session.salary_earnings
+        self.assertEqual(
+            self.client.delete(
+                self._detail_url(self.labour.pk, session.pk)
+            ).status_code,
+            status.HTTP_204_NO_CONTENT,
+        )
+
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            response.data["salary_earnings"], original_salary_earnings
+        )
+
+
+class LabourSessionSubscriptionTests(LabourSessionAPITestCase):
+    def test_create_blocked_when_subscription_expired(self):
+        self._seed_open_period()
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )
+        self.assertFalse(LabourSession.objects.exists())
+
+    def test_delete_blocked_when_subscription_expired(self):
+        session = self._create_session_via_orm()
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.delete(
+            self._detail_url(self.labour.pk, session.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )
+
+    def test_list_allowed_when_subscription_expired(self):
+        self._create_session_via_orm()
         self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
         self.subscription.save(update_fields=["paid_until"])
 

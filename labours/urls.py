@@ -4,6 +4,7 @@ from rest_framework.routers import SimpleRouter
 from .views import (
     LabourAttendanceViewSet,
     LabourPaymentViewSet,
+    LabourSessionViewSet,
     LabourViewSet,
     SiteLabourAttendanceViewSet,
     SiteLabourPaymentViewSet,
@@ -16,6 +17,9 @@ payments_router = SimpleRouter(trailing_slash=False)
 payments_router.register("payments", LabourPaymentViewSet, basename="labour-payment")
 payments_router.register(
     "attendances", LabourAttendanceViewSet, basename="labour-attendance"
+)
+payments_router.register(
+    "sessions", LabourSessionViewSet, basename="labour-session"
 )
 
 site_payments_router = SimpleRouter(trailing_slash=False)
