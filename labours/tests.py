@@ -3393,3 +3393,259 @@ class LabourSessionSubscriptionTests(LabourSessionAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
+
+class LabourSessionDetailAPITestCase(APITestCase):
+    """Shared fixtures for ``/labours/<labour_pk>/sessions/<session_pk>/details``."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self._grant_detail_permissions(self.user)
+        self.client.force_authenticate(user=self.user)
+
+        self.site = Site.objects.create(
+            name="Padma Bridge",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, self.site)
+
+        self.labour = Labour.objects.create(
+            name="Karim",
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+            default_salary=500,
+            default_fooding=100,
+        )
+        self.session = LabourSession.objects.create(
+            company=self.company,
+            labour=self.labour,
+            start_date=timezone.localdate() - timedelta(days=3),
+            end_date=timezone.localdate() - timedelta(days=1),
+            created_date=timezone.localdate(),
+            present_days=Decimal("1.5"),
+            salary_earnings=750,
+            extra_earnings=100,
+            total_payment=1000,
+            total_return=200,
+            created_by=self.user,
+        )
+        self.list_url = self._list_url(self.labour.pk, self.session.pk)
+
+    def _grant_detail_permissions(self, user, codenames=None):
+        codenames = codenames or ["view_laboursessiondetail"]
+        ct = ContentType.objects.get_for_model(LabourSessionDetail)
+        perms = Permission.objects.filter(content_type=ct, codename__in=codenames)
+        user.user_permissions.add(*perms)
+
+    def _assign_site(self, user, site):
+        return UserSite.objects.create(
+            user=user,
+            site=site,
+            company=user.company,
+            created_by=user,
+        )
+
+    def _list_url(self, labour_id, session_id):
+        return reverse(
+            "labour-session-details-list",
+            kwargs={
+                "version": "v1",
+                "labour_pk": labour_id,
+                "session_pk": session_id,
+            },
+        )
+
+    def _detail_url(self, labour_id, session_id, detail_id):
+        return reverse(
+            "labour-session-details-detail",
+            kwargs={
+                "version": "v1",
+                "labour_pk": labour_id,
+                "session_pk": session_id,
+                "pk": detail_id,
+            },
+        )
+
+    def _create_detail(self, session=None, site=None, **kwargs):
+        session = session or self.session
+        site = site if site is not None else self.site
+        defaults = {
+            "company": session.company,
+            "session": session,
+            "site": site,
+            "site_name": site.name if site is not None else "Unknown",
+            "present_days": Decimal("1"),
+            "salary_earnings": 500,
+            "extra_earnings": 0,
+            "total_payment": 0,
+            "total_return": 0,
+            "payment_details": {},
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return LabourSessionDetail.objects.create(**defaults)
+
+
+class LabourSessionDetailAuthPermissionTests(LabourSessionDetailAPITestCase):
+    def test_unauthenticated_list_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_missing_view_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_not_site_member_returns_403(self):
+        UserSite.objects.filter(user=self.user, site=self.site).delete()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_other_company_labour_returns_403(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811111111",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        foreign_labour = Labour.objects.create(
+            name="Secret",
+            company=other,
+            created_by=other_user,
+            current_site=other_site,
+        )
+        response = self.client.get(self._list_url(foreign_labour.pk, self.session.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class LabourSessionDetailCRUDTests(LabourSessionDetailAPITestCase):
+    def test_list_empty(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_list_and_retrieve_success(self):
+        detail = self._create_detail(
+            present_days=Decimal("1.5"),
+            salary_earnings=750,
+            extra_earnings=100,
+            total_payment=1000,
+            total_return=200,
+            payment_details={"payment": {"advance": 1000}},
+        )
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], detail.pk)
+        self.assertEqual(response.data[0]["site"], self.site.pk)
+        self.assertEqual(response.data[0]["site_name"], self.site.name)
+        self.assertEqual(Decimal(response.data[0]["present_days"]), Decimal("1.5"))
+        self.assertEqual(response.data[0]["total_earnings"], 850)
+        self.assertEqual(response.data[0]["payable"], 50)
+
+        retrieve = self.client.get(
+            self._detail_url(self.labour.pk, self.session.pk, detail.pk)
+        )
+        self.assertEqual(retrieve.status_code, status.HTTP_200_OK)
+        self.assertEqual(retrieve.data["id"], detail.pk)
+        self.assertEqual(
+            retrieve.data["payment_details"],
+            {"payment": {"advance": 1000}},
+        )
+
+    def test_list_scoped_to_session(self):
+        other_session = LabourSession.objects.create(
+            company=self.company,
+            labour=self.labour,
+            start_date=timezone.localdate() - timedelta(days=10),
+            end_date=timezone.localdate() - timedelta(days=8),
+            created_date=timezone.localdate() - timedelta(days=7),
+            present_days=Decimal("1"),
+            salary_earnings=500,
+            extra_earnings=0,
+            total_payment=0,
+            total_return=0,
+            created_by=self.user,
+        )
+        mine = self._create_detail(session=self.session, salary_earnings=750)
+        self._create_detail(session=other_session, salary_earnings=500)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["id"] for row in response.data], [mine.pk])
+
+    def test_cannot_see_other_labour_session_details(self):
+        other_labour = Labour.objects.create(
+            name="Rahim",
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+        )
+        other_session = LabourSession.objects.create(
+            company=self.company,
+            labour=other_labour,
+            start_date=timezone.localdate() - timedelta(days=3),
+            end_date=timezone.localdate() - timedelta(days=1),
+            created_date=timezone.localdate(),
+            present_days=Decimal("1"),
+            salary_earnings=500,
+            extra_earnings=0,
+            total_payment=0,
+            total_return=0,
+            created_by=self.user,
+        )
+        self._create_detail(session=other_session)
+        self._create_detail(session=self.session, salary_earnings=750)
+
+        response = self.client.get(self._list_url(self.labour.pk, other_session.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_post_not_allowed(self):
+        self._grant_detail_permissions(
+            self.user, ["view_laboursessiondetail", "add_laboursessiondetail"]
+        )
+        response = self.client.post(self.list_url, {})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_filter_by_site(self):
+        other_site = Site.objects.create(
+            name="Metro Rail",
+            company=self.company,
+            created_by=self.user,
+        )
+        padma = self._create_detail(site=self.site)
+        self._create_detail(site=other_site, site_name=other_site.name)
+
+        response = self.client.get(self.list_url, {"site": self.site.pk})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["id"] for row in response.data], [padma.pk])
+
+
+class LabourSessionDetailSubscriptionTests(LabourSessionDetailAPITestCase):
+    def test_list_allowed_when_subscription_expired(self):
+        self._create_detail()
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)

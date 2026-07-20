@@ -3,8 +3,13 @@ from rest_framework.exceptions import ErrorDetail
 from django.utils import timezone
 
 from core import status_codes
-from .models import Attendance, Labour, LabourPayment, LabourSession
-
+from .models import (
+    Attendance,
+    Labour,
+    LabourPayment,
+    LabourSession,
+    LabourSessionDetail,
+)
 
 class LabourRecordDateValidationMixin:
     """Shared date rules for labour payment and attendance records."""
@@ -447,3 +452,30 @@ class RunningLabourSessionSerializer(serializers.Serializer):
     last_session_payable = serializers.IntegerField()
     total_payable = serializers.IntegerField()
     company = serializers.IntegerField()
+
+
+class LabourSessionDetailSerializer(serializers.ModelSerializer):
+    total_earnings = serializers.IntegerField(read_only=True)
+    payable = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = LabourSessionDetail
+        fields = [
+            "id",
+            "session",
+            "site",
+            "site_name",
+            "present_days",
+            "salary_earnings",
+            "extra_earnings",
+            "total_payment",
+            "total_return",
+            "total_earnings",
+            "payable",
+            "payment_details",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
