@@ -418,6 +418,7 @@ class LabourSessionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "labour",
+            "site",
             "start_date",
             "end_date",
             "created_date",
@@ -440,6 +441,7 @@ class RunningLabourSessionSerializer(serializers.Serializer):
     """Live open-period preview (not a persisted LabourSession)."""
 
     labour = serializers.IntegerField()
+    site = serializers.IntegerField()
     start_date = serializers.DateField(allow_null=True)
     end_date = serializers.DateField(allow_null=True)
     present_days = serializers.DecimalField(max_digits=12, decimal_places=2)

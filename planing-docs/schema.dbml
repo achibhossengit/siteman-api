@@ -393,6 +393,7 @@ Table labour_session {
   id           bigint    [pk]
   company_id   bigint        [ref: > company.id, not null]
   labour_id    bigint    [ref: > labour.id, not null]
+  site_id      bigint    [ref: > site.id, null, note: 'snapshot of labour.current_site at session create']
   start_date   date      [not null, note: 'first record after previous session end']
   end_date     date      [not null, note: 'last sealed record date']
   created_date       date      [not null, note: 'Unique Constraint (created_date, labour)']

@@ -470,6 +470,7 @@ class LabourSessionCacheTests(LabourAPITestCase):
         return LabourSession.objects.create(
             company=self.company,
             labour=labour,
+            site=labour.current_site,
             start_date=created_date,
             end_date=created_date,
             created_date=created_date,
@@ -2877,6 +2878,7 @@ class LabourSessionAPITestCase(APITestCase):
         defaults = {
             "company": labour.company,
             "labour": labour,
+            "site": labour.current_site,
             "start_date": timezone.localdate() - timedelta(days=3),
             "end_date": timezone.localdate() - timedelta(days=1),
             "created_date": created_date or timezone.localdate(),
@@ -2985,7 +2987,11 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         self.assertEqual(data["total_return"], 200)
         self.assertEqual(data["total_earnings"], 850)
         self.assertEqual(data["payable"], 850 + 200 - 1000)
+        self.assertEqual(data["site"], self.site.pk)
         self.assertNotIn("details", data)
+
+        session = LabourSession.objects.get()
+        self.assertEqual(session.site_id, self.labour.current_site_id)
 
         # Detail rows are still persisted for the future nested viewset.
         self.assertEqual(LabourSessionDetail.objects.count(), 1)
@@ -3157,6 +3163,7 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
             [
                 "id",
                 "labour",
+                "site",
                 "start_date",
                 "end_date",
                 "created_date",
@@ -3219,6 +3226,7 @@ class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
         self.assertEqual(response.data["last_session_payable"], 0)
         self.assertEqual(response.data["total_payable"], 0)
         self.assertEqual(response.data["labour"], self.labour.pk)
+        self.assertEqual(response.data["site"], self.site.pk)
         self.assertEqual(response.data["company"], self.company.pk)
 
     def test_running_session_with_open_period(self):
@@ -3428,6 +3436,7 @@ class LabourSessionDetailAPITestCase(APITestCase):
         self.session = LabourSession.objects.create(
             company=self.company,
             labour=self.labour,
+            site=self.site,
             start_date=timezone.localdate() - timedelta(days=3),
             end_date=timezone.localdate() - timedelta(days=1),
             created_date=timezone.localdate(),
@@ -3575,6 +3584,7 @@ class LabourSessionDetailCRUDTests(LabourSessionDetailAPITestCase):
         other_session = LabourSession.objects.create(
             company=self.company,
             labour=self.labour,
+            site=self.site,
             start_date=timezone.localdate() - timedelta(days=10),
             end_date=timezone.localdate() - timedelta(days=8),
             created_date=timezone.localdate() - timedelta(days=7),
@@ -3602,6 +3612,7 @@ class LabourSessionDetailCRUDTests(LabourSessionDetailAPITestCase):
         other_session = LabourSession.objects.create(
             company=self.company,
             labour=other_labour,
+            site=self.site,
             start_date=timezone.localdate() - timedelta(days=3),
             end_date=timezone.localdate() - timedelta(days=1),
             created_date=timezone.localdate(),

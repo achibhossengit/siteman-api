@@ -353,7 +353,7 @@ class LabourSessionViewSet(
     ]
     http_method_names = ["get", "post", "delete", "head", "options"]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["created_date", "start_date", "end_date"]
+    filterset_fields = ["created_date", "start_date", "end_date", "site"]
 
     def get_queryset(self):
         user = self.request.user
@@ -365,7 +365,7 @@ class LabourSessionViewSet(
                 company_id=user.company_id,
                 labour_id=self.kwargs["labour_pk"],
             )
-            .select_related("labour", "created_by")
+            .select_related("labour", "site", "created_by")
             .order_by("-created_date", "-id")
         )
 

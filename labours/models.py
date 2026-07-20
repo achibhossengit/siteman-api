@@ -164,6 +164,13 @@ class LabourSession(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
         on_delete=models.RESTRICT,
         related_name="sessions",
     )
+    site = models.ForeignKey(
+        "sites.Site",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="labour_sessions",
+    )
     start_date = models.DateField(
         help_text="First record date after the previous session ended.",
     )

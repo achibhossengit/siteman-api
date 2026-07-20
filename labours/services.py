@@ -174,6 +174,7 @@ def create_labour_session(*, labour, user):
         try:
             session = LabourSession.objects.create(
                 labour=labour,
+                site=labour.current_site,
                 start_date=snapshot.start_date,
                 end_date=snapshot.end_date,
                 present_days=snapshot.present_days,
@@ -287,6 +288,7 @@ def get_running_session(labour):
     if snapshot is None:
         running = {
             "labour": labour.pk,
+            "site": labour.current_site_id,
             "start_date": None,
             "end_date": None,
             "present_days": Decimal("0"),
@@ -301,6 +303,7 @@ def get_running_session(labour):
     else:
         running = {
             "labour": labour.pk,
+            "site": labour.current_site_id,
             "start_date": snapshot.start_date,
             "end_date": snapshot.end_date,
             "present_days": snapshot.present_days,
