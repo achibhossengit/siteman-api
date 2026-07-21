@@ -1,646 +1,10 @@
 [
     {
-        "model": "auth.permission",
-        "pk": 1,
-        "fields": {
-            "name": "Can add log entry",
-            "content_type": 1,
-            "codename": "add_logentry"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 2,
-        "fields": {
-            "name": "Can change log entry",
-            "content_type": 1,
-            "codename": "change_logentry"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 3,
-        "fields": {
-            "name": "Can delete log entry",
-            "content_type": 1,
-            "codename": "delete_logentry"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 4,
-        "fields": {
-            "name": "Can view log entry",
-            "content_type": 1,
-            "codename": "view_logentry"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 5,
-        "fields": {
-            "name": "Can add permission",
-            "content_type": 2,
-            "codename": "add_permission"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 6,
-        "fields": {
-            "name": "Can change permission",
-            "content_type": 2,
-            "codename": "change_permission"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 7,
-        "fields": {
-            "name": "Can delete permission",
-            "content_type": 2,
-            "codename": "delete_permission"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 8,
-        "fields": {
-            "name": "Can view permission",
-            "content_type": 2,
-            "codename": "view_permission"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 9,
-        "fields": {
-            "name": "Can add group",
-            "content_type": 3,
-            "codename": "add_group"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 10,
-        "fields": {
-            "name": "Can change group",
-            "content_type": 3,
-            "codename": "change_group"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 11,
-        "fields": {
-            "name": "Can delete group",
-            "content_type": 3,
-            "codename": "delete_group"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 12,
-        "fields": {
-            "name": "Can view group",
-            "content_type": 3,
-            "codename": "view_group"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 13,
-        "fields": {
-            "name": "Can add content type",
-            "content_type": 4,
-            "codename": "add_contenttype"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 14,
-        "fields": {
-            "name": "Can change content type",
-            "content_type": 4,
-            "codename": "change_contenttype"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 15,
-        "fields": {
-            "name": "Can delete content type",
-            "content_type": 4,
-            "codename": "delete_contenttype"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 16,
-        "fields": {
-            "name": "Can view content type",
-            "content_type": 4,
-            "codename": "view_contenttype"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 17,
-        "fields": {
-            "name": "Can add session",
-            "content_type": 5,
-            "codename": "add_session"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 18,
-        "fields": {
-            "name": "Can change session",
-            "content_type": 5,
-            "codename": "change_session"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 19,
-        "fields": {
-            "name": "Can delete session",
-            "content_type": 5,
-            "codename": "delete_session"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 20,
-        "fields": {
-            "name": "Can view session",
-            "content_type": 5,
-            "codename": "view_session"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 21,
-        "fields": {
-            "name": "Can add Outstanding Token",
-            "content_type": 6,
-            "codename": "add_outstandingtoken"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 22,
-        "fields": {
-            "name": "Can change Outstanding Token",
-            "content_type": 6,
-            "codename": "change_outstandingtoken"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 23,
-        "fields": {
-            "name": "Can delete Outstanding Token",
-            "content_type": 6,
-            "codename": "delete_outstandingtoken"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 24,
-        "fields": {
-            "name": "Can view Outstanding Token",
-            "content_type": 6,
-            "codename": "view_outstandingtoken"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 25,
-        "fields": {
-            "name": "Can add Blacklisted Token",
-            "content_type": 7,
-            "codename": "add_blacklistedtoken"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 26,
-        "fields": {
-            "name": "Can change Blacklisted Token",
-            "content_type": 7,
-            "codename": "change_blacklistedtoken"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 27,
-        "fields": {
-            "name": "Can delete Blacklisted Token",
-            "content_type": 7,
-            "codename": "delete_blacklistedtoken"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 28,
-        "fields": {
-            "name": "Can view Blacklisted Token",
-            "content_type": 7,
-            "codename": "view_blacklistedtoken"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 29,
-        "fields": {
-            "name": "Can add company",
-            "content_type": 8,
-            "codename": "add_company"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 30,
-        "fields": {
-            "name": "Can change company",
-            "content_type": 8,
-            "codename": "change_company"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 31,
-        "fields": {
-            "name": "Can delete company",
-            "content_type": 8,
-            "codename": "delete_company"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 32,
-        "fields": {
-            "name": "Can view company",
-            "content_type": 8,
-            "codename": "view_company"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 33,
-        "fields": {
-            "name": "Can add company config",
-            "content_type": 9,
-            "codename": "add_companyconfig"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 34,
-        "fields": {
-            "name": "Can change company config",
-            "content_type": 9,
-            "codename": "change_companyconfig"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 35,
-        "fields": {
-            "name": "Can delete company config",
-            "content_type": 9,
-            "codename": "delete_companyconfig"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 36,
-        "fields": {
-            "name": "Can view company config",
-            "content_type": 9,
-            "codename": "view_companyconfig"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 37,
-        "fields": {
-            "name": "Can add site",
-            "content_type": 10,
-            "codename": "add_site"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 38,
-        "fields": {
-            "name": "Can change site",
-            "content_type": 10,
-            "codename": "change_site"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 39,
-        "fields": {
-            "name": "Can delete site",
-            "content_type": 10,
-            "codename": "delete_site"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 40,
-        "fields": {
-            "name": "Can view site",
-            "content_type": 10,
-            "codename": "view_site"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 41,
-        "fields": {
-            "name": "Can add billing category",
-            "content_type": 11,
-            "codename": "add_billingcategory"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 42,
-        "fields": {
-            "name": "Can change billing category",
-            "content_type": 11,
-            "codename": "change_billingcategory"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 43,
-        "fields": {
-            "name": "Can delete billing category",
-            "content_type": 11,
-            "codename": "delete_billingcategory"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 44,
-        "fields": {
-            "name": "Can view billing category",
-            "content_type": 11,
-            "codename": "view_billingcategory"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 45,
-        "fields": {
-            "name": "Can add labour",
-            "content_type": 12,
-            "codename": "add_labour"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 46,
-        "fields": {
-            "name": "Can change labour",
-            "content_type": 12,
-            "codename": "change_labour"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 47,
-        "fields": {
-            "name": "Can delete labour",
-            "content_type": 12,
-            "codename": "delete_labour"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 48,
-        "fields": {
-            "name": "Can view labour",
-            "content_type": 12,
-            "codename": "view_labour"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 49,
-        "fields": {
-            "name": "Can add labour payment",
-            "content_type": 13,
-            "codename": "add_labourpayment"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 50,
-        "fields": {
-            "name": "Can change labour payment",
-            "content_type": 13,
-            "codename": "change_labourpayment"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 51,
-        "fields": {
-            "name": "Can delete labour payment",
-            "content_type": 13,
-            "codename": "delete_labourpayment"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 52,
-        "fields": {
-            "name": "Can view labour payment",
-            "content_type": 13,
-            "codename": "view_labourpayment"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 53,
-        "fields": {
-            "name": "Can add user",
-            "content_type": 14,
-            "codename": "add_user"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 54,
-        "fields": {
-            "name": "Can change user",
-            "content_type": 14,
-            "codename": "change_user"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 55,
-        "fields": {
-            "name": "Can delete user",
-            "content_type": 14,
-            "codename": "delete_user"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 56,
-        "fields": {
-            "name": "Can view user",
-            "content_type": 14,
-            "codename": "view_user"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 57,
-        "fields": {
-            "name": "Can add user site",
-            "content_type": 15,
-            "codename": "add_usersite"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 58,
-        "fields": {
-            "name": "Can change user site",
-            "content_type": 15,
-            "codename": "change_usersite"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 59,
-        "fields": {
-            "name": "Can delete user site",
-            "content_type": 15,
-            "codename": "delete_usersite"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 60,
-        "fields": {
-            "name": "Can view user site",
-            "content_type": 15,
-            "codename": "view_usersite"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 61,
-        "fields": {
-            "name": "Can add subscription",
-            "content_type": 16,
-            "codename": "add_subscription"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 62,
-        "fields": {
-            "name": "Can change subscription",
-            "content_type": 16,
-            "codename": "change_subscription"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 63,
-        "fields": {
-            "name": "Can delete subscription",
-            "content_type": 16,
-            "codename": "delete_subscription"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 64,
-        "fields": {
-            "name": "Can view subscription",
-            "content_type": 16,
-            "codename": "view_subscription"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 65,
-        "fields": {
-            "name": "Can add payment",
-            "content_type": 17,
-            "codename": "add_payment"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 66,
-        "fields": {
-            "name": "Can change payment",
-            "content_type": 17,
-            "codename": "change_payment"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 67,
-        "fields": {
-            "name": "Can delete payment",
-            "content_type": 17,
-            "codename": "delete_payment"
-        }
-    },
-    {
-        "model": "auth.permission",
-        "pk": 68,
-        "fields": {
-            "name": "Can view payment",
-            "content_type": 17,
-            "codename": "view_payment"
-        }
-    },
-    {
         "model": "auth.group",
         "pk": 1,
         "fields": {
             "name": "Company Admin",
-            "permissions": [
-                53,
-                54,
-                56,
-                57,
-                58,
-                59,
-                60,
-                45,
-                46,
-                47,
-                48,
-                49,
-                50,
-                51,
-                52,
-                41,
-                42,
-                43,
-                44,
-                37,
-                38,
-                39,
-                40
-            ]
+            "permissions": [53, 54, 56, 57, 58, 59, 60, 45, 46, 47, 48, 49, 50, 51, 52, 41, 42, 43, 44, 37, 38, 39, 40]
         }
     },
     {
@@ -648,20 +12,7 @@
         "pk": 2,
         "fields": {
             "name": "Site Manager",
-            "permissions": [
-                45,
-                46,
-                48,
-                49,
-                50,
-                51,
-                52,
-                41,
-                42,
-                44,
-                38,
-                40
-            ]
+            "permissions": [45, 46, 48, 49, 50, 51, 52, 41, 42, 44, 38, 40]
         }
     },
     {
@@ -669,153 +20,13 @@
         "pk": 3,
         "fields": {
             "name": "Site Auditor",
-            "permissions": [
-                48,
-                52,
-                44,
-                40
-            ]
+            "permissions": [48, 52, 44, 40]
         }
     },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 1,
-        "fields": {
-            "app_label": "admin",
-            "model": "logentry"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 2,
-        "fields": {
-            "app_label": "auth",
-            "model": "permission"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 3,
-        "fields": {
-            "app_label": "auth",
-            "model": "group"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 4,
-        "fields": {
-            "app_label": "contenttypes",
-            "model": "contenttype"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 5,
-        "fields": {
-            "app_label": "sessions",
-            "model": "session"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 6,
-        "fields": {
-            "app_label": "token_blacklist",
-            "model": "outstandingtoken"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 7,
-        "fields": {
-            "app_label": "token_blacklist",
-            "model": "blacklistedtoken"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 8,
-        "fields": {
-            "app_label": "company",
-            "model": "company"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 9,
-        "fields": {
-            "app_label": "company",
-            "model": "companyconfig"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 10,
-        "fields": {
-            "app_label": "sites",
-            "model": "site"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 11,
-        "fields": {
-            "app_label": "sites",
-            "model": "billingcategory"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 12,
-        "fields": {
-            "app_label": "labours",
-            "model": "labour"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 13,
-        "fields": {
-            "app_label": "labours",
-            "model": "labourpayment"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 14,
-        "fields": {
-            "app_label": "accounts",
-            "model": "user"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 15,
-        "fields": {
-            "app_label": "accounts",
-            "model": "usersite"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 16,
-        "fields": {
-            "app_label": "subscription",
-            "model": "subscription"
-        }
-    },
-    {
-        "model": "contenttypes.contenttype",
-        "pk": 17,
-        "fields": {
-            "app_label": "subscription",
-            "model": "payment"
-        }
-    },
+
     {
         "model": "company.company",
-        "pk": 9001,
+        "pk": 1000,
         "fields": {
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
@@ -826,7 +37,7 @@
     },
     {
         "model": "company.company",
-        "pk": 9002,
+        "pk": 2000,
         "fields": {
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
@@ -837,311 +48,26 @@
     },
     {
         "model": "company.companyconfig",
-        "pk": 9001,
+        "pk": 1000,
         "fields": {
-            "company": 9001,
+            "company": 1000,
             "labour_transfer_allowed": true,
             "updated_at": "2026-01-01T00:00:00Z"
         }
     },
     {
         "model": "company.companyconfig",
-        "pk": 9002,
+        "pk": 2000,
         "fields": {
-            "company": 9002,
+            "company": 2000,
             "labour_transfer_allowed": true,
             "updated_at": "2026-01-01T00:00:00Z"
         }
     },
-    {
-        "model": "sites.site",
-        "pk": 9001,
-        "fields": {
-            "created_at": "2026-01-15T00:00:00Z",
-            "updated_at": "2026-01-15T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "name": "Padma Bridge Site",
-            "is_active": true,
-            "is_closed": false,
-            "closed_at": null
-        }
-    },
-    {
-        "model": "sites.site",
-        "pk": 9002,
-        "fields": {
-            "created_at": "2026-02-01T00:00:00Z",
-            "updated_at": "2026-02-01T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "name": "Gulshan Tower",
-            "is_active": true,
-            "is_closed": false,
-            "closed_at": null
-        }
-    },
-    {
-        "model": "sites.site",
-        "pk": 9003,
-        "fields": {
-            "created_at": "2026-03-01T00:00:00Z",
-            "updated_at": "2026-03-01T00:00:00Z",
-            "company": 9002,
-            "created_by": 9005,
-            "name": "Mirpur Housing",
-            "is_active": true,
-            "is_closed": false,
-            "closed_at": null
-        }
-    },
-    {
-        "model": "sites.billingcategory",
-        "pk": 9001,
-        "fields": {
-            "created_at": "2026-01-15T00:00:00Z",
-            "updated_at": "2026-01-15T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "site": 9001,
-            "name": "Basement",
-            "display_order": 1,
-            "is_active": true,
-            "is_done": false
-        }
-    },
-    {
-        "model": "sites.billingcategory",
-        "pk": 9002,
-        "fields": {
-            "created_at": "2026-01-15T00:00:00Z",
-            "updated_at": "2026-01-15T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "site": 9001,
-            "name": "Floor-1",
-            "display_order": 2,
-            "is_active": true,
-            "is_done": false
-        }
-    },
-    {
-        "model": "sites.billingcategory",
-        "pk": 9003,
-        "fields": {
-            "created_at": "2026-01-15T00:00:00Z",
-            "updated_at": "2026-01-15T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "site": 9001,
-            "name": "Floor-2",
-            "display_order": 3,
-            "is_active": true,
-            "is_done": false
-        }
-    },
-    {
-        "model": "sites.billingcategory",
-        "pk": 9004,
-        "fields": {
-            "created_at": "2026-02-01T00:00:00Z",
-            "updated_at": "2026-02-01T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "site": 9002,
-            "name": "Foundation",
-            "display_order": 1,
-            "is_active": true,
-            "is_done": false
-        }
-    },
-    {
-        "model": "sites.billingcategory",
-        "pk": 9005,
-        "fields": {
-            "created_at": "2026-02-01T00:00:00Z",
-            "updated_at": "2026-02-01T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "site": 9002,
-            "name": "Roof",
-            "display_order": 2,
-            "is_active": true,
-            "is_done": false
-        }
-    },
-    {
-        "model": "sites.billingcategory",
-        "pk": 9006,
-        "fields": {
-            "created_at": "2026-03-01T00:00:00Z",
-            "updated_at": "2026-03-01T00:00:00Z",
-            "company": 9002,
-            "created_by": 9005,
-            "site": 9003,
-            "name": "Block-A",
-            "display_order": 1,
-            "is_active": true,
-            "is_done": false
-        }
-    },
-    {
-        "model": "labours.labour",
-        "pk": 9001,
-        "fields": {
-            "created_at": "2026-01-20T00:00:00Z",
-            "updated_at": "2026-01-20T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "current_site": 9001,
-            "name": "Abdul Karim",
-            "default_attendance": "1.00",
-            "default_salary": 800,
-            "default_fooding": 150,
-            "is_active": true
-        }
-    },
-    {
-        "model": "labours.labour",
-        "pk": 9002,
-        "fields": {
-            "created_at": "2026-01-20T00:00:00Z",
-            "updated_at": "2026-01-20T00:00:00Z",
-            "company": 9001,
-            "created_by": 9003,
-            "current_site": 9001,
-            "name": "Rahim Mia",
-            "default_attendance": "1.00",
-            "default_salary": 700,
-            "default_fooding": 120,
-            "is_active": true
-        }
-    },
-    {
-        "model": "labours.labour",
-        "pk": 9003,
-        "fields": {
-            "created_at": "2026-02-05T00:00:00Z",
-            "updated_at": "2026-02-05T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "current_site": 9002,
-            "name": "Jamal Uddin",
-            "default_attendance": "0.50",
-            "default_salary": 500,
-            "default_fooding": 100,
-            "is_active": true
-        }
-    },
-    {
-        "model": "labours.labour",
-        "pk": 9004,
-        "fields": {
-            "created_at": "2026-03-05T00:00:00Z",
-            "updated_at": "2026-03-05T00:00:00Z",
-            "company": 9002,
-            "created_by": 9005,
-            "current_site": 9003,
-            "name": "Hasan Ali",
-            "default_attendance": "1.00",
-            "default_salary": 650,
-            "default_fooding": 100,
-            "is_active": true
-        }
-    },
-    {
-        "model": "labours.labourpayment",
-        "pk": 9001,
-        "fields": {
-            "created_at": "2026-07-15T00:00:00Z",
-            "updated_at": "2026-07-15T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "labour": 9001,
-            "site": 9001,
-            "date": "2026-07-15",
-            "type": "payment",
-            "category": "advance",
-            "amount": 2000,
-            "note": "Weekly advance",
-            "is_sealed": false
-        }
-    },
-    {
-        "model": "labours.labourpayment",
-        "pk": 9002,
-        "fields": {
-            "created_at": "2026-07-16T00:00:00Z",
-            "updated_at": "2026-07-16T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "labour": 9001,
-            "site": 9001,
-            "date": "2026-07-16",
-            "type": "payment",
-            "category": "fooding",
-            "amount": 150,
-            "note": "Daily fooding",
-            "is_sealed": false
-        }
-    },
-    {
-        "model": "labours.labourpayment",
-        "pk": 9003,
-        "fields": {
-            "created_at": "2026-07-17T00:00:00Z",
-            "updated_at": "2026-07-17T00:00:00Z",
-            "company": 9001,
-            "created_by": 9003,
-            "labour": 9002,
-            "site": 9001,
-            "date": "2026-07-17",
-            "type": "payment",
-            "category": "advance",
-            "amount": 1000,
-            "note": "Advance on hire",
-            "is_sealed": false
-        }
-    },
-    {
-        "model": "labours.labourpayment",
-        "pk": 9004,
-        "fields": {
-            "created_at": "2026-07-14T00:00:00Z",
-            "updated_at": "2026-07-14T00:00:00Z",
-            "company": 9002,
-            "created_by": 9005,
-            "labour": 9004,
-            "site": 9003,
-            "date": "2026-07-14",
-            "type": "payment",
-            "category": "advance",
-            "amount": 1500,
-            "note": "Opening advance",
-            "is_sealed": false
-        }
-    },
-    {
-        "model": "labours.labourpayment",
-        "pk": 9005,
-        "fields": {
-            "created_at": "2026-07-16T00:00:00Z",
-            "updated_at": "2026-07-16T00:00:00Z",
-            "company": 9002,
-            "created_by": 9005,
-            "labour": 9004,
-            "site": 9003,
-            "date": "2026-07-16",
-            "type": "return",
-            "category": null,
-            "amount": 500,
-            "note": "Partial return",
-            "is_sealed": false
-        }
-    },
+    
     {
         "model": "accounts.user",
-        "pk": 9001,
+        "pk": 1,
         "fields": {
             "password": "pbkdf2_sha256$870000$lFnFix6AAdtbPh2yXaR2sl$65TSgCaWlxr9+c1kJ5yIJk9Ic3vzZmS4/16hzF8m2eo=",
             "last_login": null,
@@ -1161,171 +87,629 @@
     },
     {
         "model": "accounts.user",
-        "pk": 9002,
+        "pk": 1001,
         "fields": {
             "password": "pbkdf2_sha256$870000$6r2WcE0ahKg9gTXLxYBfvt$O8AylQPIdJcRCl7JI6NUXVwRZBcO0Ufbs+3++9YKe3s=",
             "last_login": null,
             "is_superuser": false,
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-07-16T22:04:10.456Z",
-            "company": 9001,
+            "company": 1000,
             "name": "Achib Hossen",
             "phone_number": "+8801786855227",
             "email": "achib@achibbuilders.local",
             "is_active": true,
             "is_staff": false,
             "deleted_at": null,
-            "groups": [
-                1
-            ],
+            "groups": [1],
             "user_permissions": []
         }
     },
     {
         "model": "accounts.user",
-        "pk": 9003,
+        "pk": 1002,
         "fields": {
             "password": "pbkdf2_sha256$870000$rvtpEQ7Jn5BjMKAvoWeaxf$ar8I6+5b2TkJ9usDjvjh94pI8I1ECuyijvPnXuUUzPI=",
             "last_login": null,
             "is_superuser": false,
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
-            "company": 9001,
+            "company": 1000,
             "name": "Karim Manager",
             "phone_number": "+8801722222222",
             "email": "karim@achibbuilders.local",
             "is_active": true,
             "is_staff": false,
             "deleted_at": null,
-            "groups": [
-                2
-            ],
+            "groups": [2],
             "user_permissions": []
         }
     },
     {
         "model": "accounts.user",
-        "pk": 9004,
+        "pk": 1003,
         "fields": {
             "password": "pbkdf2_sha256$870000$rvtpEQ7Jn5BjMKAvoWeaxf$ar8I6+5b2TkJ9usDjvjh94pI8I1ECuyijvPnXuUUzPI=",
             "last_login": null,
             "is_superuser": false,
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
-            "company": 9001,
+            "company": 1000,
             "name": "Salma Auditor",
             "phone_number": "+8801733333333",
             "email": "salma@achibbuilders.local",
             "is_active": true,
             "is_staff": false,
             "deleted_at": null,
-            "groups": [
-                3
-            ],
+            "groups": [3],
             "user_permissions": []
         }
     },
     {
         "model": "accounts.user",
-        "pk": 9005,
+        "pk": 2001,
         "fields": {
             "password": "pbkdf2_sha256$870000$rvtpEQ7Jn5BjMKAvoWeaxf$ar8I6+5b2TkJ9usDjvjh94pI8I1ECuyijvPnXuUUzPI=",
             "last_login": null,
             "is_superuser": false,
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
-            "company": 9002,
+            "company": 2000,
             "name": "Rafiq Owner",
             "phone_number": "+8801744444444",
             "email": "rafiq@padma.local",
             "is_active": true,
             "is_staff": false,
             "deleted_at": null,
-            "groups": [
-                1
-            ],
+            "groups": [1],
             "user_permissions": []
         }
     },
+
     {
-        "model": "accounts.usersite",
-        "pk": 9001,
+        "model": "sites.site",
+        "pk": 1100,
         "fields": {
             "created_at": "2026-01-15T00:00:00Z",
             "updated_at": "2026-01-15T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "user": 9002,
-            "site": 9001
+            "company": 1000,
+            "created_by": 1001,
+            "name": "Padma Bridge Site",
+            "is_active": true,
+            "is_closed": false,
+            "closed_at": null
         }
     },
     {
-        "model": "accounts.usersite",
-        "pk": 9002,
-        "fields": {
-            "created_at": "2026-01-15T00:00:00Z",
-            "updated_at": "2026-01-15T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "user": 9003,
-            "site": 9001
-        }
-    },
-    {
-        "model": "accounts.usersite",
-        "pk": 9003,
-        "fields": {
-            "created_at": "2026-01-15T00:00:00Z",
-            "updated_at": "2026-01-15T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "user": 9004,
-            "site": 9001
-        }
-    },
-    {
-        "model": "accounts.usersite",
-        "pk": 9004,
+        "model": "sites.site",
+        "pk": 1200,
         "fields": {
             "created_at": "2026-02-01T00:00:00Z",
             "updated_at": "2026-02-01T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "user": 9002,
-            "site": 9002
+            "company": 1000,
+            "created_by": 1001,
+            "name": "Gulshan Tower",
+            "is_active": true,
+            "is_closed": false,
+            "closed_at": null
         }
     },
     {
-        "model": "accounts.usersite",
-        "pk": 9005,
-        "fields": {
-            "created_at": "2026-02-01T00:00:00Z",
-            "updated_at": "2026-02-01T00:00:00Z",
-            "company": 9001,
-            "created_by": 9002,
-            "user": 9003,
-            "site": 9002
-        }
-    },
-    {
-        "model": "accounts.usersite",
-        "pk": 9006,
+        "model": "sites.site",
+        "pk": 2100,
         "fields": {
             "created_at": "2026-03-01T00:00:00Z",
             "updated_at": "2026-03-01T00:00:00Z",
-            "company": 9002,
-            "created_by": 9005,
-            "user": 9005,
-            "site": 9003
+            "company": 2000,
+            "created_by": 2001,
+            "name": "Mirpur Housing",
+            "is_active": true,
+            "is_closed": false,
+            "closed_at": null
+        }
+    },
+
+    {
+        "model": "sites.billingcategory",
+        "pk": 1101,
+        "fields": {
+            "created_at": "2026-01-15T00:00:00Z",
+            "updated_at": "2026-01-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1100,
+            "name": "Basement",
+            "display_order": 1,
+            "is_active": true,
+            "is_done": false
         }
     },
     {
+        "model": "sites.billingcategory",
+        "pk": 1102,
+        "fields": {
+            "created_at": "2026-01-15T00:00:00Z",
+            "updated_at": "2026-01-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1100,
+            "name": "Floor-1",
+            "display_order": 2,
+            "is_active": true,
+            "is_done": false
+        }
+    },
+    {
+        "model": "sites.billingcategory",
+        "pk": 1103,
+        "fields": {
+            "created_at": "2026-01-15T00:00:00Z",
+            "updated_at": "2026-01-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1100,
+            "name": "Floor-2",
+            "display_order": 3,
+            "is_active": true,
+            "is_done": false
+        }
+    },
+    {
+        "model": "sites.billingcategory",
+        "pk": 1201,
+        "fields": {
+            "created_at": "2026-02-01T00:00:00Z",
+            "updated_at": "2026-02-01T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1200,
+            "name": "Foundation",
+            "display_order": 1,
+            "is_active": true,
+            "is_done": false
+        }
+    },
+    {
+        "model": "sites.billingcategory",
+        "pk": 1202,
+        "fields": {
+            "created_at": "2026-02-01T00:00:00Z",
+            "updated_at": "2026-02-01T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1200,
+            "name": "Roof",
+            "display_order": 2,
+            "is_active": true,
+            "is_done": false
+        }
+    },
+    {
+        "model": "sites.billingcategory",
+        "pk": 2101,
+        "fields": {
+            "created_at": "2026-03-01T00:00:00Z",
+            "updated_at": "2026-03-01T00:00:00Z",
+            "company": 2000,
+            "created_by": 2001,
+            "site": 2100,
+            "name": "Block-A",
+            "display_order": 1,
+            "is_active": true,
+            "is_done": false
+        }
+    },
+
+    {
+        "model": "sites.sitecash",
+        "pk": 1150,
+        "fields": {
+            "created_at": "2026-07-14T00:00:00Z",
+            "updated_at": "2026-07-14T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1100,
+            "billing": null,
+            "type": "deposit",
+            "category": null,
+            "date": "2026-07-14",
+            "amount": 50000,
+            "note": "Opening deposit"
+        }
+    },
+    {
+        "model": "sites.sitecash",
+        "pk": 1151,
+        "fields": {
+            "created_at": "2026-07-15T00:00:00Z",
+            "updated_at": "2026-07-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1100,
+            "billing": 1101,
+            "type": "cost",
+            "category": "equipment",
+            "date": "2026-07-15",
+            "amount": 3000,
+            "note": "Basement equipment"
+        }
+    },
+    {
+        "model": "sites.sitecash",
+        "pk": 1152,
+        "fields": {
+            "created_at": "2026-07-15T00:00:00Z",
+            "updated_at": "2026-07-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1002,
+            "site": 1100,
+            "billing": null,
+            "type": "deposit",
+            "category": null,
+            "date": "2026-07-15",
+            "amount": 5000,
+            "note": "Daily top-up"
+        }
+    },
+    {
+        "model": "sites.sitecash",
+        "pk": 1250,
+        "fields": {
+            "created_at": "2026-07-15T00:00:00Z",
+            "updated_at": "2026-07-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1200,
+            "billing": null,
+            "type": "deposit",
+            "category": null,
+            "date": "2026-07-15",
+            "amount": 20000,
+            "note": "Gulshan opening"
+        }
+    },
+    {
+        "model": "sites.sitecash",
+        "pk": 2150,
+        "fields": {
+            "created_at": "2026-07-14T00:00:00Z",
+            "updated_at": "2026-07-14T00:00:00Z",
+            "company": 2000,
+            "created_by": 2001,
+            "site": 2100,
+            "billing": null,
+            "type": "deposit",
+            "category": null,
+            "date": "2026-07-14",
+            "amount": 10000,
+            "note": "Mirpur opening"
+        }
+    },
+
+    {
+        "model": "sites.privatesitecash",
+        "pk": 1160,
+        "fields": {
+            "created_at": "2026-07-15T00:00:00Z",
+            "updated_at": "2026-07-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1100,
+            "billing": 1101,
+            "type": "bill",
+            "date": "2026-07-15",
+            "amount": 1000,
+            "note": "Private bill"
+        }
+    },
+    {
+        "model": "sites.privatesitecash",
+        "pk": 1161,
+        "fields": {
+            "created_at": "2026-07-15T00:00:00Z",
+            "updated_at": "2026-07-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "site": 1100,
+            "billing": null,
+            "type": "cost",
+            "date": "2026-07-15",
+            "amount": 250,
+            "note": "Private cost"
+        }
+    },
+
+    {
+        "model": "labours.labour",
+        "pk": 1110,
+        "fields": {
+            "created_at": "2026-01-20T00:00:00Z",
+            "updated_at": "2026-01-20T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "current_site": 1100,
+            "name": "Abdul Karim",
+            "default_attendance": "1.00",
+            "default_salary": 800,
+            "default_fooding": 150,
+            "is_active": true
+        }
+    },
+    {
+        "model": "labours.labour",
+        "pk": 1111,
+        "fields": {
+            "created_at": "2026-01-20T00:00:00Z",
+            "updated_at": "2026-01-20T00:00:00Z",
+            "company": 1000,
+            "created_by": 1002,
+            "current_site": 1100,
+            "name": "Rahim Mia",
+            "default_attendance": "1.00",
+            "default_salary": 700,
+            "default_fooding": 120,
+            "is_active": true
+        }
+    },
+    {
+        "model": "labours.labour",
+        "pk": 1210,
+        "fields": {
+            "created_at": "2026-02-05T00:00:00Z",
+            "updated_at": "2026-02-05T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "current_site": 1200,
+            "name": "Jamal Uddin",
+            "default_attendance": "0.50",
+            "default_salary": 500,
+            "default_fooding": 100,
+            "is_active": true
+        }
+    },
+    {
+        "model": "labours.labour",
+        "pk": 2110,
+        "fields": {
+            "created_at": "2026-03-05T00:00:00Z",
+            "updated_at": "2026-03-05T00:00:00Z",
+            "company": 2000,
+            "created_by": 2001,
+            "current_site": 2100,
+            "name": "Hasan Ali",
+            "default_attendance": "1.00",
+            "default_salary": 650,
+            "default_fooding": 100,
+            "is_active": true
+        }
+    },
+
+    {
+        "model": "labours.attendance",
+        "pk": 1140,
+        "fields": {
+            "created_at": "2026-07-15T00:00:00Z",
+            "updated_at": "2026-07-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1002,
+            "labour": 1110,
+            "site": 1100,
+            "billing": 1101,
+            "date": "2026-07-15",
+            "present": "1.00",
+            "salary": 800,
+            "extra": 100,
+            "is_sealed": false
+        }
+    },
+    {
+        "model": "labours.attendance",
+        "pk": 1141,
+        "fields": {
+            "created_at": "2026-07-15T00:00:00Z",
+            "updated_at": "2026-07-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1002,
+            "labour": 1111,
+            "site": 1100,
+            "billing": 1102,
+            "date": "2026-07-15",
+            "present": "0.50",
+            "salary": 700,
+            "extra": 0,
+            "is_sealed": false
+        }
+    },
+    {
+        "model": "labours.attendance",
+        "pk": 1240,
+        "fields": {
+            "created_at": "2026-07-15T00:00:00Z",
+            "updated_at": "2026-07-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "labour": 1210,
+            "site": 1200,
+            "billing": 1201,
+            "date": "2026-07-15",
+            "present": "1.00",
+            "salary": 500,
+            "extra": 50,
+            "is_sealed": false
+        }
+    },
+
+    {
+        "model": "labours.labourpayment",
+        "pk": 1120,
+        "fields": {
+            "created_at": "2026-07-15T00:00:00Z",
+            "updated_at": "2026-07-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "labour": 1110,
+            "site": 1100,
+            "date": "2026-07-15",
+            "type": "payment",
+            "category": "advance",
+            "amount": 2000,
+            "note": "Weekly advance",
+            "is_sealed": false
+        }
+    },
+    {
+        "model": "labours.labourpayment",
+        "pk": 1121,
+        "fields": {
+            "created_at": "2026-07-16T00:00:00Z",
+            "updated_at": "2026-07-16T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "labour": 1111,
+            "site": 1100,
+            "date": "2026-07-15",
+            "type": "payment",
+            "category": "fooding",
+            "amount": 150,
+            "note": "Daily fooding",
+            "is_sealed": false
+        }
+    },
+    {
+        "model": "labours.labourpayment",
+        "pk": 1122,
+        "fields": {
+            "created_at": "2026-07-17T00:00:00Z",
+            "updated_at": "2026-07-17T00:00:00Z",
+            "company": 1000,
+            "created_by": 1002,
+            "labour": 1111,
+            "site": 1100,
+            "date": "2026-07-17",
+            "type": "payment",
+            "category": "advance",
+            "amount": 1000,
+            "note": "Advance on hire",
+            "is_sealed": false
+        }
+    },
+    {
+        "model": "labours.labourpayment",
+        "pk": 2120,
+        "fields": {
+            "created_at": "2026-07-14T00:00:00Z",
+            "updated_at": "2026-07-14T00:00:00Z",
+            "company": 2000,
+            "created_by": 2001,
+            "labour": 2110,
+            "site": 2100,
+            "date": "2026-07-14",
+            "type": "payment",
+            "category": "advance",
+            "amount": 1500,
+            "note": "Opening advance",
+            "is_sealed": false
+        }
+    },
+    {
+        "model": "labours.labourpayment",
+        "pk": 2121,
+        "fields": {
+            "created_at": "2026-07-16T00:00:00Z",
+            "updated_at": "2026-07-16T00:00:00Z",
+            "company": 2000,
+            "created_by": 2001,
+            "labour": 2110,
+            "site": 2100,
+            "date": "2026-07-16",
+            "type": "return",
+            "category": null,
+            "amount": 500,
+            "note": "Partial return",
+            "is_sealed": false
+        }
+    },
+
+    {
+        "model": "accounts.usersite",
+        "pk": 1130,
+        "fields": {
+            "created_at": "2026-01-15T00:00:00Z",
+            "updated_at": "2026-01-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "user": 1001,
+            "site": 1100
+        }
+    },
+    {
+        "model": "accounts.usersite",
+        "pk": 1131,
+        "fields": {
+            "created_at": "2026-01-15T00:00:00Z",
+            "updated_at": "2026-01-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "user": 1002,
+            "site": 1100
+        }
+    },
+    {
+        "model": "accounts.usersite",
+        "pk": 1132,
+        "fields": {
+            "created_at": "2026-01-15T00:00:00Z",
+            "updated_at": "2026-01-15T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "user": 1003,
+            "site": 1100
+        }
+    },
+    {
+        "model": "accounts.usersite",
+        "pk": 1230,
+        "fields": {
+            "created_at": "2026-02-01T00:00:00Z",
+            "updated_at": "2026-02-01T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "user": 1001,
+            "site": 1200
+        }
+    },
+    {
+        "model": "accounts.usersite",
+        "pk": 1231,
+        "fields": {
+            "created_at": "2026-02-01T00:00:00Z",
+            "updated_at": "2026-02-01T00:00:00Z",
+            "company": 1000,
+            "created_by": 1001,
+            "user": 1002,
+            "site": 1200
+        }
+    },
+    {
+        "model": "accounts.usersite",
+        "pk": 2130,
+        "fields": {
+            "created_at": "2026-03-01T00:00:00Z",
+            "updated_at": "2026-03-01T00:00:00Z",
+            "company": 2000,
+            "created_by": 2001,
+            "user": 2001,
+            "site": 2100
+        }
+    },
+
+    {
         "model": "subscription.subscription",
-        "pk": 9001,
+        "pk": 1000,
         "fields": {
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
-            "company": 9001,
+            "company": 1000,
             "open_site_limit": 10,
             "active_user_limit": -1,
             "active_labour_limit": -1,
@@ -1334,11 +718,11 @@
     },
     {
         "model": "subscription.subscription",
-        "pk": 9002,
+        "pk": 2000,
         "fields": {
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
-            "company": 9002,
+            "company": 2000,
             "open_site_limit": 3,
             "active_user_limit": 5,
             "active_labour_limit": 50,
@@ -1347,12 +731,12 @@
     },
     {
         "model": "subscription.payment",
-        "pk": 9001,
+        "pk": 1001,
         "fields": {
             "created_at": "2026-07-17T00:00:00Z",
             "updated_at": "2026-07-17T00:00:00Z",
             "created_by": null,
-            "company": 9001,
+            "company": 1000,
             "status": "success",
             "method": "manual",
             "amount": 5000,
@@ -1364,12 +748,12 @@
     },
     {
         "model": "subscription.payment",
-        "pk": 9002,
+        "pk": 2001,
         "fields": {
             "created_at": "2026-07-17T00:00:00Z",
             "updated_at": "2026-07-17T00:00:00Z",
             "created_by": null,
-            "company": 9002,
+            "company": 2000,
             "status": "success",
             "method": "manual",
             "amount": 1500,
