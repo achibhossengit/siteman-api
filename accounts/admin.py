@@ -2,6 +2,9 @@ from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
+
+from sites.models import Site
+
 from .models import User, UserSite
 
 
@@ -38,11 +41,44 @@ class UserChangeForm(forms.ModelForm):
         fields = "__all__"
 
 
+class UserSiteInline(admin.TabularInline):
+    """Sites assigned to this user (same company only).
+
+    Existing rows are read-only; only add and delete are allowed.
+    """
+
+    model = UserSite
+    fk_name = "user"
+    extra = 0
+    fields = ("site",)
+    verbose_name = "assigned site"
+    verbose_name_plural = "assigned sites"
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def get_formset(self, request, obj=None, **kwargs):
+        self.parent_obj = obj
+        return super().get_formset(request, obj, **kwargs)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "site":
+            parent = getattr(self, "parent_obj", None)
+            if parent is not None and parent.company_id:
+                kwargs["queryset"] = Site.objects.filter(
+                    company_id=parent.company_id
+                ).order_by("name")
+            else:
+                kwargs["queryset"] = Site.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     add_form = UserCreationForm
     form = UserChangeForm
     model = User
+    inlines = [UserSiteInline]
 
     list_display = (
         "name",
@@ -93,19 +129,15 @@ class UserAdmin(BaseUserAdmin):
         ),
     )
 
-
-@admin.register(UserSite)
-class UserSiteAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "site", "company", "created_by", "created_at")
-    list_filter = ("company", "site")
-    search_fields = ("user__phone_number", "user__name", "site__name")
-    autocomplete_fields = ("user", "site")
-    exclude = ("company", "created_by")
-    readonly_fields = ("created_at", "updated_at")
-
-    def save_model(self, request, obj, form, change):
-        if not change:
-            obj.created_by = request.user
-        if obj.user_id and not obj.company_id:
-            obj.company = obj.user.company
-        super().save_model(request, obj, form, change)
+    def save_formset(self, request, form, formset, change):
+        instances = formset.save(commit=False)
+        for obj in formset.deleted_objects:
+            obj.delete()
+        for obj in instances:
+            if isinstance(obj, UserSite):
+                if not obj.company_id:
+                    obj.company = form.instance.company
+                if not obj.created_by_id:
+                    obj.created_by = request.user
+            obj.save()
+        formset.save_m2m()

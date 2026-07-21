@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.db import transaction
 from core.exceptions import SubscriptionError
 
+from accounts.models import User, UserSite
 from core.services import SubscriptionService
 from .models import BillingCategory, Site
 
@@ -11,7 +12,7 @@ class SiteAdminForm(forms.ModelForm):
     class Meta:
         model = Site
         exclude = ("created_by",)
-        
+
     def clean(self):
         cleaned = super().clean()
 
@@ -40,6 +41,7 @@ class SiteAdminForm(forms.ModelForm):
             raise forms.ValidationError(e)
         return cleaned
 
+
 class BillingCategoryInline(admin.TabularInline):
     model = BillingCategory
     extra = 0
@@ -47,9 +49,42 @@ class BillingCategoryInline(admin.TabularInline):
     ordering = ("display_order",)
 
 
+class SiteUserInline(admin.TabularInline):
+    """Users assigned to this site (same company only).
+
+    Existing rows are read-only; only add and delete are allowed.
+    """
+
+    model = UserSite
+    fk_name = "site"
+    extra = 0
+    fields = ("user",)
+    verbose_name = "assigned user"
+    verbose_name_plural = "assigned users"
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def get_formset(self, request, obj=None, **kwargs):
+        self.parent_obj = obj
+        return super().get_formset(request, obj, **kwargs)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "user":
+            parent = getattr(self, "parent_obj", None)
+            if parent is not None and parent.company_id:
+                kwargs["queryset"] = User.objects.filter(
+                    company_id=parent.company_id
+                ).order_by("name")
+            else:
+                kwargs["queryset"] = User.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
 @admin.register(Site)
 class SiteAdmin(admin.ModelAdmin):
     form = SiteAdminForm
+    inlines = [BillingCategoryInline, SiteUserInline]
     list_display = (
         "id",
         "name",
