@@ -12,17 +12,19 @@ class HasSitePermissions(BasePermission):
     """
 
     def get_site_id(self, request, view):
-        """
-        Override this method if site_id comes from somewhere
-        other than the URL.
-        """
-        return view.kwargs.get("site_pk")
+        """Nested routes use ``site_pk``; SiteViewSet detail actions use ``pk``."""
+        site_id = view.kwargs.get("site_pk")
+        if site_id is None:
+            site_id = view.kwargs.get("pk")
+        return site_id
 
     def has_permission(self, request, view):
         site_id = self.get_site_id(request, view)
 
         if site_id is None:
             return False
+
+        site_id = int(site_id)
 
         if not request.user.has_site_access(site_id):
             raise PermissionDenied(

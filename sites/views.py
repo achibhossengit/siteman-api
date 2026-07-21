@@ -104,7 +104,7 @@ class SiteCashViewSet(viewsets.ModelViewSet):
         return (
             SiteCash.objects.filter(
                 company_id=user.company_id,
-                site_id=self.kwargs["site_pk"],
+                site_id=int(self.kwargs["site_pk"]),
             )
             .select_related("site", "billing", "created_by")
             .order_by("-date", "-id")
@@ -112,7 +112,7 @@ class SiteCashViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(
-            site_id=self.kwargs["site_pk"],
+            site_id=int(self.kwargs["site_pk"]),
             company=self.request.user.company,
             created_by=self.request.user,
         )
@@ -143,7 +143,7 @@ class PrivateSiteCashViewSet(viewsets.ModelViewSet):
         return (
             PrivateSiteCash.objects.filter(
                 company_id=user.company_id,
-                site_id=self.kwargs["site_pk"],
+                site_id=int(self.kwargs["site_pk"]),
             )
             .select_related("site", "billing", "created_by")
             .order_by("-date", "-id")
@@ -151,7 +151,7 @@ class PrivateSiteCashViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(
-            site_id=self.kwargs["site_pk"],
+            site_id=int(self.kwargs["site_pk"]),
             company=self.request.user.company,
             created_by=self.request.user,
         )

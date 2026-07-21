@@ -184,7 +184,7 @@ class SiteLabourPaymentViewSet(
         return (
             LabourPayment.objects.filter(
                 company_id=user.company_id,
-                site_id=self.kwargs["site_pk"],
+                site_id=int(self.kwargs["site_pk"]),
             )
             .select_related("labour", "site", "created_by")
             .order_by("-date", "-id")
@@ -194,7 +194,7 @@ class SiteLabourPaymentViewSet(
     def perform_create(self, serializer):
         try:
             serializer.save(
-                site_id=self.kwargs["site_pk"],
+                site_id=int(self.kwargs["site_pk"]),
                 company=self.request.user.company,
                 created_by=self.request.user,
                 is_sealed=False,
@@ -244,7 +244,7 @@ class SiteLabourAttendanceViewSet(
         return (
             Attendance.objects.filter(
                 company_id=user.company_id,
-                site_id=self.kwargs["site_pk"],
+                site_id=int(self.kwargs["site_pk"]),
             )
             .select_related("labour", "site", "billing", "created_by")
             .order_by("-date", "-id")
@@ -254,7 +254,7 @@ class SiteLabourAttendanceViewSet(
     def perform_create(self, serializer):
         try:
             serializer.save(
-                site_id=self.kwargs["site_pk"],
+                site_id=int(self.kwargs["site_pk"]),
                 company=self.request.user.company,
                 created_by=self.request.user,
                 is_sealed=False,
