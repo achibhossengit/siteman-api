@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -21,6 +22,14 @@ from sites.models import (
 from subscription.models import Subscription
 from accounts.models import UserSite
 from core import status_codes
+from labours.models import (
+    Attendance,
+    Labour,
+    LabourPayment,
+    LabourPaymentCategory,
+    LabourPaymentType,
+    LabourSession,
+)
 
 User = get_user_model()
 
@@ -1280,3 +1289,310 @@ class PrivateSiteCashSubscriptionTests(PrivateSiteCashAPITestCase):
         )
         cash.refresh_from_db()
         self.assertEqual(cash.amount, 100)
+
+
+class SiteDailyReportAPITestCase(APITestCase):
+    """Shared fixtures for ``/sites/<pk>/daily-reports``."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        self.site = Site.objects.create(
+            name="Padma Bridge",
+            company=self.company,
+            created_by=self.user,
+        )
+        UserSite.objects.create(
+            user=self.user,
+            site=self.site,
+            company=self.company,
+            created_by=self.user,
+        )
+        self.report_date = timezone.localdate()
+        self.url = reverse(
+            "site-daily-reports",
+            kwargs={"version": "v1", "pk": self.site.pk},
+        )
+
+    def _grant_private_cash_view(self, user):
+        ct = ContentType.objects.get_for_model(PrivateSiteCash)
+        perm = Permission.objects.get(content_type=ct, codename="view_privatesitecash")
+        user.user_permissions.add(perm)
+        # Clear permission cache so has_perm sees the new grant.
+        user = User.objects.get(pk=user.pk)
+        self.client.force_authenticate(user=user)
+        return user
+
+    def _create_labour(self, name="Karim"):
+        return Labour.objects.create(
+            name=name,
+            company=self.company,
+            created_by=self.user,
+            current_site=self.site,
+            default_salary=500,
+        )
+
+
+class SiteDailyReportAuthTests(SiteDailyReportAPITestCase):
+    def test_unauthenticated_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_other_company_site_returns_403(self):
+        other_company = Company.objects.create(name="Other Co")
+        other_site = Site.objects.create(
+            name="Foreign Site",
+            company=other_company,
+            created_by=self.user,
+        )
+        url = reverse(
+            "site-daily-reports",
+            kwargs={"version": "v1", "pk": other_site.pk},
+        )
+        response = self.client.get(url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unassigned_site_returns_403(self):
+        other = Site.objects.create(
+            name="Unassigned",
+            company=self.company,
+            created_by=self.user,
+        )
+        url = reverse(
+            "site-daily-reports",
+            kwargs={"version": "v1", "pk": other.pk},
+        )
+        response = self.client.get(url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_date_query_param_required(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date")
+
+    def test_invalid_date_returns_400(self):
+        response = self.client.get(self.url, {"date": "not-a-date"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date")
+
+
+class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
+    def test_empty_day_returns_zeros(self):
+        response = self.client.get(self.url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["site"], self.site.pk)
+        self.assertEqual(response.data["date"], str(self.report_date))
+        self.assertEqual(Decimal(response.data["present_count"]), Decimal("0"))
+        self.assertEqual(response.data["labour_payment"], 0)
+        self.assertEqual(response.data["labour_return"], 0)
+        self.assertEqual(response.data["deposit"], 0)
+        self.assertEqual(response.data["withdrawal"], 0)
+        self.assertEqual(response.data["site_cost"], 0)
+        self.assertEqual(response.data["total_cost"], 0)
+        self.assertEqual(response.data["remaining"], 0)
+        self.assertEqual(response.data["balance"], 0)
+        self.assertEqual(response.data["previous_balance"], 0)
+        self.assertEqual(response.data["labour_session_count"], 0)
+        self.assertNotIn("total_salary", response.data)
+
+    def test_public_summary_aggregates(self):
+        labour = self._create_labour()
+        Attendance.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            date=self.report_date,
+            present=Decimal("1.5"),
+            salary=500,
+            extra=100,
+            created_by=self.user,
+        )
+        LabourPayment.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            date=self.report_date,
+            type=LabourPaymentType.PAYMENT,
+            category=LabourPaymentCategory.ADVANCE,
+            amount=1000,
+            created_by=self.user,
+        )
+        LabourPayment.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            date=self.report_date,
+            type=LabourPaymentType.RETURN,
+            category=None,
+            amount=200,
+            created_by=self.user,
+        )
+        labour_b = self._create_labour(name="Rahim")
+        LabourPayment.objects.create(
+            company=self.company,
+            labour=labour_b,
+            site=self.site,
+            date=self.report_date,
+            type=LabourPaymentType.PAYMENT,
+            category=LabourPaymentCategory.FOODING,
+            amount=150,
+            created_by=self.user,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.DEPOSIT,
+            date=self.report_date,
+            amount=5000,
+            created_by=self.user,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.COST,
+            date=self.report_date,
+            amount=300,
+            created_by=self.user,
+        )
+        LabourSession.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            start_date=self.report_date,
+            end_date=self.report_date,
+            created_date=self.report_date,
+            present_days=Decimal("1"),
+            salary_earnings=500,
+            extra_earnings=0,
+            total_payment=0,
+            total_return=0,
+            created_by=self.user,
+        )
+
+        response = self.client.get(self.url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Decimal(response.data["present_count"]), Decimal("1.5"))
+        self.assertEqual(response.data["labour_payment"], 1150)
+        self.assertEqual(response.data["labour_return"], 200)
+        self.assertEqual(response.data["deposit"], 5000)
+        self.assertEqual(response.data["site_cost"], 300)
+        # total_cost = labour_payment + site_cost (return is cash in)
+        self.assertEqual(response.data["total_cost"], 1450)
+        # remaining = (deposit + return) - (withdrawal + total_cost) = 5200 - 1450
+        self.assertEqual(response.data["remaining"], 3750)
+        self.assertEqual(response.data["balance"], 3750)
+        self.assertEqual(response.data["labour_session_count"], 1)
+        self.assertNotIn("total_salary", response.data)
+
+    def test_balance_and_previous_balance(self):
+        yesterday = self.report_date - timedelta(days=1)
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.DEPOSIT,
+            date=yesterday,
+            amount=1000,
+            created_by=self.user,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.DEPOSIT,
+            date=self.report_date,
+            amount=500,
+            created_by=self.user,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.WITHDRAWAL,
+            date=self.report_date,
+            amount=200,
+            created_by=self.user,
+        )
+
+        response = self.client.get(self.url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["previous_balance"], 1000)
+        self.assertEqual(response.data["remaining"], 300)  # 500 - 200
+        self.assertEqual(response.data["balance"], 1300)  # 1000 + 300
+        self.assertEqual(response.data["deposit"], 500)
+        self.assertEqual(response.data["withdrawal"], 200)
+
+    def test_private_fields_included_with_permission(self):
+        self._grant_private_cash_view(self.user)
+        labour = self._create_labour()
+        Attendance.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            date=self.report_date,
+            present=Decimal("1"),
+            salary=500,
+            extra=50,
+            created_by=self.user,
+        )
+        PrivateSiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=PrivateSiteCashType.BILL,
+            date=self.report_date,
+            amount=1000,
+            created_by=self.user,
+        )
+        PrivateSiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=PrivateSiteCashType.COST,
+            date=self.report_date,
+            amount=250,
+            created_by=self.user,
+        )
+
+        response = self.client.get(self.url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total_salary"], 500)
+        self.assertEqual(response.data["extra_earnings"], 50)
+
+    def test_private_fields_omitted_without_permission(self):
+        PrivateSiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=PrivateSiteCashType.BILL,
+            date=self.report_date,
+            amount=1000,
+            created_by=self.user,
+        )
+        response = self.client.get(self.url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("total_salary", response.data)
+        self.assertNotIn("extra_earnings", response.data)
+
+    def test_other_site_data_not_included(self):
+        other = Site.objects.create(
+            name="Metro",
+            company=self.company,
+            created_by=self.user,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=other,
+            type=SiteCashType.DEPOSIT,
+            date=self.report_date,
+            amount=9999,
+            created_by=self.user,
+        )
+        response = self.client.get(self.url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["deposit"], 0)
+        self.assertEqual(response.data["balance"], 0)

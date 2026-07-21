@@ -166,3 +166,24 @@ class PrivateSiteCashSerializer(SiteLedgerValidationMixin, serializers.ModelSeri
             "created_at",
             "updated_at",
         ]
+
+
+class SiteDailyReportSerializer(serializers.Serializer):
+    """GET ``/sites/<pk>/daily-reports?date=YYYY-MM-DD`` response."""
+
+    site = serializers.IntegerField()
+    date = serializers.DateField()
+    present_count = serializers.DecimalField(max_digits=12, decimal_places=2)
+    labour_payment = serializers.IntegerField()
+    labour_return = serializers.IntegerField()
+    deposit = serializers.IntegerField()
+    withdrawal = serializers.IntegerField()
+    site_cost = serializers.IntegerField()
+    total_cost = serializers.IntegerField()
+    remaining = serializers.IntegerField()
+    previous_balance = serializers.IntegerField()
+    balance = serializers.IntegerField()
+    labour_session_count = serializers.IntegerField()
+    # Included only when the user has ``sites.view_privatesitecash``.
+    total_salary = serializers.IntegerField(required=False)
+    extra_earnings = serializers.IntegerField(required=False)

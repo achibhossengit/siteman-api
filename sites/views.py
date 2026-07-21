@@ -1,10 +1,14 @@
 from django.db import transaction
 from django.db.models import ProtectedError, RestrictedError
-from django_filters.rest_framework import DjangoFilterBackend
+from django.utils.dateparse import parse_date
 from rest_framework import serializers, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.settings import api_settings
 
 from core import status_codes
+from core.permissions import ActiveSubscriptionOrReadOnly
 from core.services import SubscriptionService
 from core.exceptions import SubscriptionLimitExceededError, SubscriptionExpiredError, SubscriptionExpired, SubscriptionLimitExceeded
 from .models import PrivateSiteCash, Site, SiteCash
@@ -14,9 +18,11 @@ from .serializers import (
     PrivateSiteCashSerializer,
     SiteCashListSerializer,
     SiteCashSerializer,
+    SiteDailyReportSerializer,
     SiteListSerializer,
     SiteSerializer,
 )
+from .services import build_site_daily_report
 
 
 class SiteViewSet(viewsets.ModelViewSet):
@@ -77,6 +83,37 @@ class SiteViewSet(viewsets.ModelViewSet):
                 detail="This site has existing records; delete them or close the site first.",
                 code=status_codes.SITE_HAS_RECORDS,
             )
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="daily-reports",
+        permission_classes=[IsAuthenticated, ActiveSubscriptionOrReadOnly, HasSitePermissions],
+    )
+    def daily_reports(self, request, pk=None, **kwargs):
+        """Day summary for this site. Query param ``date`` (YYYY-MM-DD) is required.
+        """
+        date_raw = request.query_params.get("date")
+        if not date_raw:
+            raise serializers.ValidationError(
+                {"date": "This query parameter is required."},
+                code=status_codes.INVALID,
+            )
+        report_date = parse_date(date_raw)
+        if report_date is None:
+            raise serializers.ValidationError(
+                {"date": "Enter a valid date (YYYY-MM-DD)."},
+                code=status_codes.INVALID,
+            )
+
+        site = self.get_object()
+        include_private = request.user.has_perm("sites.view_privatesitecash")
+        report = build_site_daily_report(
+            site, report_date, include_private=include_private
+        )
+        serializer = SiteDailyReportSerializer(data=report)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.data)
 
 
 class SiteCashViewSet(viewsets.ModelViewSet):
