@@ -1,7 +1,7 @@
 from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.test import override_settings
@@ -1028,3 +1028,176 @@ class UserSubscriptionTests(UserAPITestCase):
         )
         inactive.refresh_from_db()
         self.assertFalse(inactive.is_active)
+
+
+class UserGroupAPITestCase(APITestCase):
+    """Shared fixtures for nested ``/users/<pk>/groups``."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+        self.subscription.active_user_limit = 10
+        self.subscription.save(update_fields=["active_user_limit"])
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+            is_companyadmin=True,
+        )
+        self._grant_group_permissions(self.user)
+        self.client.force_authenticate(user=self.user)
+
+        self.target = User.objects.create_user(
+            phone_number="+8801711111111",
+            name="Karim",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self.site_manager = Group.objects.get(name="Site Manager")
+        self.site_auditor = Group.objects.get(name="Site Auditor")
+        self.company_admin = Group.objects.get(name="Company Admin")
+        self.list_url = self._list_url(self.target.pk)
+
+    def _grant_group_permissions(self, user, codenames=None):
+        codenames = codenames or [
+            "view_group",
+            "add_group",
+            "change_group",
+            "delete_group",
+        ]
+        ct = ContentType.objects.get_for_model(Group)
+        perms = Permission.objects.filter(content_type=ct, codename__in=codenames)
+        user.user_permissions.add(*perms)
+
+    def _list_url(self, user_id):
+        return reverse(
+            "user-group-list",
+            kwargs={"version": "v1", "user_pk": user_id},
+        )
+
+    def _detail_url(self, user_id, group_id):
+        return reverse(
+            "user-group-detail",
+            kwargs={"version": "v1", "user_pk": user_id, "pk": group_id},
+        )
+
+
+class UserGroupAuthPermissionTests(UserGroupAPITestCase):
+    def test_unauthenticated_list_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_missing_view_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_add_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_group_permissions(self.user, ["view_group"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(self.list_url, {"id": self.site_manager.pk})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_delete_permission_returns_403(self):
+        self.target.groups.add(self.site_manager)
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_group_permissions(self.user, ["view_group", "add_group"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete(
+            self._detail_url(self.target.pk, self.site_manager.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_other_company_user_returns_404(self):
+        other = Company.objects.create(name="Other Co")
+        foreign = User.objects.create_user(
+            phone_number="+8801811111111",
+            name="Foreign",
+            password="strong-pass-123",
+            company=other,
+        )
+        response = self.client.get(self._list_url(foreign.pk))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class UserGroupCRUDTests(UserGroupAPITestCase):
+    def test_list_empty(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_assign_group_success(self):
+        response = self.client.post(self.list_url, {"id": self.site_manager.pk})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["id"], self.site_manager.pk)
+        self.assertEqual(response.data["name"], "Site Manager")
+        self.assertTrue(self.target.groups.filter(pk=self.site_manager.pk).exists())
+
+    def test_list_assigned_groups(self):
+        self.target.groups.add(self.site_manager, self.site_auditor)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+        self.assertCountEqual(
+            [row["name"] for row in response.data],
+            ["Site Auditor", "Site Manager"],
+        )
+
+    def test_assign_is_idempotent(self):
+        self.target.groups.add(self.site_manager)
+        response = self.client.post(self.list_url, {"id": self.site_manager.pk})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.target.groups.filter(pk=self.site_manager.pk).count(), 1)
+
+    def test_assign_unknown_group_rejected(self):
+        other = Group.objects.create(name="Random Role")
+        response = self.client.post(self.list_url, {"id": other.pk})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_remove_group_success(self):
+        self.target.groups.add(self.site_manager)
+        response = self.client.delete(
+            self._detail_url(self.target.pk, self.site_manager.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(self.target.groups.filter(pk=self.site_manager.pk).exists())
+
+    def test_remove_unassigned_group_returns_404(self):
+        response = self.client.delete(
+            self._detail_url(self.target.pk, self.site_manager.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_assign_company_admin_does_not_set_flag(self):
+        response = self.client.post(self.list_url, {"id": self.company_admin.pk})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.target.refresh_from_db()
+        self.assertFalse(self.target.is_companyadmin)
+
+    def test_remove_company_admin_does_not_clear_flag(self):
+        self.target.groups.add(self.company_admin)
+        self.target.is_companyadmin = True
+        self.target.save(update_fields=["is_companyadmin"])
+
+        response = self.client.delete(
+            self._detail_url(self.target.pk, self.company_admin.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.target.refresh_from_db()
+        self.assertTrue(self.target.is_companyadmin)
+
+    def test_patch_not_allowed(self):
+        self.target.groups.add(self.site_manager)
+        response = self.client.patch(
+            self._detail_url(self.target.pk, self.site_manager.pk),
+            {"name": "Nope"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)

@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
@@ -11,6 +12,13 @@ from core.phone import normalize_bd_phone
 User = get_user_model()
 OTP_LENGTH = getattr(settings, "OTP_LENGTH", 6)
 REGISTER_PURPOSE = "register"
+
+# Roles created in accounts.0003_create_groups.
+ROLE_GROUP_NAMES = (
+    "Company Admin",
+    "Site Manager",
+    "Site Auditor",
+)
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -207,7 +215,21 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop("password")
         return User.objects.create_user(password=password, **validated_data)
-    
+
+
+class UserGroupSerializer(serializers.ModelSerializer):
+    id = serializers.PrimaryKeyRelatedField(
+        queryset=Group.objects.filter(name__in=ROLE_GROUP_NAMES),
+    )
+
+    class Meta:
+        model = Group
+        fields = ["id", "name"]
+        read_only_fields = ["name"]
+
+    def to_representation(self, instance):
+        return {"id": instance.pk, "name": instance.name}
+
 
 class CookieTokenObtainPairSerializer(TokenObtainPairSerializer):
     

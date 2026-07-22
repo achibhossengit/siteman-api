@@ -3,8 +3,8 @@ from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import status, viewsets
-from rest_framework.exceptions import ValidationError
+from rest_framework import mixins, status, viewsets
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -24,6 +24,7 @@ from core.exceptions import (
 from core.services import SubscriptionService
 from company.models import Company
 from .models import User
+from .permissions import get_target_user
 from .serializers import (
     # registration serializers
     RegisterConfirmSerializer,
@@ -42,6 +43,7 @@ from .serializers import (
     CookieTokenBlacklistSerializer,
 
     # company user management
+    UserGroupSerializer,
     UserListSerializer,
     UserSerializer,
 )
@@ -375,3 +377,45 @@ class UserViewSet(viewsets.ModelViewSet):
             except SubscriptionExpiredError:
                 raise SubscriptionExpired()
         serializer.save()
+
+
+class UserGroupViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Nested under ``/users/<user_pk>/groups``.
+
+    List assigned role groups, assign a new one, or remove an assignment.
+    Uses Django ``auth.Group`` model permissions (view/add/delete_group).
+    """
+
+    serializer_class = UserGroupSerializer
+    queryset = Group.objects.none()
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_target_user(self):
+        target = get_target_user(self.request, self)
+        if target is None:
+            raise NotFound()
+        return target
+
+    def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return Group.objects.none()
+        return self.get_target_user().groups.all().order_by("name")
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        group = serializer.validated_data["id"]
+        target = self.get_target_user()
+        target.groups.add(group)
+        return Response(
+            UserGroupSerializer(group).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def perform_destroy(self, instance):
+        self.get_target_user().groups.remove(instance)

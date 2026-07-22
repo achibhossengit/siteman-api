@@ -12,13 +12,17 @@ from .views import (
     CookieTokenObtainPairView,
     CookieTokenRefreshView,
     CookieTokenBlacklistView,
+    UserGroupViewSet,
     UserViewSet,
 )
 
 router = routers.SimpleRouter(trailing_slash=False)
 router.register("users", UserViewSet, basename="user")
 
-# Nested UserSite / UserGroup routers will attach here later.
+users_router = routers.NestedSimpleRouter(router, "users", lookup="user")
+users_router.register("groups", UserGroupViewSet, basename="user-group")
+
+# Nested UserSite router will attach here later.
 
 urlpatterns = [
     path("auth/register", RegisterView.as_view(), name="register"),
@@ -43,4 +47,5 @@ urlpatterns = [
     path("auth/token/blacklist", CookieTokenBlacklistView.as_view(), name="token-blacklist"),
 
     *router.urls,
+    *users_router.urls,
 ]
