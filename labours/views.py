@@ -18,6 +18,8 @@ from core.exceptions import (
 from core.services import SubscriptionService
 from core.permissions import RecordUpdateDeletePermissions
 from sites.permissions import HasSitePermissions
+from activity.mixins import ActivityLogMixin
+from activity.services import log_deletion, snapshot_instance
 from .permissions import HasSiteAndLabourPermissions, get_labour
 from .models import Attendance, Labour, LabourPayment, LabourSession, LabourSessionDetail
 from .serializers import (
@@ -42,7 +44,7 @@ from .services import (
 )
 
 
-class LabourViewSet(viewsets.ModelViewSet):
+class LabourViewSet(ActivityLogMixin, viewsets.ModelViewSet):
     serializer_class = LabourSerializer
     queryset = Labour.objects.none()
     http_method_names = ["get", "post", "patch", "head", "options"]  # no PUT, no DELETE
@@ -82,7 +84,7 @@ class LabourViewSet(viewsets.ModelViewSet):
         )
 
 
-class LabourPaymentViewSet(viewsets.ModelViewSet):
+class LabourPaymentViewSet(ActivityLogMixin, viewsets.ModelViewSet):
     """Nested under ``/labours/<labour_pk>/payments``."""
 
     serializer_class = LabourPaymentSerializer
@@ -138,7 +140,7 @@ class LabourPaymentViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         try:
-            serializer.save()
+            super().perform_update(serializer)
         except IntegrityError:
             raise ValidationError(
                 "A payment of this type already exists for this labour on this date.",
@@ -266,7 +268,7 @@ class SiteLabourAttendanceViewSet(
             )
 
 
-class LabourAttendanceViewSet(viewsets.ModelViewSet):
+class LabourAttendanceViewSet(ActivityLogMixin, viewsets.ModelViewSet):
     """Nested under ``/labours/<labour_pk>/attendances``."""
 
     serializer_class = AttendanceSerializer
@@ -322,7 +324,7 @@ class LabourAttendanceViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         try:
-            serializer.save()
+            super().perform_update(serializer)
         except IntegrityError:
             raise ValidationError(
                 "Attendance already exists for this labour on this date.",
@@ -331,6 +333,7 @@ class LabourAttendanceViewSet(viewsets.ModelViewSet):
 
 
 class LabourSessionViewSet(
+    ActivityLogMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
@@ -378,7 +381,18 @@ class LabourSessionViewSet(
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance):
+        # Snapshot match / latest checks may fail — log only after delete.
+        before = snapshot_instance(instance)
+        object_id = instance.pk
+        company = instance.company
         delete_labour_session(instance)
+        log_deletion(
+            actor=self.request.user,
+            company=company,
+            instance=instance,
+            before=before,
+            object_id=object_id,
+        )
 
     @action(detail=False, methods=["get"], url_path="running_session")
     def running_session(self, request, *args, **kwargs):

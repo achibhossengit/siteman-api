@@ -11,6 +11,7 @@ from core import status_codes
 from core.permissions import ActiveSubscriptionOrReadOnly
 from core.services import SubscriptionService
 from core.exceptions import SubscriptionLimitExceededError, SubscriptionExpiredError, SubscriptionExpired, SubscriptionLimitExceeded
+from activity.mixins import ActivityLogMixin
 from .models import PrivateSiteCash, Site, SiteCash
 from .permissions import HasSitePermissions
 from .serializers import (
@@ -25,7 +26,7 @@ from .serializers import (
 from .services import build_site_daily_report
 
 
-class SiteViewSet(viewsets.ModelViewSet):
+class SiteViewSet(ActivityLogMixin, viewsets.ModelViewSet):
     """
     Permission totally goes to the django default permissions system.
     - Sitemanager, SiteAuditor: provide view permission
@@ -74,8 +75,8 @@ class SiteViewSet(viewsets.ModelViewSet):
         )        
 
     def perform_destroy(self, instance):
-        # children FKs use on_delete=RESTRICT/PROTECT — the DB layer is the
-        # single source of truth for "site still has records"
+        # No activity log: site FK is CASCADE, so logs for this site go away
+        # with the row. Logging after delete would also fail the FK.
         try:
             instance.delete()
         except (ProtectedError, RestrictedError):
@@ -116,7 +117,7 @@ class SiteViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class SiteCashViewSet(viewsets.ModelViewSet):
+class SiteCashViewSet(ActivityLogMixin, viewsets.ModelViewSet):
     """Nested under ``/sites/<site_pk>/cash``."""
 
     serializer_class = SiteCashSerializer
@@ -155,7 +156,7 @@ class SiteCashViewSet(viewsets.ModelViewSet):
         )
 
 
-class PrivateSiteCashViewSet(viewsets.ModelViewSet):
+class PrivateSiteCashViewSet(ActivityLogMixin, viewsets.ModelViewSet):
     """Nested under ``/sites/<site_pk>/private-cash``."""
 
     serializer_class = PrivateSiteCashSerializer

@@ -518,14 +518,17 @@ Table private_site_cash {
 Table activity_log {
   id           bigint          [pk]
   company_id   bigint          [ref: > company.id, not null]
+  site_id      bigint          [ref: > site.id, not null, note: 'CASCADE with site; nest under /sites/<id>/activity-logs']
   actor_id     bigint          [ref: > user.id, not null, note: 'who acted — the creator; no created_by/updated_at, logs are immutable (F14)']
   content_type_id  bigint     [ref: > content_type.id]
   object_id    bigint          [not null]
   action_flag       activity_action [not null]
-  before       jsonb           [null, note: 'snapshot before update/delete/merge']
-  after        jsonb           [null, note: 'snapshot after create/update/merge']
-  note         varchar         [null, note: 'required for update/delete of financial records']
-  created_at   timestamp       [not null, note: 'event time; never updated or deleted (F14.3)']
+  changes      jsonb           [not null, note: 'per field: {field: {before, after}}; deletion uses after=null']
+  created_at   timestamp       [not null, note: 'event time; never updated or deleted']
+  // Rules: change+deletion via API mixin; no create logs when model has created_by;
+  // seal/site-close side-effects are not logged; logs are append-only.
+  // Site deletion is not logged (CASCADE removes the site's logs with the site).
+  // Read API: nested under site; hide rows whose target model the user cannot view_*.
 }
 
 // ============================================================
@@ -535,7 +538,6 @@ Table activity_log {
 // ============================================================
 
 Ref: billing_category_details.billing_id - billing_category.id [delete: cascade]
-
 Ref: attendance.billing_id  > billing_category.id   [delete: set null]
 Ref: site_cash.billing_id   > billing_category.id   [delete: set null]
 Ref: private_site_cash.billing_id > billing_category.id   [delete: set null]

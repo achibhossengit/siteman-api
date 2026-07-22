@@ -3291,6 +3291,7 @@ class LabourSessionDeleteTests(LabourSessionAPITestCase):
 
     def test_delete_latest_session_success(self):
         session = self._create_session_via_api()
+        session_id = session.pk
 
         response = self.client.delete(
             self._detail_url(self.labour.pk, session.pk)
@@ -3305,7 +3306,15 @@ class LabourSessionDeleteTests(LabourSessionAPITestCase):
         self.labour.refresh_from_db()
         self.assertIsNone(self.labour.last_session_date)
 
-    def test_delete_non_latest_session_returns_400(self):
+        from activity.models import ActivityAction, ActivityLog
+
+        log = ActivityLog.objects.get()
+        self.assertEqual(log.action_flag, ActivityAction.DELETION)
+        self.assertEqual(log.object_id, session_id)
+        self.assertEqual(log.site_id, self.site.pk)
+        self.assertEqual(log.actor_id, self.user.pk)
+
+    def test_delete_non_latest_session_returns_400_without_activity_log(self):
         older = self._create_session_via_orm(
             created_date=timezone.localdate() - timedelta(days=5)
         )
@@ -3318,6 +3327,9 @@ class LabourSessionDeleteTests(LabourSessionAPITestCase):
             status_codes.SESSION_NOT_LATEST,
         )
         self.assertEqual(LabourSession.objects.count(), 2)
+        from activity.models import ActivityLog
+
+        self.assertEqual(ActivityLog.objects.count(), 0)
 
     def test_delete_blocked_when_record_amount_changed(self):
         session = self._create_session_via_api()

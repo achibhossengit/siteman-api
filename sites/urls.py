@@ -1,5 +1,6 @@
 from rest_framework_nested import routers
 
+from activity.views import ActivityLogViewSet
 from labours.views import SiteLabourAttendanceViewSet, SiteLabourPaymentViewSet
 
 from .views import PrivateSiteCashViewSet, SiteCashViewSet, SiteViewSet
@@ -20,6 +21,9 @@ sites_router.register(
     "labour-attendances",
     SiteLabourAttendanceViewSet,
     basename="site-labour-attendance",
+)
+sites_router.register(
+    "activity-logs", ActivityLogViewSet, basename="site-activity-log"
 )
 
 urlpatterns = [
