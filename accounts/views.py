@@ -2,8 +2,10 @@ from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
-from rest_framework import status
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import status, viewsets
 from rest_framework.exceptions import ValidationError
+from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -13,6 +15,13 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenBlacklistView
 from core import notifications, status_codes, verifications
+from core.exceptions import (
+    SubscriptionExpired,
+    SubscriptionExpiredError,
+    SubscriptionLimitExceeded,
+    SubscriptionLimitExceededError,
+)
+from core.services import SubscriptionService
 from company.models import Company
 from .models import User
 from .serializers import (
@@ -31,6 +40,10 @@ from .serializers import (
     CookieTokenObtainPairSerializer,
     CookieTokenRefreshSerializer,
     CookieTokenBlacklistSerializer,
+
+    # company user management
+    UserListSerializer,
+    UserSerializer,
 )
 
 REGISTER_PURPOSE = "register"
@@ -296,4 +309,69 @@ class CookieTokenBlacklistView(TokenBlacklistView):
             response = Response({"detail": "Refresh token already invalid."})
         _clear_refresh_token_cookie(response)
         return response
-    
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    """Company-scoped user management.
+
+    List / retrieve / create / patch. No delete (soft-delete later).
+    Site and group membership will be nested later.
+    """
+
+    serializer_class = UserSerializer
+    queryset = User.objects.none()
+    http_method_names = ["get", "post", "patch", "head", "options"]  # no PUT / DELETE
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ["is_active", "is_companyadmin"]
+    search_fields = ["name", "phone_number"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return UserListSerializer
+        return UserSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated or user.company_id is None:
+            return User.objects.none()
+
+        return (
+            User.objects.filter(
+                company_id=user.company_id,
+                deleted_at__isnull=True,
+            )
+            .order_by("name")
+        )
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        try:
+            SubscriptionService.validate_active_user_limit(company)
+        except SubscriptionLimitExceededError as exc:
+            raise SubscriptionLimitExceeded(detail=str(exc))
+        except SubscriptionExpiredError:
+            raise SubscriptionExpired()
+        serializer.save(
+            company=company,
+            is_active=True,
+            is_staff=False,
+            is_superuser=False,
+            is_companyadmin=False,
+        )
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        becoming_active = (
+            not instance.is_active
+            and serializer.validated_data.get("is_active", False) is True
+        )
+        if becoming_active:
+            try:
+                SubscriptionService.validate_active_user_limit(instance.company)
+            except SubscriptionLimitExceededError as exc:
+                raise SubscriptionLimitExceeded(detail=str(exc))
+            except SubscriptionExpiredError:
+                raise SubscriptionExpired()
+        serializer.save()

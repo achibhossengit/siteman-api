@@ -113,6 +113,100 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_groups(self, obj):
         return list(obj.groups.values_list("name", flat=True))
+
+
+class UserListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "phone_number",
+            "email",
+            "is_active",
+            "is_companyadmin",
+        ]
+
+
+class UserSerializer(serializers.ModelSerializer):
+    """Create / retrieve / partial update.
+
+    Phone and password are create-only; patch may change name, email, is_active.
+    """
+
+    password = serializers.CharField(
+        write_only=True,
+        required=False,
+        style={"input_type": "password"},
+    )
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "phone_number",
+            "email",
+            "password",
+            "is_active",
+            "is_companyadmin",
+            "company",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "is_companyadmin",
+            "company",
+            "created_at",
+            "updated_at",
+        ]
+        extra_kwargs = {
+            # Own uniqueness check → ALREADY_REGISTERED (after normalize).
+            "phone_number": {"validators": []},
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            # Patch: phone/password immutable; is_active writable for activate/deactivate.
+            self.fields["phone_number"].read_only = True
+            self.fields.pop("password", None)
+        else:
+            self.fields["password"].required = True
+            # Create always stamps is_active=True in the viewset.
+            self.fields["is_active"].read_only = True
+
+    def validate_phone_number(self, value):
+        try:
+            phone = normalize_bd_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages[0])
+        if User.objects.filter(phone_number=phone).exists():
+            raise serializers.ValidationError(
+                "This phone number is already registered.",
+                code=status_codes.ALREADY_REGISTERED,
+            )
+        return phone
+
+    def validate_name(self, value):
+        company = self.context["request"].user.company
+        qs = User.objects.filter(company=company, name=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "A user with this name already exists in your company.",
+                code=status_codes.USER_NAME_EXISTS,
+            )
+        return value
+
+    def validate_password(self, value):
+        validate_password(value)
+        return value
+
+    def create(self, validated_data):
+        password = validated_data.pop("password")
+        return User.objects.create_user(password=password, **validated_data)
     
 
 class CookieTokenObtainPairSerializer(TokenObtainPairSerializer):

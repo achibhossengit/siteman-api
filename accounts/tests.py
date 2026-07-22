@@ -1,6 +1,8 @@
 from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.test import override_settings
 from django.urls import reverse
@@ -8,8 +10,9 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework.throttling import SimpleRateThrottle, UserRateThrottle
-from core import verifications
+from core import status_codes, verifications
 from company.models import Company
+from subscription.models import Subscription
 from .views import PASSWORD_RESET_PURPOSE, REGISTER_PURPOSE
 
 User = get_user_model()
@@ -680,3 +683,348 @@ class PasswordChangeTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {new_access}")
         response = self.change(current="new-pass-456", new="another-pass-789")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class UserAPITestCase(APITestCase):
+    """Shared fixtures for ``/users`` management endpoints."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+        self.subscription.active_user_limit = 10
+        self.subscription.save(update_fields=["active_user_limit"])
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+            is_companyadmin=True,
+        )
+        self._grant_user_permissions(self.user)
+        self.client.force_authenticate(user=self.user)
+        self.list_url = reverse("user-list", kwargs={"version": "v1"})
+
+    def _grant_user_permissions(self, user, codenames=None):
+        codenames = codenames or [
+            "view_user",
+            "add_user",
+            "change_user",
+            "delete_user",
+        ]
+        ct = ContentType.objects.get_for_model(User)
+        perms = Permission.objects.filter(content_type=ct, codename__in=codenames)
+        user.user_permissions.add(*perms)
+
+    def _detail_url(self, user_id):
+        return reverse("user-detail", kwargs={"version": "v1", "pk": user_id})
+
+    def _create_company_user(self, name="Karim", phone="+8801711111111", **kwargs):
+        defaults = {
+            "phone_number": phone,
+            "name": name,
+            "password": "strong-pass-123",
+            "company": self.company,
+            "is_companyadmin": False,
+        }
+        defaults.update(kwargs)
+        return User.objects.create_user(**defaults)
+
+
+class UserAuthPermissionTests(UserAPITestCase):
+    def test_unauthenticated_list_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_missing_add_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_user_permissions(self.user, ["view_user"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "New User",
+                "phone_number": "+8801799999999",
+                "password": "strong-pass-123",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_view_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_change_permission_returns_403(self):
+        other = self._create_company_user(phone="+8801711100001")
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_user_permissions(self.user, ["view_user", "add_user"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(self._detail_url(other.pk), {"name": "Nope"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class UserCRUDTests(UserAPITestCase):
+    def test_list_includes_self(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], self.user.pk)
+
+    def test_create_user_success(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Site Manager",
+                "phone_number": "01711112222",
+                "email": "manager@example.com",
+                "password": "strong-pass-123",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["name"], "Site Manager")
+        self.assertEqual(response.data["phone_number"], "+8801711112222")
+        self.assertEqual(response.data["email"], "manager@example.com")
+        self.assertEqual(response.data["company"], self.company.pk)
+        self.assertTrue(response.data["is_active"])
+        self.assertFalse(response.data["is_companyadmin"])
+        self.assertNotIn("password", response.data)
+
+        created = User.objects.get(pk=response.data["id"])
+        self.assertTrue(created.check_password("strong-pass-123"))
+        self.assertFalse(created.is_staff)
+        self.assertFalse(created.is_superuser)
+
+    def test_create_forces_non_admin_flags(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Forced",
+                "phone_number": "+8801711113333",
+                "password": "strong-pass-123",
+                "is_companyadmin": True,
+                "is_active": False,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(response.data["is_companyadmin"])
+        self.assertTrue(response.data["is_active"])
+
+    def test_list_uses_list_serializer_fields(self):
+        other = self._create_company_user()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+        self.assertCountEqual(
+            response.data[0].keys(),
+            [
+                "id",
+                "name",
+                "phone_number",
+                "email",
+                "is_active",
+                "is_companyadmin",
+            ],
+        )
+        ids = {row["id"] for row in response.data}
+        self.assertIn(other.pk, ids)
+
+    def test_retrieve_user_detail(self):
+        other = self._create_company_user(name="Detail User", phone="+8801711114444")
+        response = self.client.get(self._detail_url(other.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Detail User")
+        self.assertIn("company", response.data)
+        self.assertNotIn("password", response.data)
+
+    def test_patch_name_email_and_is_active(self):
+        other = self._create_company_user(
+            name="Old Name",
+            phone="+8801711115555",
+            email="old@example.com",
+        )
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {
+                "name": "New Name",
+                "email": "new@example.com",
+                "is_active": False,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "New Name")
+        self.assertEqual(response.data["email"], "new@example.com")
+        self.assertFalse(response.data["is_active"])
+        other.refresh_from_db()
+        self.assertEqual(other.name, "New Name")
+        self.assertFalse(other.is_active)
+        self.assertTrue(other.check_password("strong-pass-123"))
+
+    def test_patch_ignores_phone_and_password(self):
+        other = self._create_company_user(phone="+8801711116666")
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {
+                "phone_number": "+8801799999999",
+                "password": "hijacked-pass-999",
+                "name": "Still Karim",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        other.refresh_from_db()
+        self.assertEqual(other.phone_number, "+8801711116666")
+        self.assertTrue(other.check_password("strong-pass-123"))
+        self.assertEqual(other.name, "Still Karim")
+
+    def test_patch_same_name_allowed(self):
+        other = self._create_company_user(name="Keep", phone="+8801711117777")
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {"is_active": False},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_put_not_allowed(self):
+        other = self._create_company_user(phone="+8801711118888")
+        response = self.client.put(
+            self._detail_url(other.pk),
+            {
+                "name": "Nope",
+                "phone_number": "+8801711118888",
+                "password": "strong-pass-123",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_delete_not_allowed(self):
+        other = self._create_company_user(phone="+8801711119999")
+        response = self.client.delete(self._detail_url(other.pk))
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertTrue(User.objects.filter(pk=other.pk).exists())
+
+
+class UserValidationTests(UserAPITestCase):
+    def test_duplicate_phone_rejected(self):
+        self._create_company_user(phone="+8801711118888")
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Another",
+                "phone_number": "+8801711118888",
+                "password": "strong-pass-123",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.ALREADY_REGISTERED,
+        )
+
+    def test_duplicate_name_in_company_rejected(self):
+        self._create_company_user(name="Karim", phone="+8801711119999")
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Karim",
+                "phone_number": "+8801711120000",
+                "password": "strong-pass-123",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.USER_NAME_EXISTS,
+        )
+
+    def test_weak_password_rejected(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Weak",
+                "phone_number": "+8801711121111",
+                "password": "123",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class UserFilterIsolationTests(UserAPITestCase):
+    def test_cannot_see_other_company_users(self):
+        other = Company.objects.create(name="Other Co")
+        User.objects.create_user(
+            phone_number="+8801811111111",
+            name="Foreign",
+            password="strong-pass-123",
+            company=other,
+        )
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], self.user.pk)
+
+    def test_filter_by_is_active(self):
+        active = self._create_company_user(name="Active", phone="+8801711122222")
+        inactive = self._create_company_user(
+            name="Inactive", phone="+8801711123333", is_active=False
+        )
+        response = self.client.get(self.list_url, {"is_active": "true"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {row["id"] for row in response.data}
+        self.assertIn(self.user.pk, ids)
+        self.assertIn(active.pk, ids)
+        self.assertNotIn(inactive.pk, ids)
+
+    def test_search_by_name(self):
+        self._create_company_user(name="Karim Mia", phone="+8801711124444")
+        self._create_company_user(name="Rahim Uddin", phone="+8801711125555")
+        response = self.client.get(self.list_url, {"search": "Karim"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["name"], "Karim Mia")
+
+
+class UserSubscriptionTests(UserAPITestCase):
+    def test_create_blocked_when_active_user_limit_exceeded(self):
+        self.subscription.active_user_limit = 1
+        self.subscription.save(update_fields=["active_user_limit"])
+        # self.user already counts as the one active slot
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Overflow",
+                "phone_number": "+8801711126666",
+                "password": "strong-pass-123",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_LIMIT_EXCEEDED,
+        )
+        self.assertFalse(User.objects.filter(name="Overflow").exists())
+
+    def test_reactivate_blocked_when_active_user_limit_exceeded(self):
+        inactive = self._create_company_user(
+            name="Inactive Slot",
+            phone="+8801711127777",
+            is_active=False,
+        )
+        self.subscription.active_user_limit = 1
+        self.subscription.save(update_fields=["active_user_limit"])
+
+        response = self.client.patch(
+            self._detail_url(inactive.pk),
+            {"is_active": True},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_LIMIT_EXCEEDED,
+        )
+        inactive.refresh_from_db()
+        self.assertFalse(inactive.is_active)

@@ -28,6 +28,9 @@ UNAUTHORIZED_SITE = "unauthorized_site"
 BILLING_CATEGORY_INACTIVE = "billing_category_inactive"
 BILLING_CATEGORY_NAME_EXISTS = "billing_category_name_exists"
 
+# Users
+USER_NAME_EXISTS = "user_name_exists"
+
 # Labours
 LABOUR_INACTIVE = "labour_inactive"
 LABOUR_NAME_EXISTS = "labour_name_exists"
