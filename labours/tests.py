@@ -42,6 +42,7 @@ class LabourAPITestCase(APITestCase):
             name="Achib Hossen",
             password="strong-pass-123",
             company=self.company,
+            is_companyadmin=True,
         )
         self._grant_labour_permissions(self.user)
         self.client.force_authenticate(user=self.user)
@@ -380,6 +381,57 @@ class LabourFilterIsolationTests(LabourAPITestCase):
             default_salary=500,
         )
         response = self.client.get(self._detail_url(foreign.pk))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class LabourAssignmentVisibilityTests(LabourAPITestCase):
+    def test_companyadmin_sees_all_company_labours(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        a = self._create_labour(name="On Padma", current_site=self.site)
+        b = self._create_labour(name="On Other", current_site=other_site)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(
+            [row["id"] for row in response.data],
+            [a.pk, b.pk],
+        )
+
+    def test_non_admin_sees_only_assigned_site_labours(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        assigned_labour = self._create_labour(name="Mine", current_site=self.site)
+        self._create_labour(name="Theirs", current_site=other_site)
+
+        self.user.is_companyadmin = False
+        self.user.save(update_fields=["is_companyadmin"])
+        UserSite.objects.create(
+            user=self.user,
+            site=self.site,
+            company=self.company,
+            created_by=self.user,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], assigned_labour.pk)
+
+    def test_non_admin_cannot_retrieve_unassigned_site_labour(self):
+        labour = self._create_labour(name="Hidden")
+        self.user.is_companyadmin = False
+        self.user.save(update_fields=["is_companyadmin"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self._detail_url(labour.pk))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 

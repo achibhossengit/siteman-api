@@ -60,11 +60,10 @@ class LabourViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return Labour.objects.none()
 
-        return (
-            Labour.objects.filter(company_id=user.company_id)
-            .select_related("current_site", "created_by")
-            .order_by("name")
-        )
+        qs = Labour.objects.filter(company_id=user.company_id)
+        if not user.is_companyadmin:
+            qs = qs.filter(current_site__users__user_id=user.id)
+        return qs.select_related("current_site", "created_by").order_by("name")
 
     @transaction.atomic
     def perform_create(self, serializer):
