@@ -140,6 +140,7 @@ class RegistrationFlowTests(APITestCase):
         user = User.objects.get(phone_number="+8801712345678")
         self.assertTrue(user.check_password("strong-pass-123"))
         self.assertEqual(user.company.name, "Achib Builders")
+        self.assertTrue(user.is_companyadmin)
         self.assertTrue(user.groups.filter(name="Company Admin").exists())
 
     def test_confirm_rejects_wrong_otp(self):

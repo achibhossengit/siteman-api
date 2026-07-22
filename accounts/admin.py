@@ -85,9 +85,10 @@ class UserAdmin(BaseUserAdmin):
         "phone_number",
         "company",
         "is_active",
+        "is_companyadmin",
         "is_staff",
     )
-    list_filter = ("is_active", "is_staff", "is_superuser", "company")
+    list_filter = ("is_active", "is_companyadmin", "is_staff", "is_superuser", "company")
     search_fields = ("phone_number", "name", "email")
     ordering = ("name",)
     readonly_fields = ("last_login", "created_at", "updated_at", "deleted_at")
@@ -101,6 +102,7 @@ class UserAdmin(BaseUserAdmin):
             {
                 "fields": (
                     "is_active",
+                    "is_companyadmin",
                     "is_staff",
                     "is_superuser",
                     "groups",
@@ -122,6 +124,7 @@ class UserAdmin(BaseUserAdmin):
                     "phone_number",
                     "name",
                     "company",
+                    "is_companyadmin",
                     "password1",
                     "password2",
                 ),

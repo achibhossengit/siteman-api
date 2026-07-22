@@ -95,7 +95,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("id", "name", "phone_number", "email", "company", "groups", "is_staff")
+        fields = (
+            "id",
+            "name",
+            "phone_number",
+            "email",
+            "company",
+            "groups",
+            "is_staff",
+            "is_companyadmin",
+        )
 
     def get_company(self, obj):
         if obj.company_id is None:

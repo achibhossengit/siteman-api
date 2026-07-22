@@ -500,6 +500,69 @@ class SiteCashAuthPermissionTests(SiteCashAPITestCase):
         response = self.client.get(self._list_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_companyadmin_bypasses_site_assignment(self):
+        UserSite.objects.filter(user=self.user, site=self.site).delete()
+        self.user.is_companyadmin = True
+        self.user.save(update_fields=["is_companyadmin"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": SiteCashType.DEPOSIT,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_companyadmin_still_needs_model_permission(self):
+        UserSite.objects.filter(user=self.user, site=self.site).delete()
+        self.user.is_companyadmin = True
+        self.user.save(update_fields=["is_companyadmin"])
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_cash_permissions(self.user, ["view_sitecash"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": SiteCashType.DEPOSIT,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_companyadmin_cannot_access_other_company_site(self):
+        UserSite.objects.filter(user=self.user, site=self.site).delete()
+        self.user.is_companyadmin = True
+        self.user.save(update_fields=["is_companyadmin"])
+        self.client.force_authenticate(user=self.user)
+
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811111112",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        response = self.client.get(self._list_url(other_site.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.UNAUTHORIZED_SITE,
+        )
+
 
 class SiteCashCRUDTests(SiteCashAPITestCase):
     def test_list_empty(self):

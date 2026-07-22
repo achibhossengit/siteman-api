@@ -80,6 +80,7 @@
             "email": "admin@siteman.local",
             "is_active": true,
             "is_staff": true,
+            "is_companyadmin": false,
             "deleted_at": null,
             "groups": [],
             "user_permissions": []
@@ -100,6 +101,7 @@
             "email": "achib@achibbuilders.local",
             "is_active": true,
             "is_staff": false,
+            "is_companyadmin": true,
             "deleted_at": null,
             "groups": [1],
             "user_permissions": []
@@ -120,6 +122,7 @@
             "email": "karim@achibbuilders.local",
             "is_active": true,
             "is_staff": false,
+            "is_companyadmin": false,
             "deleted_at": null,
             "groups": [2],
             "user_permissions": []
@@ -140,6 +143,7 @@
             "email": "salma@achibbuilders.local",
             "is_active": true,
             "is_staff": false,
+            "is_companyadmin": false,
             "deleted_at": null,
             "groups": [3],
             "user_permissions": []
@@ -160,6 +164,7 @@
             "email": "rafiq@padma.local",
             "is_active": true,
             "is_staff": false,
+            "is_companyadmin": true,
             "deleted_at": null,
             "groups": [1],
             "user_permissions": []

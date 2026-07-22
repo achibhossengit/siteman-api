@@ -148,6 +148,7 @@ class RegisterConfirmView(GenericAPIView):
             company=company,
             is_active=True,
             is_staff=False,
+            is_companyadmin=True,
         )
         user.password = payload["password"]
         user.save()

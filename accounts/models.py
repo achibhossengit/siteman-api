@@ -25,6 +25,10 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
     email = models.EmailField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    is_companyadmin = models.BooleanField(
+        default=False,
+        help_text="Company owner/admin; bypasses site assignment checks.",
+    )
     deleted_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
@@ -33,6 +37,11 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
     REQUIRED_FIELDS = ["name"]
 
     def has_site_access(self, site_id: int) -> bool:
+        if self.is_companyadmin:
+            # Bypass UserSite assignment; still enforce company boundary.
+            from sites.models import Site
+
+            return Site.objects.filter(id=site_id, company_id=self.company_id).exists()
         return self.sites.filter(site_id=site_id).exists()
 
     class Meta:
