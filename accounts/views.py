@@ -21,10 +21,11 @@ from core.exceptions import (
     SubscriptionLimitExceeded,
     SubscriptionLimitExceededError,
 )
+from core.permissions import DjangoModelPermissionsWithView
 from core.services import SubscriptionService
 from company.models import Company
-from .models import User
-from .permissions import get_target_user
+from .models import User, UserSite
+from .permissions import get_target_user, get_target_site
 from .serializers import (
     # registration serializers
     RegisterConfirmSerializer,
@@ -43,9 +44,11 @@ from .serializers import (
     CookieTokenBlacklistSerializer,
 
     # company user management
+    SiteUserSerializer,
     UserGroupSerializer,
     UserListSerializer,
     UserSerializer,
+    UserSiteSerializer,
 )
 
 REGISTER_PURPOSE = "register"
@@ -317,7 +320,7 @@ class UserViewSet(viewsets.ModelViewSet):
     """Company-scoped user management.
 
     List / retrieve / create / patch. No delete (soft-delete later).
-    Site and group membership will be nested later.
+    Groups and sites are nested under this resource.
     """
 
     serializer_class = UserSerializer
@@ -419,3 +422,108 @@ class UserGroupViewSet(
 
     def perform_destroy(self, instance):
         self.get_target_user().groups.remove(instance)
+
+
+class UserSiteViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Nested under ``/users/<user_pk>/sites``.
+
+    Assign with ``{"site": id}``. Authz: ``accounts.UserSite`` model perms only.
+    """
+
+    serializer_class = UserSiteSerializer
+    queryset = UserSite.objects.none()
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_target_user(self):
+        target = get_target_user(self.request, self)
+        if target is None:
+            raise NotFound()
+        return target
+
+    def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return UserSite.objects.none()
+        return (
+            UserSite.objects.filter(
+                company_id=self.request.user.company_id,
+                user=self.get_target_user(),
+            )
+            .select_related("user", "site", "created_by")
+            .order_by("id")
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        site = serializer.validated_data["site"]
+        user = self.get_target_user()
+        obj, _created = UserSite.objects.get_or_create(
+            user=user,
+            site=site,
+            defaults={
+                "company": request.user.company,
+                "created_by": request.user,
+            },
+        )
+        return Response(
+            self.get_serializer(obj).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SiteUserViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Nested under ``/sites/<site_pk>/users``.
+
+    Assign with ``{"user": id}``. Authz: ``accounts.UserSite`` model perms only.
+    """
+
+    serializer_class = SiteUserSerializer
+    queryset = UserSite.objects.none()
+    permission_classes = [IsAuthenticated, DjangoModelPermissionsWithView]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_target_site(self):
+        site = get_target_site(self.request, self)
+        if site is None:
+            raise NotFound()
+        return site
+
+    def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return UserSite.objects.none()
+        return (
+            UserSite.objects.filter(
+                company_id=self.request.user.company_id,
+                site=self.get_target_site(),
+            )
+            .select_related("user", "site", "created_by")
+            .order_by("id")
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+        site = self.get_target_site()
+        obj, _created = UserSite.objects.get_or_create(
+            user=user,
+            site=site,
+            defaults={
+                "company": request.user.company,
+                "created_by": request.user,
+            },
+        )
+        return Response(
+            self.get_serializer(obj).data,
+            status=status.HTTP_201_CREATED,
+        )

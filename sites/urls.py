@@ -1,5 +1,6 @@
 from rest_framework_nested import routers
 
+from accounts.views import SiteUserViewSet
 from labours.views import SiteLabourAttendanceViewSet, SiteLabourPaymentViewSet
 
 from .views import (
@@ -31,6 +32,7 @@ sites_router.register(
     SiteLabourAttendanceViewSet,
     basename="site-labour-attendance",
 )
+sites_router.register("users", SiteUserViewSet, basename="site-user")
 
 urlpatterns = [
     *router.urls,
