@@ -204,13 +204,28 @@ class LabourCRUDTests(LabourAPITestCase):
 
 
 class LabourValidationTests(LabourAPITestCase):
-    def test_current_site_is_required(self):
+    def test_current_site_is_optional(self):
         response = self.client.post(
             self.list_url,
             {"name": "Unassigned", "default_salary": 500},
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("current_site", response.data["errors"][0]["attr"])
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data["current_site"])
+        self.assertTrue(
+            Labour.objects.filter(name="Unassigned", current_site__isnull=True).exists()
+        )
+
+    def test_can_clear_current_site(self):
+        labour = self._create_labour(name="Movable")
+        response = self.client.patch(
+            self._detail_url(labour.pk),
+            {"current_site": None},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["current_site"])
+        labour.refresh_from_db()
+        self.assertIsNone(labour.current_site_id)
 
     def test_duplicate_name_rejected(self):
         self._create_labour(name="Karim")
@@ -433,6 +448,36 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
 
         response = self.client.get(self._detail_url(labour.pk))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_companyadmin_sees_unassigned_labours(self):
+        unassigned = self._create_labour(name="Pool", current_site=None)
+        assigned = self._create_labour(name="On Site", current_site=self.site)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(
+            [row["id"] for row in response.data],
+            [unassigned.pk, assigned.pk],
+        )
+
+    def test_non_admin_does_not_see_unassigned_labours(self):
+        self._create_labour(name="Pool", current_site=None)
+        assigned = self._create_labour(name="On Site", current_site=self.site)
+
+        self.user.is_companyadmin = False
+        self.user.save(update_fields=["is_companyadmin"])
+        UserSite.objects.create(
+            user=self.user,
+            site=self.site,
+            company=self.company,
+            created_by=self.user,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], assigned.pk)
 
 
 class LabourSubscriptionTests(LabourAPITestCase):
@@ -744,6 +789,38 @@ class LabourPaymentAuthPermissionTests(LabourPaymentAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
+
+    def test_unassigned_labour_blocks_create_for_companyadmin(self):
+        self.user.is_companyadmin = True
+        self.user.save(update_fields=["is_companyadmin"])
+        self.labour.current_site = None
+        self.labour.save(update_fields=["current_site"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "type": LabourPaymentType.PAYMENT,
+                "amount": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_UNASSIGNED,
+        )
+
+    def test_unassigned_labour_blocks_non_admin(self):
+        self.labour.current_site = None
+        self.labour.save(update_fields=["current_site"])
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_UNASSIGNED,
+        )
 
 
 class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
@@ -1359,6 +1436,34 @@ class LabourAttendanceAuthPermissionTests(LabourAttendanceAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
+
+    def test_unassigned_labour_blocks_create_for_companyadmin(self):
+        self.user.is_companyadmin = True
+        self.user.save(update_fields=["is_companyadmin"])
+        self.labour.current_site = None
+        self.labour.save(update_fields=["current_site"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            self.list_url,
+            {"date": str(timezone.localdate()), "present": "1"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_UNASSIGNED,
+        )
+
+    def test_unassigned_labour_blocks_non_admin(self):
+        self.labour.current_site = None
+        self.labour.save(update_fields=["current_site"])
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_UNASSIGNED,
+        )
 
 
 class LabourAttendanceCRUDTests(LabourAttendanceAPITestCase):

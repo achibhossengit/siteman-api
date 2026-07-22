@@ -31,9 +31,12 @@ def get_labour(request, view):
 
 class HasSiteAndLabourPermissions(HasSitePermissions):
     """
-    Permission for endpoints nested under:
-    1. Checks site permissions first.
-    2. Checks labour exists and is active (for non-safe methods).
+    Permission for endpoints nested under ``/labours/<labour_pk>/...``.
+
+    1. Resolve labour (company-scoped).
+    2. If labour has a current_site, enforce site membership / active site.
+    3. If labour is unassigned (current_site NULL), only companyadmin may access.
+    4. Enforce labour is_active for non-safe methods.
     """
 
     def get_site_id(self, request, view):
@@ -41,16 +44,19 @@ class HasSiteAndLabourPermissions(HasSitePermissions):
         return labour.current_site_id if labour else None
 
     def has_permission(self, request, view):
-        # 1. Check Site Permissions (Priotize this over labour permissions)
-        if not super().has_permission(request, view):
-            return False
-
-        # 2. Check Labour Permissions
         labour = get_labour(request, view)
         if not labour:
             return False
 
-        # Only enforce active status for destructive (non-safe) methods
+        if labour.current_site_id is None:
+            if not request.user.is_companyadmin:
+                raise PermissionDenied(
+                    detail="This labour is not assigned to a site.",
+                    code=status_codes.LABOUR_UNASSIGNED,
+                )
+        elif not super().has_permission(request, view):
+            return False
+
         if not labour.is_active and request.method not in SAFE_METHODS:
             raise PermissionDenied(
                 detail="This labour is inactive; no changes can be made.",

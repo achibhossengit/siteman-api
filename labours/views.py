@@ -121,6 +121,11 @@ class LabourPaymentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         labour = get_labour(self.request, self)
+        if labour.current_site_id is None:
+            raise ValidationError(
+                "Labour must be assigned to a site before creating records.",
+                code=status_codes.LABOUR_UNASSIGNED,
+            )
         try:
             serializer.save(
                 labour=labour,
@@ -305,6 +310,11 @@ class LabourAttendanceViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         labour = get_labour(self.request, self)
+        if labour.current_site_id is None:
+            raise ValidationError(
+                "Labour must be assigned to a site before creating records.",
+                code=status_codes.LABOUR_UNASSIGNED,
+            )
         try:
             serializer.save(
                 labour=labour,

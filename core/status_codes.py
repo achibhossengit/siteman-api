@@ -31,6 +31,7 @@ BILLING_CATEGORY_NAME_EXISTS = "billing_category_name_exists"
 # Labours
 LABOUR_INACTIVE = "labour_inactive"
 LABOUR_NAME_EXISTS = "labour_name_exists"
+LABOUR_UNASSIGNED = "labour_unassigned"
 
 # Labour work sessions
 SESSION_NO_RECORDS = "session_no_records"

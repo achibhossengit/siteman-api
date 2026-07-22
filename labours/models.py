@@ -9,9 +9,11 @@ from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
 class Labour(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     current_site = models.ForeignKey(
         "sites.Site",
-        on_delete=models.RESTRICT,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="labours",
-        help_text="One site at a time; reassign = move.",
+        help_text="One site at a time; reassign = move. NULL = unassigned.",
     )
     name = models.CharField(max_length=255)
     default_attendance = models.DecimalField(
