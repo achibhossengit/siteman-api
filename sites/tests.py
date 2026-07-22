@@ -1596,3 +1596,372 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["deposit"], 0)
         self.assertEqual(response.data["balance"], 0)
+
+
+class SiteBillingCategoryAPITestCase(APITestCase):
+    """Shared fixtures for nested ``/sites/<pk>/billing-categories``."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.subscription = Subscription.objects.get(company=self.company)
+        self.subscription.open_site_limit = 5
+        self.subscription.save(update_fields=["open_site_limit"])
+
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self._grant_billing_permissions(self.user)
+        self.client.force_authenticate(user=self.user)
+
+        self.site = Site.objects.create(
+            name="Padma Bridge",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, self.site)
+        self.list_url = self._list_url(self.site.pk)
+
+    def _grant_billing_permissions(self, user, codenames=None):
+        codenames = codenames or [
+            "view_billingcategory",
+            "add_billingcategory",
+            "change_billingcategory",
+            "delete_billingcategory",
+        ]
+        ct = ContentType.objects.get_for_model(BillingCategory)
+        perms = Permission.objects.filter(content_type=ct, codename__in=codenames)
+        user.user_permissions.add(*perms)
+
+    def _assign_site(self, user, site):
+        return UserSite.objects.create(
+            user=user,
+            site=site,
+            company=user.company,
+            created_by=user,
+        )
+
+    def _list_url(self, site_id):
+        return reverse(
+            "site-billing-category-list",
+            kwargs={"version": "v1", "site_pk": site_id},
+        )
+
+    def _detail_url(self, site_id, billing_id):
+        return reverse(
+            "site-billing-category-detail",
+            kwargs={"version": "v1", "site_pk": site_id, "pk": billing_id},
+        )
+
+    def _create_billing(self, site=None, **kwargs):
+        site = site or self.site
+        defaults = {
+            "company": site.company,
+            "site": site,
+            "name": "Basement",
+            "created_by": self.user,
+        }
+        defaults.update(kwargs)
+        return BillingCategory.objects.create(**defaults)
+
+
+class SiteBillingCategoryAuthPermissionTests(SiteBillingCategoryAPITestCase):
+    def test_unauthenticated_list_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_missing_add_permission_returns_403(self):
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_billing_permissions(self.user, ["view_billingcategory"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(self.list_url, {"name": "Floor-1"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_change_permission_returns_403(self):
+        billing = self._create_billing()
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_billing_permissions(
+            self.user, ["view_billingcategory", "add_billingcategory"]
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(
+            self._detail_url(self.site.pk, billing.pk),
+            {"name": "Renamed"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_not_site_member_returns_403(self):
+        UserSite.objects.filter(user=self.user, site=self.site).delete()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.UNAUTHORIZED_SITE,
+        )
+
+    def test_inactive_site_blocks_create(self):
+        self.site.is_active = False
+        self.site.save(update_fields=["is_active"])
+        response = self.client.post(self.list_url, {"name": "Floor-1"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SITE_INACTIVE,
+        )
+
+    def test_inactive_site_still_allows_list(self):
+        self._create_billing()
+        self.site.is_active = False
+        self.site.save(update_fields=["is_active"])
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_other_company_site_returns_403(self):
+        other = Company.objects.create(name="Other Co")
+        other_user = User.objects.create_user(
+            phone_number="+8801811111111",
+            name="Other Admin",
+            password="strong-pass-123",
+            company=other,
+        )
+        other_site = Site.objects.create(
+            name="Foreign",
+            company=other,
+            created_by=other_user,
+        )
+        response = self.client.get(self._list_url(other_site.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class SiteBillingCategoryCRUDTests(SiteBillingCategoryAPITestCase):
+    def test_list_empty(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_create_success(self):
+        response = self.client.post(
+            self.list_url,
+            {"name": "Basement", "display_order": 1},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["site"], self.site.pk)
+        self.assertEqual(response.data["company"], self.company.pk)
+        self.assertEqual(response.data["created_by"], self.user.pk)
+        self.assertEqual(response.data["name"], "Basement")
+        self.assertEqual(response.data["display_order"], 1)
+        self.assertTrue(response.data["is_active"])
+        self.assertFalse(response.data["is_done"])
+        self.assertTrue(
+            BillingCategory.objects.filter(
+                site=self.site, name="Basement"
+            ).exists()
+        )
+
+    def test_create_stamps_site_from_url(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        response = self.client.post(
+            self.list_url,
+            {"name": "Basement", "site": other_site.pk},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["site"], self.site.pk)
+
+    def test_list_uses_list_serializer_fields(self):
+        billing = self._create_billing()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertCountEqual(
+            response.data[0].keys(),
+            [
+                "id",
+                "name",
+                "display_order",
+                "is_active",
+                "is_done",
+                "created_at",
+                "updated_at",
+            ],
+        )
+        self.assertEqual(response.data[0]["id"], billing.pk)
+
+    def test_retrieve_billing_detail(self):
+        billing = self._create_billing(name="Floor-1")
+        response = self.client.get(self._detail_url(self.site.pk, billing.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Floor-1")
+        self.assertIn("company", response.data)
+        self.assertIn("created_by", response.data)
+
+    def test_patch_name_and_display_order(self):
+        billing = self._create_billing(name="Basement", display_order=0)
+        response = self.client.patch(
+            self._detail_url(self.site.pk, billing.pk),
+            {"name": "Floor-1", "display_order": 2},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Floor-1")
+        self.assertEqual(response.data["display_order"], 2)
+        billing.refresh_from_db()
+        self.assertEqual(billing.name, "Floor-1")
+
+    def test_mark_done_deactivates(self):
+        billing = self._create_billing(is_active=True, is_done=False)
+        response = self.client.patch(
+            self._detail_url(self.site.pk, billing.pk),
+            {"is_done": True},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_done"])
+        self.assertFalse(response.data["is_active"])
+        billing.refresh_from_db()
+        self.assertTrue(billing.is_done)
+        self.assertFalse(billing.is_active)
+
+    def test_create_as_done_is_inactive(self):
+        response = self.client.post(
+            self.list_url,
+            {"name": "Done Floor", "is_done": True, "is_active": True},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["is_done"])
+        self.assertFalse(response.data["is_active"])
+
+    def test_delete_billing(self):
+        billing = self._create_billing()
+        response = self.client.delete(self._detail_url(self.site.pk, billing.pk))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(BillingCategory.objects.filter(pk=billing.pk).exists())
+
+    def test_put_not_allowed(self):
+        billing = self._create_billing()
+        response = self.client.put(
+            self._detail_url(self.site.pk, billing.pk),
+            {"name": "Basement"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+class SiteBillingCategoryValidationTests(SiteBillingCategoryAPITestCase):
+    def test_duplicate_name_on_same_site_rejected(self):
+        self._create_billing(name="Basement")
+        response = self.client.post(self.list_url, {"name": "Basement"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.BILLING_CATEGORY_NAME_EXISTS,
+        )
+
+    def test_same_name_on_other_site_allowed(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, other_site)
+        self._create_billing(name="Basement", site=other_site)
+        response = self.client.post(self.list_url, {"name": "Basement"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_rename_to_existing_name_rejected(self):
+        self._create_billing(name="Basement")
+        other = self._create_billing(name="Floor-1")
+        response = self.client.patch(
+            self._detail_url(self.site.pk, other.pk),
+            {"name": "Basement"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.BILLING_CATEGORY_NAME_EXISTS,
+        )
+
+
+class SiteBillingCategoryFilterIsolationTests(SiteBillingCategoryAPITestCase):
+    def test_filter_by_is_active(self):
+        self._create_billing(name="Active", is_active=True)
+        self._create_billing(name="Inactive", is_active=False)
+        response = self.client.get(self.list_url, {"is_active": "false"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["name"], "Inactive")
+
+    def test_filter_by_is_done(self):
+        self._create_billing(name="Open", is_done=False)
+        self._create_billing(name="Done", is_done=True, is_active=False)
+        response = self.client.get(self.list_url, {"is_done": "true"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["name"], "Done")
+
+    def test_other_site_categories_not_listed(self):
+        other = Site.objects.create(
+            name="Metro",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._create_billing(name="Mine")
+        self._create_billing(name="Theirs", site=other)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["name"], "Mine")
+
+    def test_ordered_by_display_order(self):
+        self._create_billing(name="Second", display_order=2)
+        self._create_billing(name="First", display_order=1)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [row["name"] for row in response.data],
+            ["First", "Second"],
+        )
+
+
+class SiteBillingCategorySubscriptionTests(SiteBillingCategoryAPITestCase):
+    def test_create_blocked_when_subscription_expired(self):
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.post(self.list_url, {"name": "Basement"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )
+        self.assertFalse(BillingCategory.objects.exists())
+
+    def test_list_allowed_when_subscription_expired(self):
+        self._create_billing()
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_patch_blocked_when_subscription_expired(self):
+        billing = self._create_billing(name="Basement")
+        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
+        self.subscription.save(update_fields=["paid_until"])
+
+        response = self.client.patch(
+            self._detail_url(self.site.pk, billing.pk),
+            {"name": "Renamed"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )

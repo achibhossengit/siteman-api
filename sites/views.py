@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import ProtectedError, RestrictedError
+from django.db.utils import IntegrityError
 from django.utils.dateparse import parse_date
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
@@ -11,9 +12,11 @@ from core import status_codes
 from core.permissions import ActiveSubscriptionOrReadOnly
 from core.services import SubscriptionService
 from core.exceptions import SubscriptionLimitExceededError, SubscriptionExpiredError, SubscriptionExpired, SubscriptionLimitExceeded
-from .models import PrivateSiteCash, Site, SiteCash
+from .models import BillingCategory, PrivateSiteCash, Site, SiteCash
 from .permissions import HasSitePermissions
 from .serializers import (
+    BillingCategoryListSerializer,
+    BillingCategorySerializer,
     PrivateSiteCashListSerializer,
     PrivateSiteCashSerializer,
     SiteCashListSerializer,
@@ -114,6 +117,71 @@ class SiteViewSet(viewsets.ModelViewSet):
         serializer = SiteDailyReportSerializer(data=report)
         serializer.is_valid(raise_exception=True)
         return Response(serializer.data)
+
+
+class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
+    """Nested under ``/sites/<site_pk>/billing-categories``."""
+
+    serializer_class = BillingCategorySerializer
+    queryset = BillingCategory.objects.none()
+    permission_classes = [
+        *api_settings.DEFAULT_PERMISSION_CLASSES,
+        HasSitePermissions,
+    ]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    filterset_fields = ["is_active", "is_done"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return BillingCategoryListSerializer
+        return BillingCategorySerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return BillingCategory.objects.none()
+
+        return (
+            BillingCategory.objects.filter(
+                company_id=user.company_id,
+                site_id=int(self.kwargs["site_pk"]),
+            )
+            .select_related("site", "created_by")
+            .order_by("display_order", "id")
+        )
+
+    def _apply_status_defaults(self, serializer):
+        data = serializer.validated_data
+        # Mark as done => deactivate.
+        if data.get("is_done") is True:
+            data["is_active"] = False
+        elif serializer.instance is None and "is_active" not in serializer.initial_data:
+            # HTML form omission coerces missing booleans to False; restore model default.
+            data["is_active"] = True
+
+    def perform_create(self, serializer):
+        self._apply_status_defaults(serializer)
+        try:
+            serializer.save(
+                site_id=int(self.kwargs["site_pk"]),
+                company=self.request.user.company,
+                created_by=self.request.user,
+            )
+        except IntegrityError:
+            raise serializers.ValidationError(
+                "A billing category with this name already exists on this site.",
+                code=status_codes.BILLING_CATEGORY_NAME_EXISTS,
+            )
+
+    def perform_update(self, serializer):
+        self._apply_status_defaults(serializer)
+        try:
+            serializer.save()
+        except IntegrityError:
+            raise serializers.ValidationError(
+                "A billing category with this name already exists on this site.",
+                code=status_codes.BILLING_CATEGORY_NAME_EXISTS,
+            )
 
 
 class SiteCashViewSet(viewsets.ModelViewSet):

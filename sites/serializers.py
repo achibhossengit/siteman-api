@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from core import status_codes
-from .models import PrivateSiteCash, Site, SiteCash
+from .models import BillingCategory, PrivateSiteCash, Site, SiteCash
 
 
 class SiteListSerializer(serializers.ModelSerializer):
@@ -56,6 +56,44 @@ class SiteSerializer(serializers.ModelSerializer):
                 "Closed sites cannot be edited.", code=status_codes.SITE_CLOSED
             )
         return attrs
+
+
+class BillingCategoryListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BillingCategory
+        fields = [
+            "id",
+            "name",
+            "display_order",
+            "is_active",
+            "is_done",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class BillingCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BillingCategory
+        fields = [
+            "id",
+            "site",
+            "name",
+            "display_order",
+            "is_active",
+            "is_done",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "site",
+            "company",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class SiteLedgerValidationMixin:
