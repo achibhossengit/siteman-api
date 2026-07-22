@@ -53,11 +53,10 @@ class SiteViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return Site.objects.none()
 
-        return (
-            Site.objects.filter(company_id=user.company_id)
-            .select_related("created_by")
-            .order_by("-created_at")
-        )
+        qs = Site.objects.filter(company_id=user.company_id)
+        if not user.is_companyadmin:
+            qs = qs.filter(users__user_id=user.id)
+        return qs.select_related("created_by").order_by("-created_at")
 
     @transaction.atomic
     def perform_create(self, serializer):

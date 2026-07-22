@@ -49,6 +49,7 @@ class SiteAPITestCase(APITestCase):
             name="Achib Hossen",
             password="strong-pass-123",
             company=self.company,
+            is_companyadmin=True,
         )
         self._grant_site_permissions(self.user)
         self.client.force_authenticate(user=self.user)
@@ -277,6 +278,46 @@ class SiteFilterIsolationTests(SiteAPITestCase):
             created_by=other_user,
         )
         response = self.client.get(self._detail_url(other_site.pk))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class SiteAssignmentVisibilityTests(SiteAPITestCase):
+    def test_companyadmin_sees_all_company_sites(self):
+        a = self._create_site(name="Alpha")
+        b = self._create_site(name="Beta")
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(
+            [row["id"] for row in response.data],
+            [a.pk, b.pk],
+        )
+
+    def test_non_admin_sees_only_assigned_sites(self):
+        assigned = self._create_site(name="Assigned")
+        self._create_site(name="Unassigned")
+
+        self.user.is_companyadmin = False
+        self.user.save(update_fields=["is_companyadmin"])
+        UserSite.objects.create(
+            user=self.user,
+            site=assigned,
+            company=self.company,
+            created_by=self.user,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], assigned.pk)
+
+    def test_non_admin_cannot_retrieve_unassigned_site(self):
+        site = self._create_site(name="Hidden")
+        self.user.is_companyadmin = False
+        self.user.save(update_fields=["is_companyadmin"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self._detail_url(site.pk))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
