@@ -749,7 +749,6 @@ class UserAuthPermissionTests(UserAPITestCase):
             {
                 "name": "New User",
                 "phone_number": "+8801799999999",
-                "password": "strong-pass-123",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -785,7 +784,6 @@ class UserCRUDTests(UserAPITestCase):
                 "name": "Site Manager",
                 "phone_number": "01711112222",
                 "email": "manager@example.com",
-                "password": "strong-pass-123",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -798,9 +796,24 @@ class UserCRUDTests(UserAPITestCase):
         self.assertNotIn("password", response.data)
 
         created = User.objects.get(pk=response.data["id"])
-        self.assertTrue(created.check_password("strong-pass-123"))
+        # System-generated password — not the (ignored) client-supplied value.
+        self.assertFalse(created.check_password("strong-pass-123"))
+        self.assertTrue(created.has_usable_password())
         self.assertFalse(created.is_staff)
         self.assertFalse(created.is_superuser)
+
+    def test_create_ignores_client_password(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "No Client Pass",
+                "phone_number": "+8801711112211",
+                "password": "client-supplied-pass-123",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created = User.objects.get(pk=response.data["id"])
+        self.assertFalse(created.check_password("client-supplied-pass-123"))
 
     def test_create_forces_non_admin_flags(self):
         response = self.client.post(
@@ -808,7 +821,6 @@ class UserCRUDTests(UserAPITestCase):
             {
                 "name": "Forced",
                 "phone_number": "+8801711113333",
-                "password": "strong-pass-123",
                 "is_companyadmin": True,
                 "is_active": False,
             },
@@ -867,7 +879,7 @@ class UserCRUDTests(UserAPITestCase):
         self.assertFalse(other.is_active)
         self.assertTrue(other.check_password("strong-pass-123"))
 
-    def test_patch_ignores_phone_and_password(self):
+    def test_patch_phone_allowed_password_ignored(self):
         other = self._create_company_user(phone="+8801711116666")
         response = self.client.patch(
             self._detail_url(other.pk),
@@ -879,7 +891,7 @@ class UserCRUDTests(UserAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         other.refresh_from_db()
-        self.assertEqual(other.phone_number, "+8801711116666")
+        self.assertEqual(other.phone_number, "+8801799999999")
         self.assertTrue(other.check_password("strong-pass-123"))
         self.assertEqual(other.name, "Still Karim")
 
@@ -918,7 +930,6 @@ class UserValidationTests(UserAPITestCase):
             {
                 "name": "Another",
                 "phone_number": "+8801711118888",
-                "password": "strong-pass-123",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -934,7 +945,6 @@ class UserValidationTests(UserAPITestCase):
             {
                 "name": "Karim",
                 "phone_number": "+8801711120000",
-                "password": "strong-pass-123",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -942,17 +952,6 @@ class UserValidationTests(UserAPITestCase):
             response.data["errors"][0]["code"],
             status_codes.USER_NAME_EXISTS,
         )
-
-    def test_weak_password_rejected(self):
-        response = self.client.post(
-            self.list_url,
-            {
-                "name": "Weak",
-                "phone_number": "+8801711121111",
-                "password": "123",
-            },
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class UserFilterIsolationTests(UserAPITestCase):
@@ -1000,7 +999,6 @@ class UserSubscriptionTests(UserAPITestCase):
             {
                 "name": "Overflow",
                 "phone_number": "+8801711126666",
-                "password": "strong-pass-123",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1547,3 +1545,161 @@ class SiteNestedUserSiteCRUDTests(SiteNestedUserSiteAPITestCase):
             {"user": self.other_user.pk},
         )
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+class UserProfileAPITestCase(APITestCase):
+    """Shared fixtures for ``GET /profile``."""
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Achib Builders")
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+            email="achib@example.com",
+            is_companyadmin=True,
+        )
+        self.site_manager = Group.objects.get(name="Site Manager")
+        self.user.groups.add(self.site_manager)
+        ct = ContentType.objects.get_for_model(User)
+        self.view_user_perm = Permission.objects.get(
+            content_type=ct, codename="view_user"
+        )
+        self.user.user_permissions.add(self.view_user_perm)
+
+        self.site = Site.objects.create(
+            name="Padma Bridge",
+            company=self.company,
+            created_by=self.user,
+        )
+        UserSite.objects.create(
+            user=self.user,
+            site=self.site,
+            company=self.company,
+            created_by=self.user,
+        )
+        self.client.force_authenticate(user=self.user)
+        self.url = reverse("user-profile", kwargs={"version": "v1"})
+
+
+class UserProfileAuthTests(UserProfileAPITestCase):
+    def test_unauthenticated_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_post_not_allowed(self):
+        response = self.client.post(self.url, {})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_put_not_allowed(self):
+        response = self.client.put(self.url, {"name": "Nope"})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_delete_not_allowed(self):
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+class UserProfileRetrieveTests(UserProfileAPITestCase):
+    def test_get_returns_basic_info(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.user.pk)
+        self.assertEqual(response.data["name"], "Achib Hossen")
+        self.assertEqual(response.data["phone_number"], "+8801712345678")
+        self.assertEqual(response.data["email"], "achib@example.com")
+        self.assertTrue(response.data["is_companyadmin"])
+        self.assertEqual(
+            response.data["company"],
+            {"id": self.company.pk, "name": "Achib Builders"},
+        )
+
+    def test_get_returns_groups(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn(
+            {"id": self.site_manager.pk, "name": "Site Manager"},
+            response.data["groups"],
+        )
+
+    def test_get_returns_permissions(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("accounts.view_user", response.data["permissions"])
+
+    def test_get_returns_assigned_sites(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["sites"]), 1)
+        self.assertEqual(
+            response.data["sites"][0],
+            {
+                "id": self.site.pk,
+                "name": "Padma Bridge",
+                "is_active": True,
+                "is_closed": False,
+            },
+        )
+
+    def test_get_is_only_request_user(self):
+        other = User.objects.create_user(
+            phone_number="+8801711111111",
+            name="Karim",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.user.pk)
+        self.assertNotEqual(response.data["id"], other.pk)
+
+
+class UserProfileUpdateTests(UserProfileAPITestCase):
+    def test_patch_basic_info(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "name": "New Achib",
+                "email": "new@example.com",
+                "phone_number": "+8801712345600",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "New Achib")
+        self.assertEqual(response.data["email"], "new@example.com")
+        self.assertEqual(response.data["phone_number"], "+8801712345600")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.name, "New Achib")
+        self.assertEqual(self.user.phone_number, "+8801712345600")
+
+    def test_patch_ignores_flags(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "is_companyadmin": False,
+                "is_active": False,
+                "is_staff": True,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_companyadmin)
+        self.assertTrue(self.user.is_active)
+        self.assertFalse(self.user.is_staff)
+
+    def test_patch_ignores_password(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "password": "newer-pass-456",
+                "current_password": "strong-pass-123",
+                "name": "Still Achib",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Still Achib")
+        self.assertNotIn("access", response.data)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("strong-pass-123"))
+        self.assertEqual(self.user.name, "Still Achib")

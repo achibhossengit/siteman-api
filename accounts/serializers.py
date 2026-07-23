@@ -1,3 +1,5 @@
+import secrets
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -100,8 +102,16 @@ class PasswordChangeSerializer(serializers.Serializer):
     
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    """Own profile: GET returns full snapshot; PATCH updates basic fields.
+
+    Writable: name, email, phone_number.
+    Password changes go through ``/auth/password/change`` or reset.
+    """
+
     company = serializers.SerializerMethodField()
     groups = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
+    sites = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -111,10 +121,26 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "phone_number",
             "email",
             "company",
-            "groups",
+            "is_active",
             "is_staff",
             "is_companyadmin",
+            "groups",
+            "permissions",
+            "sites",
         )
+        read_only_fields = (
+            "id",
+            "company",
+            "is_active",
+            "is_staff",
+            "is_companyadmin",
+            "groups",
+            "permissions",
+            "sites",
+        )
+        extra_kwargs = {
+            "phone_number": {"validators": []},
+        }
 
     def get_company(self, obj):
         if obj.company_id is None:
@@ -122,7 +148,57 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return {"id": obj.company_id, "name": obj.company.name}
 
     def get_groups(self, obj):
-        return list(obj.groups.values_list("name", flat=True))
+        return [
+            {"id": group.pk, "name": group.name}
+            for group in obj.groups.all().order_by("name")
+        ]
+
+    def get_permissions(self, obj):
+        return sorted(obj.get_all_permissions())
+
+    def get_sites(self, obj):
+        assignments = (
+            obj.sites.select_related("site")
+            .order_by("site__name", "id")
+        )
+        return [
+            {
+                "id": assignment.site_id,
+                "name": assignment.site.name,
+                "is_active": assignment.site.is_active,
+                "is_closed": assignment.site.is_closed,
+            }
+            for assignment in assignments
+        ]
+
+    def validate_phone_number(self, value):
+        try:
+            phone = normalize_bd_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages[0])
+        qs = User.objects.filter(phone_number=phone)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "This phone number is already registered.",
+                code=status_codes.ALREADY_REGISTERED,
+            )
+        return phone
+
+    def validate_name(self, value):
+        company_id = getattr(self.instance, "company_id", None)
+        if company_id is None:
+            return value
+        qs = User.objects.filter(company_id=company_id, name=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "A user with this name already exists in your company.",
+                code=status_codes.USER_NAME_EXISTS,
+            )
+        return value
 
 
 class UserListSerializer(serializers.ModelSerializer):
@@ -141,14 +217,10 @@ class UserListSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     """Create / retrieve / partial update.
 
-    Phone and password are create-only; patch may change name, email, is_active.
+    Create: name, phone, optional email — password is system-generated.
+    Patch: name, email, phone, is_active.
+    Password changes go through ``/auth/password/change`` or reset.
     """
-
-    password = serializers.CharField(
-        write_only=True,
-        required=False,
-        style={"input_type": "password"},
-    )
 
     class Meta:
         model = User
@@ -157,7 +229,6 @@ class UserSerializer(serializers.ModelSerializer):
             "name",
             "phone_number",
             "email",
-            "password",
             "is_active",
             "is_companyadmin",
             "company",
@@ -177,12 +248,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.instance is not None:
-            # Patch: phone/password immutable; is_active writable for activate/deactivate.
-            self.fields["phone_number"].read_only = True
-            self.fields.pop("password", None)
-        else:
-            self.fields["password"].required = True
+        if self.instance is None:
             # Create always stamps is_active=True in the viewset.
             self.fields["is_active"].read_only = True
 
@@ -191,7 +257,10 @@ class UserSerializer(serializers.ModelSerializer):
             phone = normalize_bd_phone(value)
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.messages[0])
-        if User.objects.filter(phone_number=phone).exists():
+        qs = User.objects.filter(phone_number=phone)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
             raise serializers.ValidationError(
                 "This phone number is already registered.",
                 code=status_codes.ALREADY_REGISTERED,
@@ -210,12 +279,9 @@ class UserSerializer(serializers.ModelSerializer):
             )
         return value
 
-    def validate_password(self, value):
-        validate_password(value)
-        return value
-
     def create(self, validated_data):
-        password = validated_data.pop("password")
+        # Unknown to the creator; first login uses forgot-password reset.
+        password = secrets.token_urlsafe(32)
         return User.objects.create_user(password=password, **validated_data)
 
 

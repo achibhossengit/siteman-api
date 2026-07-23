@@ -316,10 +316,54 @@ class CookieTokenBlacklistView(TokenBlacklistView):
         return response
 
 
+class UserProfileViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Current authenticated user's profile.
+
+    ``GET /profile`` — basic info, groups, permissions, assigned sites.
+    ``PATCH /profile`` — update name, email, phone.
+    Password changes use ``/auth/password/change`` or reset.
+    No Django model-permission gate (any authenticated user).
+    """
+
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "patch", "head", "options"]
+
+    def get_object(self):
+        return (
+            User.objects.filter(pk=self.request.user.pk)
+            .select_related("company")
+            .prefetch_related(
+                "groups",
+                "groups__permissions",
+                "user_permissions",
+                "sites__site",
+            )
+            .get()
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_object())
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(self.get_serializer(self.get_object()).data)
+
+
 class UserViewSet(viewsets.ModelViewSet):
     """Company-scoped user management.
 
     List / retrieve / create / patch. No delete (soft-delete later).
+    Create sets a random password (user resets via forgot-password).
+    Patch may update name, email, phone, is_active — not password.
     Groups and sites are nested under this resource.
     """
 

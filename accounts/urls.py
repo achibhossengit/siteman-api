@@ -13,6 +13,7 @@ from .views import (
     CookieTokenRefreshView,
     CookieTokenBlacklistView,
     UserGroupViewSet,
+    UserProfileViewSet,
     UserSiteViewSet,
     UserViewSet,
 )
@@ -45,6 +46,12 @@ urlpatterns = [
     path("auth/token/obtain", CookieTokenObtainPairView.as_view(), name="token-obtain"),
     path("auth/token/refresh", CookieTokenRefreshView.as_view(), name="token-refresh"),
     path("auth/token/blacklist", CookieTokenBlacklistView.as_view(), name="token-blacklist"),
+
+    path(
+        "profile",
+        UserProfileViewSet.as_view({"get": "retrieve", "patch": "partial_update"}),
+        name="user-profile",
+    ),
 
     *router.urls,
     *users_router.urls,
