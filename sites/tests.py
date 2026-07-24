@@ -1479,10 +1479,10 @@ class SiteDailyReportAuthTests(SiteDailyReportAPITestCase):
         response = self.client.get(url, {"date": str(self.report_date)})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_date_query_param_required(self):
+    def test_date_query_param_defaults_to_today(self):
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["errors"][0]["attr"], "date")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["date"], str(self.report_date))
 
     def test_invalid_date_returns_400(self):
         response = self.client.get(self.url, {"date": "not-a-date"})

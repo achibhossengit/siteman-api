@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.db.models import ProtectedError, RestrictedError
 from django.db.utils import IntegrityError
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
@@ -93,20 +94,18 @@ class SiteViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, ActiveSubscriptionOrReadOnly, HasSitePermissions],
     )
     def daily_reports(self, request, pk=None, **kwargs):
-        """Day summary for this site. Query param ``date`` (YYYY-MM-DD) is required.
+        """Day summary for this site. Query param ``date`` (YYYY-MM-DD) is optional; defaults to today.
         """
         date_raw = request.query_params.get("date")
-        if not date_raw:
-            raise serializers.ValidationError(
-                {"date": "This query parameter is required."},
-                code=status_codes.INVALID,
-            )
-        report_date = parse_date(date_raw)
-        if report_date is None:
-            raise serializers.ValidationError(
-                {"date": "Enter a valid date (YYYY-MM-DD)."},
-                code=status_codes.INVALID,
-            )
+        if date_raw:
+            report_date = parse_date(date_raw)
+            if report_date is None:
+                raise serializers.ValidationError(
+                    {"date": "Enter a valid date (YYYY-MM-DD)."},
+                    code=status_codes.INVALID,
+                )
+        else:
+            report_date = timezone.localdate()
 
         site = self.get_object()
         include_private = request.user.has_perm("sites.view_privatesitecash")
