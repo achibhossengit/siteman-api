@@ -171,11 +171,14 @@ class LabourPaymentSerializer(
 
 
 class SiteLabourPaymentListSerializer(serializers.ModelSerializer):
+    labour_name = serializers.CharField(source="labour.name", read_only=True)
+
     class Meta:
         model = LabourPayment
         fields = [
             "id",
-            "labour",
+            "labour_id",
+            "labour_name",
             "date",
             "type",
             "category",
@@ -245,11 +248,14 @@ class SiteLabourPaymentSerializer(
 
 
 class SiteLabourAttendanceListSerializer(serializers.ModelSerializer):
+    labour_name = serializers.CharField(source="labour.name", read_only=True)
+
     class Meta:
         model = Attendance
         fields = [
             "id",
-            "labour",
+            "labour_id",
+            "labour_name",
             "date",
             "present",
             "salary",
