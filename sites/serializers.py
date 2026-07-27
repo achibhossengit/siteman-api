@@ -221,7 +221,6 @@ class SiteDailyReportSerializer(serializers.Serializer):
     remaining = serializers.IntegerField()
     previous_balance = serializers.IntegerField()
     balance = serializers.IntegerField()
-    labour_session_count = serializers.IntegerField()
     # Included only when the user has ``sites.view_privatesitecash``.
     total_salary = serializers.IntegerField(required=False)
     extra_earnings = serializers.IntegerField(required=False)

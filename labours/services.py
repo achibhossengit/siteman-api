@@ -1,13 +1,15 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 from django.db.models import (
+    Count,
     DecimalField,
     ExpressionWrapper,
     F,
     Max,
     Min,
+    Q,
     Sum,
     Value,
 )
@@ -20,25 +22,11 @@ from .models import (
     LabourPayment,
     LabourPaymentType,
     LabourSession,
-    LabourSessionDetail,
 )
 
-UNCATEGORIZED = "uncategorized"
 _ZERO = Value(0)
 _ZERO_DEC = Value(Decimal("0"))
 _DECIMAL = DecimalField(max_digits=20, decimal_places=2)
-
-
-@dataclass
-class SiteBreakdown:
-    site_id: int
-    site_name: str
-    present_days: Decimal = Decimal("0")
-    salary_earnings: int = 0
-    extra_earnings: int = 0
-    total_payment: int = 0
-    total_return: int = 0
-    payment_details: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -50,7 +38,8 @@ class SessionSnapshot:
     extra_earnings: int
     total_payment: int
     total_return: int
-    site_breakdowns: list
+    affected_attendance_rows: int
+    affected_payment_rows: int
 
     @property
     def total_earnings(self):
@@ -72,14 +61,8 @@ def _date_filter(*, after=None, start_date=None, end_date=None):
     return filters
 
 
-def _get_or_create_breakdown(breakdowns, site_id, site_name):
-    if site_id not in breakdowns:
-        breakdowns[site_id] = SiteBreakdown(site_id=site_id, site_name=site_name)
-    return breakdowns[site_id]
-
-
 def build_session_snapshot(labour, *, after=None, start_date=None, end_date=None):
-    """Aggregate the labour's records in the given date window via SQL GROUP BY.
+    """Aggregate the labour's records in the given date window.
 
     Returns ``None`` when the window contains no records.
     """
@@ -87,72 +70,54 @@ def build_session_snapshot(labour, *, after=None, start_date=None, end_date=None
     attendance_qs = Attendance.objects.filter(labour=labour, **date_filter)
     payment_qs = LabourPayment.objects.filter(labour=labour, **date_filter)
 
-    # present * salary per row, then SUM — done in the database.
-    # Min/Max(date) fold into the same GROUP BY so we avoid extra range queries.
     salary_expr = ExpressionWrapper(
         Coalesce(F("present"), _ZERO_DEC) * Coalesce(F("salary"), _ZERO),
         output_field=_DECIMAL,
     )
-    attendance_rows = list(
-        attendance_qs.values("site_id", "site__name").annotate(
-            present_days=Coalesce(Sum(Coalesce(F("present"), _ZERO_DEC)), _ZERO_DEC),
-            salary_earnings=Coalesce(Sum(salary_expr), _ZERO_DEC),
-            extra_earnings=Coalesce(Sum(Coalesce(F("extra"), _ZERO)), _ZERO),
-            earliest=Min("date"),
-            latest=Max("date"),
-        )
+    attendance_agg = attendance_qs.aggregate(
+        present_days=Coalesce(Sum(Coalesce(F("present"), _ZERO_DEC)), _ZERO_DEC),
+        salary_earnings=Coalesce(Sum(salary_expr), _ZERO_DEC),
+        extra_earnings=Coalesce(Sum(Coalesce(F("extra"), _ZERO)), _ZERO),
+        earliest=Min("date"),
+        latest=Max("date"),
+        row_count=Count("id"),
+    )
+    payment_agg = payment_qs.aggregate(
+        total_payment=Coalesce(
+            Sum("amount", filter=Q(type=LabourPaymentType.PAYMENT)),
+            _ZERO,
+        ),
+        total_return=Coalesce(
+            Sum("amount", filter=Q(type=LabourPaymentType.RETURN)),
+            _ZERO,
+        ),
+        earliest=Min("date"),
+        latest=Max("date"),
+        row_count=Count("id"),
     )
 
-    # Static type/category choices → group once in SQL, assemble JSON in Python.
-    payment_rows = list(
-        payment_qs.values("site_id", "site__name", "type", "category").annotate(
-            total=Sum("amount"),
-            earliest=Min("date"),
-            latest=Max("date"),
-        )
-    )
-
-    if not attendance_rows and not payment_rows:
+    attendance_count = attendance_agg["row_count"] or 0
+    payment_count = payment_agg["row_count"] or 0
+    if attendance_count == 0 and payment_count == 0:
         return None
 
-    starts = []
-    ends = []
-    breakdowns = {}
-    for row in attendance_rows:
-        breakdown = _get_or_create_breakdown(
-            breakdowns, row["site_id"], row["site__name"]
-        )
-        breakdown.present_days = row["present_days"] or Decimal("0")
-        breakdown.salary_earnings = int(row["salary_earnings"] or 0)
-        breakdown.extra_earnings = int(row["extra_earnings"] or 0)
-        starts.append(row["earliest"])
-        ends.append(row["latest"])
+    starts = [
+        d for d in (attendance_agg["earliest"], payment_agg["earliest"]) if d is not None
+    ]
+    ends = [
+        d for d in (attendance_agg["latest"], payment_agg["latest"]) if d is not None
+    ]
 
-    for row in payment_rows:
-        breakdown = _get_or_create_breakdown(
-            breakdowns, row["site_id"], row["site__name"]
-        )
-        amount = int(row["total"] or 0)
-        if row["type"] == LabourPaymentType.PAYMENT:
-            breakdown.total_payment += amount
-        else:
-            breakdown.total_return += amount
-        bucket = breakdown.payment_details.setdefault(row["type"], {})
-        category = row["category"] or UNCATEGORIZED
-        bucket[category] = bucket.get(category, 0) + amount
-        starts.append(row["earliest"])
-        ends.append(row["latest"])
-
-    site_breakdowns = sorted(breakdowns.values(), key=lambda b: b.site_id)
     return SessionSnapshot(
         start_date=min(starts),
         end_date=max(ends),
-        present_days=sum((b.present_days for b in site_breakdowns), Decimal("0")),
-        salary_earnings=sum(b.salary_earnings for b in site_breakdowns),
-        extra_earnings=sum(b.extra_earnings for b in site_breakdowns),
-        total_payment=sum(b.total_payment for b in site_breakdowns),
-        total_return=sum(b.total_return for b in site_breakdowns),
-        site_breakdowns=site_breakdowns,
+        present_days=attendance_agg["present_days"] or Decimal("0"),
+        salary_earnings=int(attendance_agg["salary_earnings"] or 0),
+        extra_earnings=int(attendance_agg["extra_earnings"] or 0),
+        total_payment=int(payment_agg["total_payment"] or 0),
+        total_return=int(payment_agg["total_return"] or 0),
+        affected_attendance_rows=attendance_count,
+        affected_payment_rows=payment_count,
     )
 
 
@@ -160,7 +125,7 @@ def create_labour_session(*, labour, user):
     """Close the labour's open period into a new work session.
 
     Aggregates every record dated after ``labour.last_session_date`` and
-    stores the totals plus per-site details. Sealing is done by the
+    stores the totals plus effected row count. Sealing is done by the
     ``LabourSession`` post_save signal.
     """
     with transaction.atomic():
@@ -174,7 +139,6 @@ def create_labour_session(*, labour, user):
         try:
             session = LabourSession.objects.create(
                 labour=labour,
-                site=labour.current_site,
                 start_date=snapshot.start_date,
                 end_date=snapshot.end_date,
                 present_days=snapshot.present_days,
@@ -182,6 +146,8 @@ def create_labour_session(*, labour, user):
                 extra_earnings=snapshot.extra_earnings,
                 total_payment=snapshot.total_payment,
                 total_return=snapshot.total_return,
+                affected_attendance_rows=snapshot.affected_attendance_rows,
+                affected_payment_rows=snapshot.affected_payment_rows,
                 company=labour.company,
                 created_by=user,
             )
@@ -191,56 +157,21 @@ def create_labour_session(*, labour, user):
                 code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
             )
 
-        LabourSessionDetail.objects.bulk_create(
-            [
-                LabourSessionDetail(
-                    session=session,
-                    site_id=breakdown.site_id,
-                    site_name=breakdown.site_name,
-                    present_days=breakdown.present_days,
-                    salary_earnings=breakdown.salary_earnings,
-                    extra_earnings=breakdown.extra_earnings,
-                    total_payment=breakdown.total_payment,
-                    total_return=breakdown.total_return,
-                    payment_details=breakdown.payment_details,
-                    company=labour.company,
-                    created_by=user,
-                )
-                for breakdown in snapshot.site_breakdowns
-            ]
-        )
-
     return session
 
 
 def _snapshot_matches_session(snapshot, session):
-    if (
-        snapshot.start_date != session.start_date
-        or snapshot.end_date != session.end_date
-        or snapshot.present_days != session.present_days
-        or snapshot.salary_earnings != session.salary_earnings
-        or snapshot.extra_earnings != session.extra_earnings
-        or snapshot.total_payment != session.total_payment
-        or snapshot.total_return != session.total_return
-    ):
-        return False
-
-    details = {detail.site_id: detail for detail in session.details.all()}
-    if set(details) != {b.site_id for b in snapshot.site_breakdowns}:
-        return False
-
-    for breakdown in snapshot.site_breakdowns:
-        detail = details[breakdown.site_id]
-        if (
-            breakdown.present_days != detail.present_days
-            or breakdown.salary_earnings != detail.salary_earnings
-            or breakdown.extra_earnings != detail.extra_earnings
-            or breakdown.total_payment != detail.total_payment
-            or breakdown.total_return != detail.total_return
-            or breakdown.payment_details != detail.payment_details
-        ):
-            return False
-    return True
+    return (
+        snapshot.start_date == session.start_date
+        and snapshot.end_date == session.end_date
+        and snapshot.present_days == session.present_days
+        and snapshot.salary_earnings == session.salary_earnings
+        and snapshot.extra_earnings == session.extra_earnings
+        and snapshot.total_payment == session.total_payment
+        and snapshot.total_return == session.total_return
+        and snapshot.affected_attendance_rows == session.affected_attendance_rows
+        and snapshot.affected_payment_rows == session.affected_payment_rows
+    )
 
 
 def delete_labour_session(session):
@@ -298,6 +229,8 @@ def get_running_session(labour):
             "total_return": 0,
             "total_earnings": 0,
             "payable": 0,
+            "affected_attendance_rows": 0,
+            "affected_payment_rows": 0,
             "company": labour.company_id,
         }
     else:
@@ -313,6 +246,8 @@ def get_running_session(labour):
             "total_return": snapshot.total_return,
             "total_earnings": snapshot.total_earnings,
             "payable": snapshot.payable,
+            "affected_attendance_rows": snapshot.affected_attendance_rows,
+            "affected_payment_rows": snapshot.affected_payment_rows,
             "company": labour.company_id,
         }
 

@@ -16,9 +16,7 @@ from django.db.models.functions import Coalesce
 from labours.models import (
     Attendance,
     LabourPayment,
-    LabourPaymentCategory,
     LabourPaymentType,
-    LabourSession,
 )
 from .models import SiteCash, SiteCashType
 
@@ -122,9 +120,6 @@ def build_site_daily_report(site, report_date, *, include_private=False):
         "remaining": remaining,
         "previous_balance": previous_balance,
         "balance": balance,
-        "labour_session_count": LabourSession.objects.filter(
-            site=site, created_date=report_date
-        ).count(),
     }
 
     if include_private:

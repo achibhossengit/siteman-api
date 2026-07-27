@@ -28,7 +28,6 @@ from labours.models import (
     LabourPayment,
     LabourPaymentCategory,
     LabourPaymentType,
-    LabourSession,
 )
 
 User = get_user_model()
@@ -1506,7 +1505,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
         self.assertEqual(response.data["remaining"], 0)
         self.assertEqual(response.data["balance"], 0)
         self.assertEqual(response.data["previous_balance"], 0)
-        self.assertEqual(response.data["labour_session_count"], 0)
         self.assertNotIn("total_salary", response.data)
 
     def test_public_summary_aggregates(self):
@@ -1568,20 +1566,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             amount=300,
             created_by=self.user,
         )
-        LabourSession.objects.create(
-            company=self.company,
-            labour=labour,
-            site=self.site,
-            start_date=self.report_date,
-            end_date=self.report_date,
-            created_date=self.report_date,
-            present_days=Decimal("1"),
-            salary_earnings=500,
-            extra_earnings=0,
-            total_payment=0,
-            total_return=0,
-            created_by=self.user,
-        )
 
         response = self.client.get(self.url, {"date": str(self.report_date)})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1595,7 +1579,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
         # remaining = (deposit + return) - (withdrawal + total_cost) = 5200 - 1450
         self.assertEqual(response.data["remaining"], 3750)
         self.assertEqual(response.data["balance"], 3750)
-        self.assertEqual(response.data["labour_session_count"], 1)
         self.assertNotIn("total_salary", response.data)
 
     def test_balance_and_previous_balance(self):

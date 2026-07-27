@@ -8,7 +8,6 @@ from .models import (
     Labour,
     LabourPayment,
     LabourSession,
-    LabourSessionDetail,
 )
 
 class LabourRecordDateValidationMixin:
@@ -426,7 +425,6 @@ class LabourSessionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "labour",
-            "site",
             "start_date",
             "end_date",
             "created_date",
@@ -435,6 +433,8 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "extra_earnings",
             "total_payment",
             "total_return",
+            "affected_attendance_rows",
+            "affected_payment_rows",
             "total_earnings",
             "payable",
             "company",
@@ -449,7 +449,7 @@ class RunningLabourSessionSerializer(serializers.Serializer):
     """Live open-period preview (not a persisted LabourSession)."""
 
     labour = serializers.IntegerField()
-    site = serializers.IntegerField()
+    site = serializers.IntegerField(allow_null=True)
     start_date = serializers.DateField(allow_null=True)
     end_date = serializers.DateField(allow_null=True)
     present_days = serializers.DecimalField(max_digits=12, decimal_places=2)
@@ -459,33 +459,8 @@ class RunningLabourSessionSerializer(serializers.Serializer):
     total_return = serializers.IntegerField()
     total_earnings = serializers.IntegerField()
     payable = serializers.IntegerField()
+    affected_attendance_rows = serializers.IntegerField()
+    affected_payment_rows = serializers.IntegerField()
     last_session_payable = serializers.IntegerField()
     total_payable = serializers.IntegerField()
     company = serializers.IntegerField()
-
-
-class LabourSessionDetailSerializer(serializers.ModelSerializer):
-    total_earnings = serializers.IntegerField(read_only=True)
-    payable = serializers.IntegerField(read_only=True)
-
-    class Meta:
-        model = LabourSessionDetail
-        fields = [
-            "id",
-            "session",
-            "site",
-            "site_name",
-            "present_days",
-            "salary_earnings",
-            "extra_earnings",
-            "total_payment",
-            "total_return",
-            "total_earnings",
-            "payable",
-            "payment_details",
-            "company",
-            "created_by",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = fields

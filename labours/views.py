@@ -19,7 +19,7 @@ from core.services import SubscriptionService
 from core.permissions import RecordUpdateDeletePermissions
 from sites.permissions import HasSitePermissions
 from .permissions import HasSiteAndLabourPermissions, get_labour
-from .models import Attendance, Labour, LabourPayment, LabourSession, LabourSessionDetail
+from .models import Attendance, Labour, LabourPayment, LabourSession
 from .serializers import (
     AttendanceListSerializer,
     AttendanceSerializer,
@@ -27,7 +27,6 @@ from .serializers import (
     LabourPaymentListSerializer,
     LabourPaymentSerializer,
     LabourSerializer,
-    LabourSessionDetailSerializer,
     LabourSessionSerializer,
     RunningLabourSessionSerializer,
     SiteLabourAttendanceListSerializer,
@@ -362,7 +361,7 @@ class LabourSessionViewSet(
     ]
     http_method_names = ["get", "post", "delete", "head", "options"]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["created_date", "start_date", "end_date", "site"]
+    filterset_fields = ["created_date", "start_date", "end_date"]
 
     def get_queryset(self):
         user = self.request.user
@@ -374,7 +373,7 @@ class LabourSessionViewSet(
                 company_id=user.company_id,
                 labour_id=self.kwargs["labour_pk"],
             )
-            .select_related("labour", "site", "created_by")
+            .select_related("labour", "created_by")
             .order_by("-created_date", "-id")
         )
 
@@ -395,39 +394,3 @@ class LabourSessionViewSet(
         payload = get_running_session(labour)
         serializer = RunningLabourSessionSerializer(payload)
         return Response(serializer.data)
-
-
-class LabourSessionDetailViewSet(
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    viewsets.GenericViewSet,
-):
-    """Nested under ``/labours/<labour_pk>/sessions/<session_pk>/details``.
-
-    Read-only: details are written when a work session is created.
-    """
-
-    serializer_class = LabourSessionDetailSerializer
-    queryset = LabourSessionDetail.objects.none()
-    permission_classes = [
-        *api_settings.DEFAULT_PERMISSION_CLASSES,
-        HasSiteAndLabourPermissions,
-    ]
-    http_method_names = ["get", "head", "options"]
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["site"]
-
-    def get_queryset(self):
-        user = self.request.user
-        if not user.is_authenticated:
-            return LabourSessionDetail.objects.none()
-
-        return (
-            LabourSessionDetail.objects.filter(
-                company_id=user.company_id,
-                session_id=self.kwargs["session_pk"],
-                session__labour_id=self.kwargs["labour_pk"],
-            )
-            .select_related("session", "site", "created_by")
-            .order_by("site_id", "id")
-        )
