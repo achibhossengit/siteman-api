@@ -2996,6 +2996,12 @@ class LabourSessionAPITestCase(APITestCase):
             kwargs={"version": "v1", "labour_pk": labour_id},
         )
 
+    def _latest_url(self, labour_id):
+        return reverse(
+            "labour-session-latest-session",
+            kwargs={"version": "v1", "labour_pk": labour_id},
+        )
+
     def _create_attendance(self, date, present="1", salary=500, extra=0, **kwargs):
         labour = kwargs.pop("labour", self.labour)
         defaults = {
@@ -3440,6 +3446,66 @@ class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
 
         response = self.client.get(self._running_url(self.labour.pk))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class LabourSessionLatestSessionTests(LabourSessionAPITestCase):
+    def test_latest_session_returns_404_when_none(self):
+        response = self.client.get(self._latest_url(self.labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_latest_session_prefers_running_over_closed(self):
+        self._create_session_via_orm(
+            created_date=timezone.localdate() - timedelta(days=5),
+            salary_earnings=500,
+            total_payment=200,
+        )
+        self.labour.refresh_from_db()
+        self._seed_open_period()
+
+        response = self.client.get(self._latest_url(self.labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Running serializer has no id / created_date
+        self.assertNotIn("id", response.data)
+        self.assertEqual(response.data["start_date"], str(self.day1))
+        self.assertEqual(response.data["end_date"], str(self.day2))
+        self.assertEqual(response.data["payable"], 50)
+        self.assertEqual(response.data["previous_payable"], 300)
+        self.assertEqual(response.data["cumulative_payable"], 350)
+
+    def test_latest_session_returns_closed_when_no_running(self):
+        older = self._create_session_via_orm(
+            created_date=timezone.localdate() - timedelta(days=5),
+            salary_earnings=400,
+            total_payment=0,
+        )
+        latest = self._create_session_via_orm(
+            created_date=timezone.localdate(),
+            salary_earnings=500,
+            total_payment=0,
+            previous_payable=400,
+        )
+
+        response = self.client.get(self._latest_url(self.labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], latest.pk)
+        self.assertNotEqual(response.data["id"], older.pk)
+        self.assertEqual(response.data["payable"], 500)
+        self.assertEqual(response.data["cumulative_payable"], 900)
+        self.assertIn("is_latest", response.data)
+        self.assertTrue(response.data["is_latest"])
+
+    def test_latest_session_after_close_returns_closed(self):
+        self._seed_open_period()
+        create = self.client.post(self.list_url)
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.get(self._latest_url(self.labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], create.data["id"])
+        self.assertEqual(
+            response.data["cumulative_payable"],
+            create.data["cumulative_payable"],
+        )
 
 
 class LabourSessionDeleteTests(LabourSessionAPITestCase):

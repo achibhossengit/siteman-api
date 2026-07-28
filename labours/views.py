@@ -413,3 +413,16 @@ class LabourSessionViewSet(
             raise NotFound("No running (open) session found for this labour.")
         serializer = RunningLabourSessionSerializer(session)
         return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="latest_session")
+    def latest_session(self, request, *args, **kwargs):
+        labour = get_labour(request, self)
+        running_session = get_running_session(labour)
+        if running_session:
+            serializer = RunningLabourSessionSerializer(running_session)
+            return Response(serializer.data)
+        session = LabourSession.objects.filter(labour=labour).order_by("-created_date", "-id").first()
+        if session is None:
+            raise NotFound("No Session Found!")
+        serializer = LabourSessionSerializer(session)
+        return Response(serializer.data)
