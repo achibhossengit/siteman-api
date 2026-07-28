@@ -3345,11 +3345,38 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
         )
 
     def test_retrieve_session(self):
-        session = self._create_session_via_orm()
+        session = self._create_session_via_orm(
+            affected_attendance_rows=0,
+            affected_payment_rows=0,
+        )
         response = self.client.get(self._detail_url(self.labour.pk, session.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], session.pk)
+        self.assertFalse(response.data["is_modified"])
+        self.assertTrue(response.data["is_latest"])
         self.assertNotIn("details", response.data)
+
+    def test_retrieve_marks_modified_when_rows_removed(self):
+        self._seed_open_period()
+        create = self.client.post(self.list_url)
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED)
+        session_id = create.data["id"]
+        Attendance.objects.filter(date=self.day2).delete()
+
+        response = self.client.get(self._detail_url(self.labour.pk, session_id))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_modified"])
+        self.assertTrue(response.data["is_latest"])
+
+    def test_retrieve_marks_not_latest_for_older_session(self):
+        older = self._create_session_via_orm(
+            created_date=timezone.localdate() - timedelta(days=5)
+        )
+        self._create_session_via_orm(created_date=timezone.localdate())
+
+        response = self.client.get(self._detail_url(self.labour.pk, older.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["is_latest"])
 
     def test_cannot_see_other_labour_sessions(self):
         other_labour = Labour.objects.create(

@@ -9,6 +9,7 @@ from .models import (
     LabourPayment,
     LabourSession,
 )
+from .services import affected_rows_match, is_latest_labour_session
 
 class LabourRecordDateValidationMixin:
     """Shared date rules for labour payment and attendance records."""
@@ -436,6 +437,8 @@ class LabourSessionSerializer(serializers.ModelSerializer):
     total_earnings = serializers.IntegerField(read_only=True)
     payable = serializers.IntegerField(read_only=True)
     cumulative_payable = serializers.IntegerField(read_only=True)
+    is_modified = serializers.SerializerMethodField()
+    is_latest = serializers.SerializerMethodField()
 
     class Meta:
         model = LabourSession
@@ -456,12 +459,20 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "total_earnings",
             "payable",
             "cumulative_payable",
+            "is_modified",
+            "is_latest",
             "company",
             "created_by",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_is_modified(self, obj) -> bool:
+        return not affected_rows_match(obj)
+
+    def get_is_latest(self, obj) -> bool:
+        return is_latest_labour_session(obj)
 
 
 class RunningLabourSessionSerializer(serializers.Serializer):

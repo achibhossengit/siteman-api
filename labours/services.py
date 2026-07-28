@@ -169,7 +169,7 @@ def create_labour_session(*, labour, user):
     return session
 
 
-def _affected_rows_match(session):
+def affected_rows_match(session):
     """True when live attendance/payment counts still match the session."""
     record_filter = {
         "labour_id": session.labour_id,
@@ -184,6 +184,17 @@ def _affected_rows_match(session):
     )
 
 
+def is_latest_labour_session(session):
+    """True when ``session`` is the labour's most recent work session."""
+    latest = (
+        LabourSession.objects.filter(labour_id=session.labour_id)
+        .order_by("-created_date", "-id")
+        .values_list("pk", flat=True)
+        .first()
+    )
+    return latest == session.pk
+
+
 def delete_labour_session(session):
     """Delete the labour's most recent work session.
 
@@ -191,20 +202,13 @@ def delete_labour_session(session):
     and ``end_date`` still match the session. Unsealing is done by the
     ``LabourSession`` post_delete signal.
     """
-    labour = session.labour
-
-    latest = (
-        LabourSession.objects.filter(labour=labour)
-        .order_by("-created_date", "-id")
-        .first()
-    )
-    if latest is None or latest.pk != session.pk:
+    if not is_latest_labour_session(session):
         raise ValidationError(
             "Only the most recent work session can be deleted.",
             code=status_codes.SESSION_NOT_LATEST,
         )
 
-    if not _affected_rows_match(session):
+    if not affected_rows_match(session):
         raise ValidationError(
             "Records no longer match this session; deletion is not allowed.",
             code=status_codes.SESSION_SNAPSHOT_MISMATCH,
