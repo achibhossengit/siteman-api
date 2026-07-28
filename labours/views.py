@@ -382,6 +382,17 @@ class LabourSessionViewSet(
             .select_related("labour", "created_by")
             .order_by("-created_date", "-id")
         )
+        
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        sessions = serializer.data
+        labour = get_labour(request, self)
+        running_session = get_running_session(labour)
+        if running_session:
+            serialized_running_session = self.get_serializer(running_session)
+            sessions.insert(0, serialized_running_session.data)
+        return Response(sessions)
 
     def create(self, request, *args, **kwargs):
         labour = get_labour(request, self)

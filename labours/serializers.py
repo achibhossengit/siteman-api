@@ -417,20 +417,14 @@ class AttendanceSerializer(
         return billing
 
 
-class LabourSessionListSerializer(serializers.ModelSerializer):
+class LabourSessionListSerializer(serializers.Serializer):
+    # make id optional because session list may contain running session
+    # which does not have an id
+    id = serializers.IntegerField(read_only=True, required=False)
+    start_date = serializers.DateField(read_only=True)
+    end_date = serializers.DateField(read_only=True)
     payable = serializers.IntegerField(read_only=True)
     cumulative_payable = serializers.IntegerField(read_only=True)
-
-    class Meta:
-        model = LabourSession
-        fields = [
-            "id",
-            "start_date",
-            "end_date",
-            "payable",
-            "cumulative_payable",
-        ]
-        read_only_fields = fields
 
 
 class LabourSessionSerializer(serializers.ModelSerializer):
