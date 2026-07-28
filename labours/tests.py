@@ -576,6 +576,7 @@ class LabourSessionCacheTests(LabourAPITestCase):
             total_return=0,
             affected_attendance_rows=1,
             affected_payment_rows=0,
+            previous_payable=0,
             created_by=self.user,
         )
 
@@ -3047,6 +3048,7 @@ class LabourSessionAPITestCase(APITestCase):
             "total_return": 0,
             "affected_attendance_rows": 1,
             "affected_payment_rows": 0,
+            "previous_payable": 0,
             "created_by": self.user,
         }
         defaults.update(kwargs)
@@ -3147,6 +3149,8 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         self.assertEqual(data["total_return"], 200)
         self.assertEqual(data["total_earnings"], 850)
         self.assertEqual(data["payable"], 850 + 200 - 1000)
+        self.assertEqual(data["previous_payable"], 0)
+        self.assertEqual(data["cumulative_payable"], 50)
         self.assertEqual(data["affected_attendance_rows"], 2)
         self.assertEqual(data["affected_payment_rows"], 2)
         self.assertNotIn("site", data)
@@ -3155,9 +3159,30 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         session = LabourSession.objects.get()
         self.assertEqual(session.affected_attendance_rows, 2)
         self.assertEqual(session.affected_payment_rows, 2)
+        self.assertEqual(session.previous_payable, 0)
+        self.assertEqual(session.cumulative_payable, 50)
 
         self.labour.refresh_from_db()
         self.assertEqual(self.labour.last_session_date, timezone.localdate())
+
+    def test_create_carries_previous_cumulative_payable(self):
+        first = self._create_session_via_orm(
+            created_date=timezone.localdate() - timedelta(days=2),
+            salary_earnings=500,
+            extra_earnings=0,
+            total_payment=200,
+            total_return=0,
+            previous_payable=100,
+        )
+        self.assertEqual(first.cumulative_payable, 400)  # 100 + 300
+
+        day = timezone.localdate() - timedelta(days=1)
+        self._create_attendance(day, present="1", salary=500)
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["previous_payable"], 400)
+        self.assertEqual(response.data["payable"], 500)
+        self.assertEqual(response.data["cumulative_payable"], 900)
 
     def test_create_aggregates_multi_site_records(self):
         other_site = Site.objects.create(
@@ -3312,8 +3337,10 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
                 "total_return",
                 "affected_attendance_rows",
                 "affected_payment_rows",
+                "previous_payable",
                 "total_earnings",
                 "payable",
+                "cumulative_payable",
                 "company",
                 "created_by",
                 "created_at",
@@ -3363,8 +3390,8 @@ class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
         self.assertIsNone(response.data["end_date"])
         self.assertEqual(Decimal(response.data["present_days"]), Decimal("0"))
         self.assertEqual(response.data["payable"], 0)
-        self.assertEqual(response.data["last_session_payable"], 0)
-        self.assertEqual(response.data["total_payable"], 0)
+        self.assertEqual(response.data["previous_payable"], 0)
+        self.assertEqual(response.data["cumulative_payable"], 0)
         self.assertEqual(response.data["labour"], self.labour.pk)
         self.assertEqual(response.data["site"], self.site.pk)
         self.assertEqual(response.data["affected_attendance_rows"], 0)
@@ -3386,19 +3413,20 @@ class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
         self.assertEqual(response.data["total_return"], 200)
         self.assertEqual(response.data["total_earnings"], 850)
         self.assertEqual(response.data["payable"], 50)
-        self.assertEqual(response.data["last_session_payable"], 0)
-        self.assertEqual(response.data["total_payable"], 50)
+        self.assertEqual(response.data["previous_payable"], 0)
+        self.assertEqual(response.data["cumulative_payable"], 50)
         self.assertEqual(response.data["affected_attendance_rows"], 2)
         self.assertEqual(response.data["affected_payment_rows"], 2)
 
-    def test_running_session_includes_last_session_payable(self):
-        # Closed session: earnings 500, payment 200 → payable 300
+    def test_running_session_includes_previous_cumulative_payable(self):
+        # Closed session: earnings 500, payment 200 → payable 300, previous 0
         self._create_session_via_orm(
             created_date=timezone.localdate() - timedelta(days=5),
             salary_earnings=500,
             extra_earnings=0,
             total_payment=200,
             total_return=0,
+            previous_payable=0,
         )
         self.labour.refresh_from_db()
 
@@ -3409,21 +3437,21 @@ class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
         response = self.client.get(self._running_url(self.labour.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["payable"], 500)
-        self.assertEqual(response.data["last_session_payable"], 300)
-        self.assertEqual(response.data["total_payable"], 800)
+        self.assertEqual(response.data["previous_payable"], 300)
+        self.assertEqual(response.data["cumulative_payable"], 800)
 
-    def test_running_session_after_close_is_empty_but_keeps_last_payable(self):
+    def test_running_session_after_close_is_empty_but_keeps_cumulative(self):
         self._seed_open_period()
         create = self.client.post(self.list_url)
         self.assertEqual(create.status_code, status.HTTP_201_CREATED)
-        closed_payable = create.data["payable"]
+        closed_cumulative = create.data["cumulative_payable"]
 
         response = self.client.get(self._running_url(self.labour.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNone(response.data["start_date"])
         self.assertEqual(response.data["payable"], 0)
-        self.assertEqual(response.data["last_session_payable"], closed_payable)
-        self.assertEqual(response.data["total_payable"], closed_payable)
+        self.assertEqual(response.data["previous_payable"], closed_cumulative)
+        self.assertEqual(response.data["cumulative_payable"], closed_cumulative)
 
 
 class LabourSessionDeleteTests(LabourSessionAPITestCase):

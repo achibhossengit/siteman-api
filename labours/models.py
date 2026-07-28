@@ -188,6 +188,8 @@ class LabourSession(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     affected_payment_rows = models.PositiveIntegerField(
         help_text="Payment rows sealed into this session.",
     )
+    # it may be negative.
+    previous_payable = models.IntegerField()
 
     class Meta:
         constraints = [
@@ -204,6 +206,10 @@ class LabourSession(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     @property
     def payable(self):
         return self.total_earnings + self.total_return - self.total_payment
+
+    @property
+    def cumulative_payable(self):
+        return self.previous_payable + self.payable
 
     def __str__(self):
         return f"{self.labour} ({self.start_date} - {self.end_date})"

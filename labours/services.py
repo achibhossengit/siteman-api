@@ -125,8 +125,9 @@ def create_labour_session(*, labour, user):
     """Close the labour's open period into a new work session.
 
     Aggregates every record dated after ``labour.last_session_date`` and
-    stores the totals plus effected row count. Sealing is done by the
-    ``LabourSession`` post_save signal.
+    stores the totals plus affected row counts. ``previous_payable`` is
+    the prior session's ``cumulative_payable`` (0 if none). Sealing is
+    done by the ``LabourSession`` post_save signal.
     """
     with transaction.atomic():
         snapshot = build_session_snapshot(labour, after=labour.last_session_date)
@@ -135,6 +136,13 @@ def create_labour_session(*, labour, user):
                 "No records exist after the last session; nothing to close.",
                 code=status_codes.SESSION_NO_RECORDS,
             )
+
+        latest = (
+            LabourSession.objects.filter(labour=labour)
+            .order_by("-created_date", "-id")
+            .first()
+        )
+        previous_payable = latest.cumulative_payable if latest is not None else 0
 
         try:
             session = LabourSession.objects.create(
@@ -148,6 +156,7 @@ def create_labour_session(*, labour, user):
                 total_return=snapshot.total_return,
                 affected_attendance_rows=snapshot.affected_attendance_rows,
                 affected_payment_rows=snapshot.affected_payment_rows,
+                previous_payable=previous_payable,
                 company=labour.company,
                 created_by=user,
             )
@@ -210,11 +219,12 @@ def get_running_session(labour):
     """Build the open (unsealed) period preview for a labour.
 
     Returns session-shaped totals for records after ``last_session_date``,
-    plus ``last_session_payable`` (most recent closed session) and
-    ``total_payable`` (last + running).
+    plus ``previous_payable`` (latest closed session's cumulative) and
+    ``cumulative_payable`` (previous + running).
     """
     latest = labour.sessions.order_by("-created_date", "-id").first()
     last_session_date = latest.created_date if latest is not None else None
+    previous_payable = latest.cumulative_payable if latest is not None else 0
     snapshot = build_session_snapshot(labour, after=last_session_date)
     if snapshot is None:
         running = {
@@ -251,7 +261,6 @@ def get_running_session(labour):
             "company": labour.company_id,
         }
 
-    last_session_payable = latest.payable if latest is not None else 0
-    running["last_session_payable"] = last_session_payable
-    running["total_payable"] = last_session_payable + running["payable"]
+    running["previous_payable"] = previous_payable
+    running["cumulative_payable"] = previous_payable + running["payable"]
     return running

@@ -419,6 +419,7 @@ class AttendanceSerializer(
 class LabourSessionSerializer(serializers.ModelSerializer):
     total_earnings = serializers.IntegerField(read_only=True)
     payable = serializers.IntegerField(read_only=True)
+    cumulative_payable = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = LabourSession
@@ -435,8 +436,10 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "total_return",
             "affected_attendance_rows",
             "affected_payment_rows",
+            "previous_payable",
             "total_earnings",
             "payable",
+            "cumulative_payable",
             "company",
             "created_by",
             "created_at",
@@ -461,6 +464,6 @@ class RunningLabourSessionSerializer(serializers.Serializer):
     payable = serializers.IntegerField()
     affected_attendance_rows = serializers.IntegerField()
     affected_payment_rows = serializers.IntegerField()
-    last_session_payable = serializers.IntegerField()
-    total_payable = serializers.IntegerField()
+    previous_payable = serializers.IntegerField()
+    cumulative_payable = serializers.IntegerField()
     company = serializers.IntegerField()
