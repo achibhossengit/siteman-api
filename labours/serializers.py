@@ -416,6 +416,22 @@ class AttendanceSerializer(
         return billing
 
 
+class LabourSessionListSerializer(serializers.ModelSerializer):
+    payable = serializers.IntegerField(read_only=True)
+    cumulative_payable = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = LabourSession
+        fields = [
+            "id",
+            "start_date",
+            "end_date",
+            "payable",
+            "cumulative_payable",
+        ]
+        read_only_fields = fields
+
+
 class LabourSessionSerializer(serializers.ModelSerializer):
     total_earnings = serializers.IntegerField(read_only=True)
     payable = serializers.IntegerField(read_only=True)

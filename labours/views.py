@@ -27,6 +27,7 @@ from .serializers import (
     LabourPaymentListSerializer,
     LabourPaymentSerializer,
     LabourSerializer,
+    LabourSessionListSerializer,
     LabourSessionSerializer,
     RunningLabourSessionSerializer,
     SiteLabourAttendanceListSerializer,
@@ -362,6 +363,11 @@ class LabourSessionViewSet(
     http_method_names = ["get", "post", "delete", "head", "options"]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["created_date", "start_date", "end_date"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return LabourSessionListSerializer
+        return LabourSessionSerializer
 
     def get_queryset(self):
         user = self.request.user
