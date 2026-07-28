@@ -3397,18 +3397,7 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
 class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
     def test_running_session_empty_when_no_records(self):
         response = self.client.get(self._running_url(self.labour.pk))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsNone(response.data["start_date"])
-        self.assertIsNone(response.data["end_date"])
-        self.assertEqual(Decimal(response.data["present_days"]), Decimal("0"))
-        self.assertEqual(response.data["payable"], 0)
-        self.assertEqual(response.data["previous_payable"], 0)
-        self.assertEqual(response.data["cumulative_payable"], 0)
-        self.assertEqual(response.data["labour"], self.labour.pk)
-        self.assertEqual(response.data["site"], self.site.pk)
-        self.assertEqual(response.data["affected_attendance_rows"], 0)
-        self.assertEqual(response.data["affected_payment_rows"], 0)
-        self.assertEqual(response.data["company"], self.company.pk)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_running_session_with_open_period(self):
         self._seed_open_period()
@@ -3452,18 +3441,13 @@ class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
         self.assertEqual(response.data["previous_payable"], 300)
         self.assertEqual(response.data["cumulative_payable"], 800)
 
-    def test_running_session_after_close_is_empty_but_keeps_cumulative(self):
+    def test_running_session_after_close_returns_404(self):
         self._seed_open_period()
         create = self.client.post(self.list_url)
         self.assertEqual(create.status_code, status.HTTP_201_CREATED)
-        closed_cumulative = create.data["cumulative_payable"]
 
         response = self.client.get(self._running_url(self.labour.pk))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsNone(response.data["start_date"])
-        self.assertEqual(response.data["payable"], 0)
-        self.assertEqual(response.data["previous_payable"], closed_cumulative)
-        self.assertEqual(response.data["cumulative_payable"], closed_cumulative)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 class LabourSessionDeleteTests(LabourSessionAPITestCase):

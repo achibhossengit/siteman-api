@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -28,45 +27,20 @@ _ZERO = Value(0)
 _ZERO_DEC = Value(Decimal("0"))
 _DECIMAL = DecimalField(max_digits=20, decimal_places=2)
 
+def get_running_session(labour):
+    latest_session = labour.sessions.order_by("-created_date", "-id").first()
+    latest_session_payable = latest_session.cumulative_payable if latest_session else 0
+    
+    # use this to maintain consistency with the old code
+    # attendance, labour payment records creation are checked against this date
+    # this set by post_save signal of LabourSession model
+    latest_session_date = labour.last_session_date
+    
+    if latest_session_date is not None:
+        date_filter = {"date__gt": latest_session_date}
+    else:
+        date_filter = {}
 
-@dataclass
-class SessionSnapshot:
-    start_date: object
-    end_date: object
-    present_days: Decimal
-    salary_earnings: int
-    extra_earnings: int
-    total_payment: int
-    total_return: int
-    affected_attendance_rows: int
-    affected_payment_rows: int
-
-    @property
-    def total_earnings(self):
-        return self.salary_earnings + self.extra_earnings
-
-    @property
-    def payable(self):
-        return self.total_earnings + self.total_return - self.total_payment
-
-
-def _date_filter(*, after=None, start_date=None, end_date=None):
-    filters = {}
-    if after is not None:
-        filters["date__gt"] = after
-    if start_date is not None:
-        filters["date__gte"] = start_date
-    if end_date is not None:
-        filters["date__lte"] = end_date
-    return filters
-
-
-def build_session_snapshot(labour, *, after=None, start_date=None, end_date=None):
-    """Aggregate the labour's records in the given date window.
-
-    Returns ``None`` when the window contains no records.
-    """
-    date_filter = _date_filter(after=after, start_date=start_date, end_date=end_date)
     attendance_qs = Attendance.objects.filter(labour=labour, **date_filter)
     payment_qs = LabourPayment.objects.filter(labour=labour, **date_filter)
 
@@ -104,21 +78,31 @@ def build_session_snapshot(labour, *, after=None, start_date=None, end_date=None
     starts = [
         d for d in (attendance_agg["earliest"], payment_agg["earliest"]) if d is not None
     ]
-    ends = [
-        d for d in (attendance_agg["latest"], payment_agg["latest"]) if d is not None
-    ]
+    ends = [d for d in (attendance_agg["latest"], payment_agg["latest"]) if d is not None]
+    present_days = attendance_agg["present_days"] or Decimal("0")
+    salary_earnings = int(attendance_agg["salary_earnings"] or 0)
+    extra_earnings = int(attendance_agg["extra_earnings"] or 0)
+    total_payment = int(payment_agg["total_payment"] or 0)
+    total_return = int(payment_agg["total_return"] or 0)
+    total_earnings = salary_earnings + extra_earnings
+    payable = total_earnings + total_return - total_payment
 
-    return SessionSnapshot(
-        start_date=min(starts),
-        end_date=max(ends),
-        present_days=attendance_agg["present_days"] or Decimal("0"),
-        salary_earnings=int(attendance_agg["salary_earnings"] or 0),
-        extra_earnings=int(attendance_agg["extra_earnings"] or 0),
-        total_payment=int(payment_agg["total_payment"] or 0),
-        total_return=int(payment_agg["total_return"] or 0),
-        affected_attendance_rows=attendance_count,
-        affected_payment_rows=payment_count,
-    )
+    running = {
+        "start_date": min(starts),
+        "end_date": max(ends),
+        "present_days": present_days,
+        "salary_earnings": salary_earnings,
+        "extra_earnings": extra_earnings,
+        "total_payment": total_payment,
+        "total_return": total_return,
+        "total_earnings": total_earnings,
+        "payable": payable,
+        "affected_attendance_rows": attendance_count,
+        "affected_payment_rows": payment_count,
+        "previous_payable": latest_session_payable,
+        "cumulative_payable": latest_session_payable + payable,
+    }
+    return running
 
 
 def create_labour_session(*, labour, user):
@@ -130,34 +114,27 @@ def create_labour_session(*, labour, user):
     done by the ``LabourSession`` post_save signal.
     """
     with transaction.atomic():
-        snapshot = build_session_snapshot(labour, after=labour.last_session_date)
-        if snapshot is None:
+        running = get_running_session(labour)
+        if running is None:
             raise ValidationError(
                 "No records exist after the last session; nothing to close.",
                 code=status_codes.SESSION_NO_RECORDS,
             )
 
-        latest = (
-            LabourSession.objects.filter(labour=labour)
-            .order_by("-created_date", "-id")
-            .first()
-        )
-        previous_payable = latest.cumulative_payable if latest is not None else 0
-
         try:
             session = LabourSession.objects.create(
                 labour=labour,
-                start_date=snapshot.start_date,
-                end_date=snapshot.end_date,
-                present_days=snapshot.present_days,
-                salary_earnings=snapshot.salary_earnings,
-                extra_earnings=snapshot.extra_earnings,
-                total_payment=snapshot.total_payment,
-                total_return=snapshot.total_return,
-                affected_attendance_rows=snapshot.affected_attendance_rows,
-                affected_payment_rows=snapshot.affected_payment_rows,
-                previous_payable=previous_payable,
-                company=labour.company,
+                start_date=running["start_date"],
+                end_date=running["end_date"],
+                present_days=running["present_days"],
+                salary_earnings=running["salary_earnings"],
+                extra_earnings=running["extra_earnings"],
+                total_payment=running["total_payment"],
+                total_return=running["total_return"],
+                affected_attendance_rows=running["affected_attendance_rows"],
+                affected_payment_rows=running["affected_payment_rows"],
+                previous_payable=running["previous_payable"],
+                company=user.company,
                 created_by=user,
             )
         except IntegrityError:
@@ -215,54 +192,3 @@ def delete_labour_session(session):
         )
 
     session.delete()
-
-
-def get_running_session(labour):
-    """Build the open (unsealed) period preview for a labour.
-
-    Returns session-shaped totals for records after ``last_session_date``,
-    plus ``previous_payable`` (latest closed session's cumulative) and
-    ``cumulative_payable`` (previous + running).
-    """
-    latest = labour.sessions.order_by("-created_date", "-id").first()
-    last_session_date = latest.created_date if latest is not None else None
-    previous_payable = latest.cumulative_payable if latest is not None else 0
-    snapshot = build_session_snapshot(labour, after=last_session_date)
-    if snapshot is None:
-        running = {
-            "labour": labour.pk,
-            "site": labour.current_site_id,
-            "start_date": None,
-            "end_date": None,
-            "present_days": Decimal("0"),
-            "salary_earnings": 0,
-            "extra_earnings": 0,
-            "total_payment": 0,
-            "total_return": 0,
-            "total_earnings": 0,
-            "payable": 0,
-            "affected_attendance_rows": 0,
-            "affected_payment_rows": 0,
-            "company": labour.company_id,
-        }
-    else:
-        running = {
-            "labour": labour.pk,
-            "site": labour.current_site_id,
-            "start_date": snapshot.start_date,
-            "end_date": snapshot.end_date,
-            "present_days": snapshot.present_days,
-            "salary_earnings": snapshot.salary_earnings,
-            "extra_earnings": snapshot.extra_earnings,
-            "total_payment": snapshot.total_payment,
-            "total_return": snapshot.total_return,
-            "total_earnings": snapshot.total_earnings,
-            "payable": snapshot.payable,
-            "affected_attendance_rows": snapshot.affected_attendance_rows,
-            "affected_payment_rows": snapshot.affected_payment_rows,
-            "company": labour.company_id,
-        }
-
-    running["previous_payable"] = previous_payable
-    running["cumulative_payable"] = previous_payable + running["payable"]
-    return running

@@ -478,8 +478,6 @@ class LabourSessionSerializer(serializers.ModelSerializer):
 class RunningLabourSessionSerializer(serializers.Serializer):
     """Live open-period preview (not a persisted LabourSession)."""
 
-    labour = serializers.IntegerField()
-    site = serializers.IntegerField(allow_null=True)
     start_date = serializers.DateField(allow_null=True)
     end_date = serializers.DateField(allow_null=True)
     present_days = serializers.DecimalField(max_digits=12, decimal_places=2)
@@ -493,4 +491,3 @@ class RunningLabourSessionSerializer(serializers.Serializer):
     affected_payment_rows = serializers.IntegerField()
     previous_payable = serializers.IntegerField()
     cumulative_payable = serializers.IntegerField()
-    company = serializers.IntegerField()

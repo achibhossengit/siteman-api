@@ -7,7 +7,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
-
+from rest_framework.exceptions import NotFound
 from core import status_codes
 from core.exceptions import (
     SubscriptionExpired,
@@ -397,6 +397,8 @@ class LabourSessionViewSet(
     @action(detail=False, methods=["get"], url_path="running_session")
     def running_session(self, request, *args, **kwargs):
         labour = get_labour(request, self)
-        payload = get_running_session(labour)
-        serializer = RunningLabourSessionSerializer(payload)
+        session = get_running_session(labour)
+        if session is None:
+            raise NotFound("No running (open) session found for this labour.")
+        serializer = RunningLabourSessionSerializer(session)
         return Response(serializer.data)
