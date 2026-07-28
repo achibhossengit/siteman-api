@@ -3151,8 +3151,6 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         self.assertEqual(data["payable"], 850 + 200 - 1000)
         self.assertEqual(data["previous_payable"], 0)
         self.assertEqual(data["cumulative_payable"], 50)
-        self.assertEqual(data["affected_attendance_rows"], 2)
-        self.assertEqual(data["affected_payment_rows"], 2)
         self.assertNotIn("site", data)
         self.assertNotIn("details", data)
 
@@ -3200,8 +3198,6 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["salary_earnings"], 1000)
         self.assertEqual(response.data["total_payment"], 300)
-        self.assertEqual(response.data["affected_attendance_rows"], 2)
-        self.assertEqual(response.data["affected_payment_rows"], 1)
 
     def test_create_seals_records_without_touching_updated_at(self):
         self._seed_open_period()
@@ -3264,8 +3260,6 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         )
         self.assertEqual(response.data["salary_earnings"], 500)
         self.assertEqual(Decimal(response.data["present_days"]), Decimal("1"))
-        self.assertEqual(response.data["affected_attendance_rows"], 1)
-        self.assertEqual(response.data["affected_payment_rows"], 0)
 
         old_attendance.refresh_from_db()
         self.assertFalse(old_attendance.is_sealed)
@@ -3416,8 +3410,6 @@ class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
         self.assertEqual(response.data["payable"], 50)
         self.assertEqual(response.data["previous_payable"], 0)
         self.assertEqual(response.data["cumulative_payable"], 50)
-        self.assertEqual(response.data["affected_attendance_rows"], 2)
-        self.assertEqual(response.data["affected_payment_rows"], 2)
 
     def test_running_session_includes_previous_cumulative_payable(self):
         # Closed session: earnings 500, payment 200 → payable 300, previous 0
@@ -3515,8 +3507,6 @@ class LabourSessionDeleteTests(LabourSessionAPITestCase):
     def test_recreate_after_delete_produces_same_totals(self):
         session = self._create_session_via_api()
         original_salary_earnings = session.salary_earnings
-        original_attendance_count = session.affected_attendance_rows
-        original_payment_count = session.affected_payment_rows
         self.assertEqual(
             self.client.delete(
                 self._detail_url(self.labour.pk, session.pk)
@@ -3530,10 +3520,7 @@ class LabourSessionDeleteTests(LabourSessionAPITestCase):
             response.data["salary_earnings"], original_salary_earnings
         )
         self.assertEqual(
-            response.data["affected_attendance_rows"], original_attendance_count
-        )
-        self.assertEqual(
-            response.data["affected_payment_rows"], original_payment_count
+            response.data["salary_earnings"], original_salary_earnings
         )
 
 

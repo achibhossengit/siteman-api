@@ -437,6 +437,10 @@ class LabourSessionSerializer(serializers.ModelSerializer):
     total_earnings = serializers.IntegerField(read_only=True)
     payable = serializers.IntegerField(read_only=True)
     cumulative_payable = serializers.IntegerField(read_only=True)
+
+    # it is helped client to determine if the session is deleteable or not
+    # because our api not allow to delete the session if it is modified or not latest
+    # so client just verify before sending request to the api.
     is_modified = serializers.SerializerMethodField()
     is_latest = serializers.SerializerMethodField()
 
@@ -444,7 +448,6 @@ class LabourSessionSerializer(serializers.ModelSerializer):
         model = LabourSession
         fields = [
             "id",
-            "labour",
             "start_date",
             "end_date",
             "created_date",
@@ -453,20 +456,16 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "extra_earnings",
             "total_payment",
             "total_return",
-            "affected_attendance_rows",
-            "affected_payment_rows",
             "previous_payable",
             "total_earnings",
             "payable",
             "cumulative_payable",
             "is_modified",
             "is_latest",
-            "company",
             "created_by",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = fields
 
     def get_is_modified(self, obj) -> bool:
         return not affected_rows_match(obj)
@@ -487,7 +486,5 @@ class RunningLabourSessionSerializer(serializers.Serializer):
     total_return = serializers.IntegerField()
     total_earnings = serializers.IntegerField()
     payable = serializers.IntegerField()
-    affected_attendance_rows = serializers.IntegerField()
-    affected_payment_rows = serializers.IntegerField()
     previous_payable = serializers.IntegerField()
     cumulative_payable = serializers.IntegerField()
