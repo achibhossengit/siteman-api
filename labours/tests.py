@@ -3475,7 +3475,8 @@ class LabourSessionDeleteTests(LabourSessionAPITestCase):
         )
         self.assertEqual(LabourSession.objects.count(), 2)
 
-    def test_delete_blocked_when_record_amount_changed(self):
+    def test_delete_allowed_when_only_record_amount_changed(self):
+        """Count-only guard: amount edits do not block delete."""
         session = self._create_session_via_api()
         LabourPayment.objects.filter(type=LabourPaymentType.PAYMENT).update(
             amount=9999
@@ -3484,12 +3485,8 @@ class LabourSessionDeleteTests(LabourSessionAPITestCase):
         response = self.client.delete(
             self._detail_url(self.labour.pk, session.pk)
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.SESSION_SNAPSHOT_MISMATCH,
-        )
-        self.assertTrue(LabourSession.objects.filter(pk=session.pk).exists())
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(LabourSession.objects.filter(pk=session.pk).exists())
 
     def test_delete_blocked_when_record_removed(self):
         session = self._create_session_via_api()

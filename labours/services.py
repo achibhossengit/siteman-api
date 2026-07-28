@@ -169,26 +169,27 @@ def create_labour_session(*, labour, user):
     return session
 
 
-def _snapshot_matches_session(snapshot, session):
+def _affected_rows_match(session):
+    """True when live attendance/payment counts still match the session."""
+    record_filter = {
+        "labour_id": session.labour_id,
+        "date__gte": session.start_date,
+        "date__lte": session.end_date,
+    }
+    attendance_count = Attendance.objects.filter(**record_filter).count()
+    payment_count = LabourPayment.objects.filter(**record_filter).count()
     return (
-        snapshot.start_date == session.start_date
-        and snapshot.end_date == session.end_date
-        and snapshot.present_days == session.present_days
-        and snapshot.salary_earnings == session.salary_earnings
-        and snapshot.extra_earnings == session.extra_earnings
-        and snapshot.total_payment == session.total_payment
-        and snapshot.total_return == session.total_return
-        and snapshot.affected_attendance_rows == session.affected_attendance_rows
-        and snapshot.affected_payment_rows == session.affected_payment_rows
+        attendance_count == session.affected_attendance_rows
+        and payment_count == session.affected_payment_rows
     )
 
 
 def delete_labour_session(session):
     """Delete the labour's most recent work session.
 
-    Only allowed when the current records between ``start_date`` and
-    ``end_date`` still reproduce the stored session (snapshot match).
-    Unsealing is done by the ``LabourSession`` post_delete signal.
+    Only allowed when attendance/payment row counts between ``start_date``
+    and ``end_date`` still match the session. Unsealing is done by the
+    ``LabourSession`` post_delete signal.
     """
     labour = session.labour
 
@@ -203,10 +204,7 @@ def delete_labour_session(session):
             code=status_codes.SESSION_NOT_LATEST,
         )
 
-    snapshot = build_session_snapshot(
-        labour, start_date=session.start_date, end_date=session.end_date
-    )
-    if snapshot is None or not _snapshot_matches_session(snapshot, session):
+    if not _affected_rows_match(session):
         raise ValidationError(
             "Records no longer match this session; deletion is not allowed.",
             code=status_codes.SESSION_SNAPSHOT_MISMATCH,
