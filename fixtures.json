@@ -556,7 +556,6 @@
             "site": 1100,
             "date": "2026-07-15",
             "type": "payment",
-            "category": "advance",
             "amount": 2000,
             "note": "Weekly advance",
             "is_sealed": false
@@ -574,7 +573,6 @@
             "site": 1100,
             "date": "2026-07-15",
             "type": "payment",
-            "category": "fooding",
             "amount": 150,
             "note": "Daily fooding",
             "is_sealed": false
@@ -592,7 +590,6 @@
             "site": 1100,
             "date": "2026-07-17",
             "type": "payment",
-            "category": "advance",
             "amount": 1000,
             "note": "Advance on hire",
             "is_sealed": false
@@ -610,7 +607,6 @@
             "site": 2100,
             "date": "2026-07-14",
             "type": "payment",
-            "category": "advance",
             "amount": 1500,
             "note": "Opening advance",
             "is_sealed": false
@@ -628,7 +624,6 @@
             "site": 2100,
             "date": "2026-07-16",
             "type": "return",
-            "category": null,
             "amount": 500,
             "note": "Partial return",
             "is_sealed": false

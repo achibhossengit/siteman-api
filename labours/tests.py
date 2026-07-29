@@ -16,7 +16,6 @@ from labours.models import (
     Attendance,
     Labour,
     LabourPayment,
-    LabourPaymentCategory,
     LabourPaymentType,
     LabourSession,
 )
@@ -675,7 +674,6 @@ class LabourPaymentAPITestCase(APITestCase):
             "site": site,
             "date": timezone.localdate(),
             "type": LabourPaymentType.PAYMENT,
-            "category": LabourPaymentCategory.ADVANCE,
             "amount": 1000,
             "created_by": self.user,
         }
@@ -699,7 +697,6 @@ class LabourPaymentAuthPermissionTests(LabourPaymentAPITestCase):
             {
                 "date": str(timezone.localdate()),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.ADVANCE,
                 "amount": 500,
             },
         )
@@ -755,7 +752,6 @@ class LabourPaymentAuthPermissionTests(LabourPaymentAPITestCase):
             {
                 "date": str(timezone.localdate()),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.ADVANCE,
                 "amount": 500,
             },
         )
@@ -773,7 +769,6 @@ class LabourPaymentAuthPermissionTests(LabourPaymentAPITestCase):
             {
                 "date": str(timezone.localdate()),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.ADVANCE,
                 "amount": 500,
             },
         )
@@ -837,7 +832,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
             {
                 "date": str(today),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.ADVANCE,
                 "amount": 1500,
                 "note": "Friday advance",
             },
@@ -848,7 +842,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
         self.assertEqual(response.data["company"], self.company.pk)
         self.assertEqual(response.data["created_by"], self.user.pk)
         self.assertEqual(response.data["amount"], 1500)
-        self.assertEqual(response.data["category"], LabourPaymentCategory.ADVANCE)
         self.assertFalse(response.data["is_sealed"])
         self.assertTrue(
             LabourPayment.objects.filter(
@@ -858,7 +851,7 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
             ).exists()
         )
 
-    def test_create_return_without_category(self):
+    def test_create_return_success(self):
         response = self.client.post(
             self.list_url,
             {
@@ -869,20 +862,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["type"], LabourPaymentType.RETURN)
-        self.assertIsNone(response.data["category"])
-
-    def test_create_return_with_category_allowed(self):
-        response = self.client.post(
-            self.list_url,
-            {
-                "date": str(timezone.localdate()),
-                "type": LabourPaymentType.RETURN,
-                "category": LabourPaymentCategory.ADVANCE,
-                "amount": 300,
-            },
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["category"], LabourPaymentCategory.ADVANCE)
 
     def test_create_stamps_site_from_labour_current_site(self):
         other_site = Site.objects.create(
@@ -895,7 +874,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
             {
                 "date": str(timezone.localdate()),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.FOODING,
                 "amount": 200,
                 "site": other_site.pk,
             },
@@ -909,7 +887,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
             {
                 "date": str(timezone.localdate()),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.ADVANCE,
                 "amount": 500,
                 "is_sealed": True,
             },
@@ -928,7 +905,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
                 "id",
                 "date",
                 "type",
-                "category",
                 "amount",
                 "note",
                 "site",
@@ -972,7 +948,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
             {
                 "date": str(timezone.localdate()),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.ADVANCE,
                 "amount": 1,
             },
         )
@@ -987,7 +962,6 @@ class LabourPaymentValidationTests(LabourPaymentAPITestCase):
             {
                 "date": str(future),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.ADVANCE,
                 "amount": 500,
             },
         )
@@ -1041,7 +1015,6 @@ class LabourPaymentValidationTests(LabourPaymentAPITestCase):
             {
                 "date": str(today),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.FOODING,
                 "amount": 200,
             },
         )
@@ -1148,32 +1121,12 @@ class LabourPaymentFilterIsolationTests(LabourPaymentAPITestCase):
         self._create_payment(
             date=today,
             type=LabourPaymentType.RETURN,
-            category=None,
             amount=50,
         )
         response = self.client.get(self.list_url, {"type": LabourPaymentType.RETURN})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["type"], LabourPaymentType.RETURN)
-
-    def test_filter_by_category(self):
-        today = timezone.localdate()
-        self._create_payment(
-            date=today,
-            type=LabourPaymentType.PAYMENT,
-            category=LabourPaymentCategory.ADVANCE,
-        )
-        self._create_payment(
-            date=today - timedelta(days=1),
-            type=LabourPaymentType.PAYMENT,
-            category=LabourPaymentCategory.FOODING,
-            amount=80,
-        )
-        response = self.client.get(
-            self.list_url, {"category": LabourPaymentCategory.FOODING}
-        )
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["category"], LabourPaymentCategory.FOODING)
 
     def test_nested_under_other_labour_hides_payments(self):
         other_labour = Labour.objects.create(
@@ -1216,7 +1169,6 @@ class LabourPaymentFilterIsolationTests(LabourPaymentAPITestCase):
             site=other_site,
             date=timezone.localdate(),
             type=LabourPaymentType.PAYMENT,
-            category=LabourPaymentCategory.ADVANCE,
             amount=999,
             created_by=other_user,
         )
@@ -1238,7 +1190,6 @@ class LabourPaymentSubscriptionTests(LabourPaymentAPITestCase):
             {
                 "date": str(timezone.localdate()),
                 "type": LabourPaymentType.PAYMENT,
-                "category": LabourPaymentCategory.ADVANCE,
                 "amount": 500,
             },
         )
@@ -1956,7 +1907,6 @@ class SiteLabourPaymentAPITestCase(APITestCase):
             "site": site,
             "date": timezone.localdate(),
             "type": LabourPaymentType.PAYMENT,
-            "category": LabourPaymentCategory.ADVANCE,
             "amount": 1000,
             "created_by": self.user,
         }
@@ -1968,7 +1918,6 @@ class SiteLabourPaymentAPITestCase(APITestCase):
             "labour": labour.pk,
             "date": self.today,
             "type": LabourPaymentType.PAYMENT,
-            "category": LabourPaymentCategory.ADVANCE,
             "amount": 500,
         }
         data.update(overrides)
@@ -2095,7 +2044,6 @@ class SiteLabourPaymentCRUDTests(SiteLabourPaymentAPITestCase):
                 "labour_name",
                 "date",
                 "type",
-                "category",
                 "amount",
                 "note",
                 "is_sealed",
@@ -2279,7 +2227,6 @@ class SiteLabourPaymentFilterIsolationTests(SiteLabourPaymentAPITestCase):
         self._create_payment(
             labour=self.labour_b,
             type=LabourPaymentType.RETURN,
-            category=None,
             amount=50,
         )
         response = self.client.get(
@@ -3022,7 +2969,6 @@ class LabourSessionAPITestCase(APITestCase):
         date,
         amount,
         type=LabourPaymentType.PAYMENT,
-        category=LabourPaymentCategory.ADVANCE,
         **kwargs,
     ):
         labour = kwargs.pop("labour", self.labour)
@@ -3032,7 +2978,6 @@ class LabourSessionAPITestCase(APITestCase):
             "site": labour.current_site,
             "date": date,
             "type": type,
-            "category": category,
             "amount": amount,
             "created_by": self.user,
         }
@@ -3068,10 +3013,9 @@ class LabourSessionAPITestCase(APITestCase):
         self._create_attendance(self.day2, present="0.5", salary=500, extra=100)
         self._create_payment(
             self.day2, 1000, type=LabourPaymentType.PAYMENT,
-            category=LabourPaymentCategory.ADVANCE,
         )
         self._create_payment(
-            self.day1, 200, type=LabourPaymentType.RETURN, category=None,
+            self.day1, 200, type=LabourPaymentType.RETURN,
         )
 
 

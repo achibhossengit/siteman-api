@@ -26,7 +26,6 @@ from labours.models import (
     Attendance,
     Labour,
     LabourPayment,
-    LabourPaymentCategory,
     LabourPaymentType,
 )
 
@@ -1525,7 +1524,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             site=self.site,
             date=self.report_date,
             type=LabourPaymentType.PAYMENT,
-            category=LabourPaymentCategory.ADVANCE,
             amount=1000,
             created_by=self.user,
         )
@@ -1535,7 +1533,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             site=self.site,
             date=self.report_date,
             type=LabourPaymentType.RETURN,
-            category=None,
             amount=200,
             created_by=self.user,
         )
@@ -1546,7 +1543,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             site=self.site,
             date=self.report_date,
             type=LabourPaymentType.PAYMENT,
-            category=LabourPaymentCategory.FOODING,
             amount=150,
             created_by=self.user,
         )

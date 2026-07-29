@@ -44,12 +44,6 @@ class LabourPaymentType(models.TextChoices):
     PAYMENT = "payment", "Payment"
     RETURN = "return", "Return"
 
-
-class LabourPaymentCategory(models.TextChoices):
-    ADVANCE = "advance", "Advance"
-    FOODING = "fooding", "Fooding"
-
-
 class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
     labour = models.ForeignKey(
         Labour,
@@ -67,12 +61,6 @@ class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
         choices=LabourPaymentType.choices,
         default=LabourPaymentType.PAYMENT,
         help_text="Payment or Return",
-    )
-    category = models.CharField(
-        max_length=16,
-        choices=LabourPaymentCategory.choices,
-        null=True,
-        blank=True,
     )
     amount = models.IntegerField(validators=[MinValueValidator(0)])
     note = models.CharField(max_length=255, null=True, blank=True)

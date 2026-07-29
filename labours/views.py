@@ -94,7 +94,6 @@ class LabourPaymentViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     filterset_fields = {
         "type": ["exact"],
-        "category": ["exact"],
         "date": ["exact", "gte", "lte"],
         "is_sealed": ["exact"],
         "site": ["exact"],
@@ -336,7 +335,7 @@ class SiteLabourPaymentViewSet(
         *api_settings.DEFAULT_PERMISSION_CLASSES,
         HasSitePermissions,
     ]
-    filterset_fields = ["type", "category", "date", "is_sealed", "labour"]
+    filterset_fields = ["type", "date", "is_sealed", "labour"]
 
     def get_serializer_class(self):
         if self.action == "list":
