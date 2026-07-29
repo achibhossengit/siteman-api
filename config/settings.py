@@ -225,5 +225,10 @@ LOGGING = {
             'level': config('SITEMAN_LOG_LEVEL', default='ERROR'),
             'propagate': False,
         },
+        'siteman.notifications': {
+            'handlers': ['console'],
+            'level': config('NOTIFICATIONS_LOG_LEVEL', default='DEBUG'),
+            'propagate': False,
+        },
     },
 }
