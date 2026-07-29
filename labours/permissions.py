@@ -49,6 +49,7 @@ class HasSiteAndLabourPermissions(HasSitePermissions):
             return False
 
         if labour.current_site_id is None:
+            # Company admin owned all labours, even who not assigned to any site.
             if not request.user.is_companyadmin:
                 raise PermissionDenied(
                     detail="This labour is not assigned to a site.",

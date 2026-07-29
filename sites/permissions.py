@@ -26,6 +26,10 @@ class HasSitePermissions(BasePermission):
 
         site_id = int(site_id)
 
+        # Check if the user has access to the site:
+        # - If the user is a company admin, access is always allowed for sites in their company.
+        # - Otherwise, require the user to be assigned to the site (via has_site_access).
+        # Site permission check totally goes to the has_site_access method in the user model.
         if not request.user.has_site_access(site_id):
             raise PermissionDenied(
                 detail="You are not a member of this site.",
