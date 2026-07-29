@@ -4,7 +4,7 @@ from django.db import transaction
 
 from core.exceptions import SubscriptionError
 from core.services import SubscriptionService
-from .models import Labour
+from .models import Labour, Attendance, LabourPayment, LabourSession
 
 
 class LabourAdminForm(forms.ModelForm):
@@ -74,3 +74,8 @@ class LabourAdmin(admin.ModelAdmin):
         if not change and not obj.created_by_id:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+
+
+admin.site.register(Attendance)
+admin.site.register(LabourPayment)
+admin.site.register(LabourSession)

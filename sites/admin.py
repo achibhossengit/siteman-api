@@ -5,7 +5,7 @@ from core.exceptions import SubscriptionError
 
 from accounts.models import User, UserSite
 from core.services import SubscriptionService
-from .models import BillingCategory, Site
+from .models import BillingCategory, Site, SiteCash, PrivateSiteCash
 
 
 class SiteAdminForm(forms.ModelForm):
@@ -119,3 +119,8 @@ class SiteAdmin(admin.ModelAdmin):
                 obj.created_by = request.user
             obj.save()
         formset.save_m2m()
+
+
+admin.site.register(BillingCategory)
+admin.site.register(SiteCash)
+admin.site.register(PrivateSiteCash)
