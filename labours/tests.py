@@ -1947,6 +1947,12 @@ class SiteLabourPaymentAPITestCase(APITestCase):
             kwargs={"version": "v1", "site_pk": site_id},
         )
 
+    def _bulk_update_url(self, site_id):
+        return reverse(
+            "site-labour-payment-bulk-update",
+            kwargs={"version": "v1", "site_pk": site_id},
+        )
+
     def _create_payment(self, labour=None, site=None, **kwargs):
         labour = labour or self.labour
         site = site or self.site
@@ -2081,6 +2087,142 @@ class SiteLabourPaymentCRUDTests(SiteLabourPaymentAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(response.data[0]["site"], self.site.pk)
+
+    def test_bulk_update_success(self):
+        payment = self._create_payment()
+        payment_b = self._create_payment(labour=self.labour_b, amount=200)
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [
+                {"id": payment.pk, "amount": 1500},
+                {"id": payment_b.pk, "note": "corrected"},
+            ],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(len(response.data), 2)
+        payment.refresh_from_db()
+        payment_b.refresh_from_db()
+        self.assertEqual(payment.amount, 1500)
+        self.assertEqual(payment_b.note, "corrected")
+
+    def test_bulk_update_rolls_back_entire_batch(self):
+        payment = self._create_payment()
+        payment_b = self._create_payment(labour=self.labour_b, amount=200)
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [
+                {"id": payment.pk, "amount": 1500},
+                {"id": payment_b.pk, "amount": -1},
+            ],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "1.amount")
+        payment.refresh_from_db()
+        payment_b.refresh_from_db()
+        self.assertEqual(payment.amount, 1000)
+        self.assertEqual(payment_b.amount, 200)
+
+    def test_bulk_update_rejects_sealed_record(self):
+        payment = self._create_payment(is_sealed=True)
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": payment.pk, "amount": 1500}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.id")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_SEALED,
+        )
+        payment.refresh_from_db()
+        self.assertEqual(payment.amount, 1000)
+
+    def test_bulk_update_rejects_labour_change(self):
+        payment = self._create_payment()
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": payment.pk, "labour": self.labour_b.pk}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.labour")
+        payment.refresh_from_db()
+        self.assertEqual(payment.labour_id, self.labour.pk)
+
+    def test_bulk_update_missing_id_rejected(self):
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"amount": 1500}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.id")
+
+    def test_bulk_update_unknown_record_rejected(self):
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": 999999, "amount": 1500}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.id")
+
+    def test_bulk_update_cannot_touch_other_site_record(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, other_site)
+        payment = self._create_payment()
+
+        response = self.client.patch(
+            self._bulk_update_url(other_site.pk),
+            [{"id": payment.pk, "amount": 1500}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        payment.refresh_from_db()
+        self.assertEqual(payment.amount, 1000)
+
+    def test_bulk_update_duplicate_unique_constraint_rejected(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._create_payment(date=today)
+        payment_b = self._create_payment(date=yesterday)
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": payment_b.pk, "date": str(today)}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        codes = {e["code"] for e in response.data["errors"]}
+        self.assertTrue(
+            codes
+            & {
+                status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+                "unique",
+            },
+            response.data,
+        )
+        payment_b.refresh_from_db()
+        self.assertEqual(payment_b.date, yesterday)
 
     def test_list_uses_list_serializer_fields(self):
         payment = self._create_payment()
@@ -2451,6 +2593,12 @@ class SiteLabourAttendanceAPITestCase(APITestCase):
             kwargs={"version": "v1", "site_pk": site_id},
         )
 
+    def _bulk_update_url(self, site_id):
+        return reverse(
+            "site-labour-attendance-bulk-update",
+            kwargs={"version": "v1", "site_pk": site_id},
+        )
+
     def _create_attendance(self, labour=None, site=None, **kwargs):
         labour = labour or self.labour
         site = site or self.site
@@ -2592,6 +2740,188 @@ class SiteLabourAttendanceCRUDTests(SiteLabourAttendanceAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(response.data[0]["site"], self.site.pk)
+
+    def test_bulk_update_success(self):
+        attendance = self._create_attendance()
+        attendance_b = self._create_attendance(labour=self.labour_b)
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [
+                {"id": attendance.pk, "present": "1.5"},
+                {"id": attendance_b.pk, "extra": 100},
+            ],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(len(response.data), 2)
+        attendance.refresh_from_db()
+        attendance_b.refresh_from_db()
+        self.assertEqual(attendance.present, Decimal("1.5"))
+        self.assertEqual(attendance_b.extra, 100)
+
+    def test_bulk_update_rolls_back_entire_batch(self):
+        attendance = self._create_attendance()
+        attendance_b = self._create_attendance(labour=self.labour_b)
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [
+                {"id": attendance.pk, "extra": 100},
+                {"id": attendance_b.pk, "salary": -1},
+            ],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "1.salary")
+        attendance.refresh_from_db()
+        attendance_b.refresh_from_db()
+        self.assertIsNone(attendance.extra)
+        self.assertEqual(attendance_b.salary, self.labour_b.default_salary)
+
+    def test_bulk_update_rejects_sealed_record(self):
+        attendance = self._create_attendance(is_sealed=True)
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": attendance.pk, "extra": 100}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.id")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.RECORD_SEALED,
+        )
+        attendance.refresh_from_db()
+        self.assertIsNone(attendance.extra)
+
+    def test_bulk_update_rejects_labour_change(self):
+        attendance = self._create_attendance()
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": attendance.pk, "labour": self.labour_b.pk}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.labour")
+        attendance.refresh_from_db()
+        self.assertEqual(attendance.labour_id, self.labour.pk)
+
+    def test_bulk_update_missing_id_rejected(self):
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"extra": 100}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.id")
+
+    def test_bulk_update_unknown_record_rejected(self):
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": 999999, "extra": 100}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.id")
+
+    def test_bulk_update_cannot_touch_other_site_record(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._assign_site(self.user, other_site)
+        attendance = self._create_attendance()
+
+        response = self.client.patch(
+            self._bulk_update_url(other_site.pk),
+            [{"id": attendance.pk, "extra": 100}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        attendance.refresh_from_db()
+        self.assertIsNone(attendance.extra)
+
+    def test_bulk_update_can_set_billing(self):
+        attendance = self._create_attendance()
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": attendance.pk, "billing": self.billing.pk}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        attendance.refresh_from_db()
+        self.assertEqual(attendance.billing_id, self.billing.pk)
+
+    def test_bulk_update_keeps_existing_inactive_billing(self):
+        attendance = self._create_attendance(billing=self.billing)
+        self.billing.is_active = False
+        self.billing.save(update_fields=["is_active"])
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": attendance.pk, "billing": self.billing.pk, "extra": 100}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        attendance.refresh_from_db()
+        self.assertEqual(attendance.extra, 100)
+        self.assertEqual(attendance.billing_id, self.billing.pk)
+
+    def test_bulk_update_rejects_new_inactive_billing(self):
+        attendance = self._create_attendance()
+        inactive_billing = self._create_billing(name="Old Wing", is_active=False)
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": attendance.pk, "billing": inactive_billing.pk}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "0.billing")
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.BILLING_CATEGORY_INACTIVE,
+        )
+
+    def test_bulk_update_duplicate_unique_constraint_rejected(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._create_attendance(date=today)
+        attendance_b = self._create_attendance(date=yesterday)
+
+        response = self.client.patch(
+            self._bulk_update_url(self.site.pk),
+            [{"id": attendance_b.pk, "date": str(today)}],
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        codes = {e["code"] for e in response.data["errors"]}
+        self.assertTrue(
+            codes
+            & {
+                status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+                "unique",
+            },
+            response.data,
+        )
+        attendance_b.refresh_from_db()
+        self.assertEqual(attendance_b.date, yesterday)
 
     def test_list_uses_list_serializer_fields(self):
         attendance = self._create_attendance()

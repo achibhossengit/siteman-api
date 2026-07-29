@@ -3,7 +3,7 @@ from django.db.utils import IntegrityError
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ErrorDetail, ValidationError
 from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
@@ -377,6 +377,88 @@ class SiteLabourPaymentViewSet(
                 code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
             )
 
+    @action(detail=False, methods=["patch"], url_path="bulk-update")
+    @transaction.atomic
+    def bulk_update(self, request, *args, **kwargs):
+        """All-or-nothing partial update; each item carries its own ``id``."""
+
+        if not isinstance(request.data, list):
+            raise ValidationError("Expected a list of payments.")
+        if not request.data:
+            raise ValidationError("At least one payment is required.")
+
+        # Error dict keys are stringified indexes; the error formatter drops
+        # falsy attrs, so int 0 would lose its item index in ``attr``.
+        errors = {}
+        ids = []
+        for index, item in enumerate(request.data):
+            if not isinstance(item, dict):
+                errors[str(index)] = {"non_field_errors": ["Expected an object."]}
+            elif not isinstance(item.get("id"), int) or isinstance(
+                item.get("id"), bool
+            ):
+                errors[str(index)] = {"id": ["A valid integer id is required."]}
+            else:
+                ids.append(item["id"])
+        if errors:
+            raise ValidationError(errors)
+
+        if len(ids) != len(set(ids)):
+            raise ValidationError("Duplicate ids are not allowed.")
+
+        # ``of=("self",)`` locks only payment rows; plain select_for_update
+        # fails on the nullable side of the select_related joins.
+        records = {
+            record.pk: record
+            for record in self.get_queryset()
+            .select_for_update(of=("self",))
+            .filter(pk__in=ids)
+        }
+
+        item_serializers = []
+        for index, item in enumerate(request.data):
+            record = records.get(item["id"])
+            if record is None:
+                errors[str(index)] = {"id": ["Payment not found."]}
+                continue
+            if record.is_sealed:
+                errors[str(index)] = {
+                    "id": [
+                        ErrorDetail(
+                            "Sealed records cannot be updated.",
+                            code=status_codes.RECORD_SEALED,
+                        )
+                    ]
+                }
+                continue
+
+            data = {key: value for key, value in item.items() if key != "id"}
+            if not data:
+                errors[str(index)] = {
+                    "non_field_errors": ["At least one field must be provided."]
+                }
+                continue
+
+            serializer = self.get_serializer(record, data=data, partial=True)
+            if not serializer.is_valid():
+                errors[str(index)] = serializer.errors
+                continue
+            item_serializers.append(serializer)
+
+        if errors:
+            raise ValidationError(errors)
+
+        try:
+            updated = [serializer.save() for serializer in item_serializers]
+        except IntegrityError:
+            raise ValidationError(
+                "A payment of this type already exists for a labour on this date.",
+                code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+            )
+
+        output = self.get_serializer(updated, many=True)
+        return Response(output.data)
+
 
 class SiteLabourAttendanceViewSet(
     mixins.ListModelMixin,
@@ -435,3 +517,85 @@ class SiteLabourAttendanceViewSet(
                 "Attendance already exists for a labour on this date.",
                 code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
             )
+
+    @action(detail=False, methods=["patch"], url_path="bulk-update")
+    @transaction.atomic
+    def bulk_update(self, request, *args, **kwargs):
+        """All-or-nothing partial update; each item carries its own ``id``."""
+
+        if not isinstance(request.data, list):
+            raise ValidationError("Expected a list of attendances.")
+        if not request.data:
+            raise ValidationError("At least one attendance is required.")
+
+        # Error dict keys are stringified indexes; the error formatter drops
+        # falsy attrs, so int 0 would lose its item index in ``attr``.
+        errors = {}
+        ids = []
+        for index, item in enumerate(request.data):
+            if not isinstance(item, dict):
+                errors[str(index)] = {"non_field_errors": ["Expected an object."]}
+            elif not isinstance(item.get("id"), int) or isinstance(
+                item.get("id"), bool
+            ):
+                errors[str(index)] = {"id": ["A valid integer id is required."]}
+            else:
+                ids.append(item["id"])
+        if errors:
+            raise ValidationError(errors)
+
+        if len(ids) != len(set(ids)):
+            raise ValidationError("Duplicate ids are not allowed.")
+
+        # ``of=("self",)`` locks only attendance rows; plain select_for_update
+        # fails on the nullable side of the select_related joins.
+        records = {
+            record.pk: record
+            for record in self.get_queryset()
+            .select_for_update(of=("self",))
+            .filter(pk__in=ids)
+        }
+
+        item_serializers = []
+        for index, item in enumerate(request.data):
+            record = records.get(item["id"])
+            if record is None:
+                errors[str(index)] = {"id": ["Attendance not found."]}
+                continue
+            if record.is_sealed:
+                errors[str(index)] = {
+                    "id": [
+                        ErrorDetail(
+                            "Sealed records cannot be updated.",
+                            code=status_codes.RECORD_SEALED,
+                        )
+                    ]
+                }
+                continue
+
+            data = {key: value for key, value in item.items() if key != "id"}
+            if not data:
+                errors[str(index)] = {
+                    "non_field_errors": ["At least one field must be provided."]
+                }
+                continue
+
+            serializer = self.get_serializer(record, data=data, partial=True)
+            if not serializer.is_valid():
+                errors[str(index)] = serializer.errors
+                continue
+            item_serializers.append(serializer)
+
+        if errors:
+            raise ValidationError(errors)
+
+        try:
+            updated = [serializer.save() for serializer in item_serializers]
+        except IntegrityError:
+            raise ValidationError(
+                "Attendance already exists for a labour on this date.",
+                code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
+            )
+
+        output = self.get_serializer(updated, many=True)
+        return Response(output.data)

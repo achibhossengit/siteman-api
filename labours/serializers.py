@@ -246,6 +246,17 @@ class SiteLabourPaymentSerializer(
             )
         return labour
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            labour = attrs.get("labour")
+            if labour is not None and labour.pk != self.instance.labour_id:
+                raise serializers.ValidationError(
+                    {"labour": "Labour cannot be changed."},
+                    code=status_codes.INVALID,
+                )
+        return attrs
+
 
 class SiteLabourAttendanceListSerializer(serializers.ModelSerializer):
     labour_name = serializers.CharField(source="labour.name", read_only=True)
@@ -325,6 +336,17 @@ class SiteLabourAttendanceSerializer(
             )
         return labour
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            labour = attrs.get("labour")
+            if labour is not None and labour.pk != self.instance.labour_id:
+                raise serializers.ValidationError(
+                    {"labour": "Labour cannot be changed."},
+                    code=status_codes.INVALID,
+                )
+        return attrs
+
     def validate_billing(self, billing):
         if billing is None:
             return billing
@@ -337,8 +359,12 @@ class SiteLabourAttendanceSerializer(
                 code=status_codes.INVALID,
             )
 
-        # This endpoint only creates records, so billing must be active.
-        if not billing.is_active:
+        # An update may keep its existing billing even if it has since been
+        # deactivated, but assigning a new billing requires it to be active.
+        is_existing_billing = (
+            self.instance is not None and billing.pk == self.instance.billing_id
+        )
+        if not is_existing_billing and not billing.is_active:
             raise serializers.ValidationError(
                 "Billing category must be active.",
                 code=status_codes.BILLING_CATEGORY_INACTIVE,
