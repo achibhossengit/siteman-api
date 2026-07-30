@@ -15,7 +15,6 @@ from .models import UserSite
 
 User = get_user_model()
 OTP_LENGTH = getattr(settings, "OTP_LENGTH", 6)
-REGISTER_PURPOSE = "register"
 
 # Roles created in accounts.0003_create_groups.
 ROLE_GROUP_NAMES = (
@@ -28,18 +27,9 @@ ROLE_GROUP_NAMES = (
 class RegisterSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
     phone_number = serializers.CharField(max_length=20)
-    email = serializers.EmailField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=True, allow_blank=False)
     company_name = serializers.CharField(max_length=255)
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
-    channel = serializers.ChoiceField(choices=("sms", "email"), default="sms")
-
-    def validate(self, attrs):
-        if attrs.get("channel") == "email" and not attrs.get("email"):
-            # code= kwarg is dropped by DRF when detail is a dict; ErrorDetail keeps it.
-            raise serializers.ValidationError(
-                code=status_codes.REQUIRED_EMAIL, detail={"email": "Email channel requires an email address."}
-            )
-        return attrs
 
     def validate_phone_number(self, value):
         try:
@@ -104,7 +94,7 @@ class PasswordChangeSerializer(serializers.Serializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     """Own profile: GET returns full snapshot; PATCH updates basic fields.
 
-    Writable: name, email, phone_number.
+    Writable: name and phone_number. Email changes require a verification flow.
     Password changes go through ``/auth/password/change`` or reset.
     """
 
@@ -131,6 +121,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "company",
+            "email",
             "is_active",
             "is_staff",
             "is_companyadmin",
@@ -237,6 +228,11 @@ class UserCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             # Own uniqueness check → ALREADY_REGISTERED (after normalize).
             "phone_number": {"validators": []},
+            "email": {
+                "required": True,
+                "allow_blank": False,
+                "allow_null": False,
+            },
         }
 
     def __init__(self, *args, **kwargs):

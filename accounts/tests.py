@@ -50,6 +50,7 @@ class RegistrationFlowTests(APITestCase):
         self.valid_payload = {
             "name": "Achib Hossen",
             "phone_number": "+8801712345678",
+            "email": "achib@example.com",
             "company_name": "Achib Builders",
             "password": "strong-pass-123",
         }
@@ -70,7 +71,13 @@ class RegistrationFlowTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertCountEqual(response.data.keys(), ["ticket", "otp_expires_in", "resend_cooldown"])
         mocked.assert_called_once()
-        self.assertEqual(mocked.call_args.kwargs["phone"], "+8801712345678")
+        self.assertEqual(mocked.call_args.kwargs["email"], "achib@example.com")
+
+    def test_register_requires_email(self):
+        payload = {**self.valid_payload}
+        payload.pop("email")
+        response, _, _ = self.register(payload)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_register_creates_no_user_until_confirm(self):
         self.register()
@@ -144,6 +151,7 @@ class RegistrationFlowTests(APITestCase):
 
         user = User.objects.get(phone_number="+8801712345678")
         self.assertTrue(user.check_password("strong-pass-123"))
+        self.assertEqual(user.email, "achib@example.com")
         self.assertEqual(user.company.name, "Achib Builders")
         self.assertTrue(user.is_companyadmin)
         self.assertTrue(user.groups.filter(name="Company Admin").exists())
@@ -293,6 +301,7 @@ class AuthenticationRateLimitTests(APITestCase):
         self.register_payload = {
             "name": "Achib Hossen",
             "phone_number": "+8801712345678",
+            "email": "achib@example.com",
             "company_name": "Achib Builders",
             "password": "strong-pass-123",
         }
@@ -419,6 +428,7 @@ class PasswordResetFlowTests(APITestCase):
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
             name="Achib Hossen",
+            email="achib@example.com",
             password="old-pass-123",
             company=self.company,
         )
@@ -436,13 +446,13 @@ class PasswordResetFlowTests(APITestCase):
 
     # --- request ---
 
-    def test_reset_request_sends_otp_for_registered_phone(self):
+    def test_reset_request_sends_otp_to_stored_email(self):
         response, ticket, _, mocked = self.request_reset()
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertCountEqual(response.data.keys(), ["ticket", "otp_expires_in", "resend_cooldown"])
         self.assertIsNotNone(ticket)
         mocked.assert_called_once()
-        self.assertEqual(mocked.call_args.kwargs["phone"], "+8801712345678")
+        self.assertEqual(mocked.call_args.kwargs["email"], "achib@example.com")
 
     def test_reset_request_invalid_phone_same_response_no_delivery(self):
         response, ticket, _, mocked = self.request_reset(phone="+8801912345678")
@@ -461,6 +471,14 @@ class PasswordResetFlowTests(APITestCase):
                 response, _, _, mocked = self.request_reset()
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
                 mocked.assert_not_called()
+
+    def test_reset_request_user_without_email_gets_no_delivery(self):
+        self.user.email = None
+        self.user.save(update_fields=["email", "updated_at"])
+        response, ticket, _, mocked = self.request_reset()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(ticket)
+        mocked.assert_not_called()
 
     def test_reset_request_rejects_invalid_phone(self):
         response, _, _, _ = self.request_reset(phone="+8802123456789")
@@ -486,9 +504,9 @@ class PasswordResetFlowTests(APITestCase):
                 _, _, _, mocked = self.request_reset(name=name)
                 mocked.assert_not_called()
 
-    def test_reset_request_normalizes_phone(self):
+    def test_reset_request_normalizes_phone_before_user_lookup(self):
         _, _, _, mocked = self.request_reset(phone="01712345678")
-        self.assertEqual(mocked.call_args.kwargs["phone"], "+8801712345678")
+        self.assertEqual(mocked.call_args.kwargs["email"], "achib@example.com")
 
     # --- resend OTP ---
 
@@ -521,8 +539,7 @@ class PasswordResetFlowTests(APITestCase):
 
     def test_reset_resend_rejects_ticket_of_other_purpose(self):
         ticket, _ = verifications.create_ticket(
-            purpose=REGISTER_PURPOSE, channel="sms",
-            phone="+8801712345678", email=None, payload={},
+            purpose=REGISTER_PURPOSE, email="achib@example.com", payload={},
         )
         response = self.client.post(self.resend_url, {"ticket": ticket})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -580,8 +597,9 @@ class PasswordResetFlowTests(APITestCase):
         # unknown phone => payload carries user_id=None; even a "valid" OTP
         # (impossible for a real caller, forged here) must not pass
         ticket, delivery_info = verifications.create_ticket(
-            purpose=PASSWORD_RESET_PURPOSE, channel="sms",
-            phone=None, email=None, payload={"user_id": None},
+            purpose=PASSWORD_RESET_PURPOSE,
+            email=None,
+            payload={"user_id": None},
         )
         response = self.client.post(
             self.confirm_url,
@@ -809,6 +827,7 @@ class UserCRUDTests(UserAPITestCase):
             {
                 "name": "No Client Pass",
                 "phone_number": "+8801711112211",
+                "email": "no-pass@example.com",
                 "password": "client-supplied-pass-123",
             },
         )
@@ -822,6 +841,7 @@ class UserCRUDTests(UserAPITestCase):
             {
                 "name": "Forced",
                 "phone_number": "+8801711113333",
+                "email": "forced@example.com",
                 "is_companyadmin": True,
                 "is_active": False,
             },
@@ -1039,6 +1059,16 @@ class UserCRUDTests(UserAPITestCase):
 
 
 class UserValidationTests(UserAPITestCase):
+    def test_create_requires_email(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "No Email",
+                "phone_number": "+8801711118787",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_duplicate_phone_rejected(self):
         self._create_company_user(phone="+8801711118888")
         response = self.client.post(
@@ -1046,6 +1076,7 @@ class UserValidationTests(UserAPITestCase):
             {
                 "name": "Another",
                 "phone_number": "+8801711118888",
+                "email": "another@example.com",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1061,6 +1092,7 @@ class UserValidationTests(UserAPITestCase):
             {
                 "name": "Karim",
                 "phone_number": "+8801711120000",
+                "email": "karim@example.com",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1116,6 +1148,7 @@ class UserSubscriptionTests(UserAPITestCase):
             {
                 "name": "Overflow",
                 "phone_number": "+8801711126666",
+                "email": "overflow@example.com",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1257,7 +1290,7 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
 
 
 class UserProfileUpdateTests(UserProfileAPITestCase):
-    def test_patch_basic_info(self):
+    def test_patch_basic_info_ignores_unverified_email(self):
         response = self.client.patch(
             self.url,
             {
@@ -1268,10 +1301,11 @@ class UserProfileUpdateTests(UserProfileAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "New Achib")
-        self.assertEqual(response.data["email"], "new@example.com")
+        self.assertEqual(response.data["email"], "achib@example.com")
         self.assertEqual(response.data["phone_number"], "+8801712345600")
         self.user.refresh_from_db()
         self.assertEqual(self.user.name, "New Achib")
+        self.assertEqual(self.user.email, "achib@example.com")
         self.assertEqual(self.user.phone_number, "+8801712345600")
 
     def test_patch_ignores_flags(self):

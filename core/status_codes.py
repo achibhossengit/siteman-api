@@ -5,7 +5,6 @@ INVALID = "invalid"
 EXPIRED = "expired"
 
 # OTP / verification
-REQUIRED_EMAIL = "required_email"
 ALREADY_REGISTERED = "already_registered"
 RESEND_COOLDOWN = "resend_cooldown"
 MAX_RESENDS = "max_resends"

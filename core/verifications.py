@@ -56,24 +56,19 @@ def _save(ticket, data):
     cache.set(_key(ticket), data, int(remaining))
 
 
-def create_ticket(purpose, channel, phone, email, payload):
+def create_ticket(purpose, email, payload):
     """Create new ticket, save to cache and returns ticket + delivery info.
 
-    Both contacts are kept (either may be None) so delivery can fall back
-    to the other channel and resends reproduce the same delivery info."""
+    The email may be None for anti-enumeration ghost tickets."""
     ticket = uuid4().hex
     otp = _generate_otp()
     now = _now()
     deliveryinfo = {
-        "channel": channel,
-        "phone": phone,
         "email": email,
         "otp": otp
     }
     data = {
         "purpose": purpose,
-        "channel": channel,
-        "phone": phone,
         "email": email,
         "payload": payload,
         "otp_hash": make_password(otp),
@@ -109,7 +104,7 @@ def resend(ticket, purpose=None):
     data["last_sent_at"] = now
     
     _save(ticket, data)
-    deliveryinfo = {"channel": data["channel"], "phone": data["phone"], "email": data["email"], "otp": otp}
+    deliveryinfo = {"email": data["email"], "otp": otp}
     return deliveryinfo
 
 

@@ -97,14 +97,11 @@ class RegisterView(GenericAPIView):
             "phone_number": data["phone_number"],
             "company_name": data["company_name"],
             "password": make_password(data["password"]),
-            "email": data.get("email") or None,
-            "channel": data["channel"],
+            "email": data["email"],
         }
         
         ticket, delivery_info = verifications.create_ticket(
             purpose=REGISTER_PURPOSE,
-            channel=payload["channel"],
-            phone=data["phone_number"],
             email=payload["email"],
             payload=payload,
         )
@@ -185,7 +182,7 @@ class PasswordResetView(GenericAPIView):
 
         # Anti-enumeration: a ticket is minted and the same 200 body returned
         # whether or not the phone is registered. Only a real, active account
-        # gets a deliverable contact — a ghost ticket carries no phone, so
+        # with a stored email gets a deliverable contact, so
         # nothing is ever sent and its OTP can never be verified.
         # hard rule: the account holder's exact name must match too —
         # keeps reset stricter than a plain phone->OTP flow
@@ -197,14 +194,12 @@ class PasswordResetView(GenericAPIView):
         ).first()
         ticket, delivery_info = verifications.create_ticket(
             purpose=PASSWORD_RESET_PURPOSE,
-            channel=notifications.SMS,
-            phone=phone if user else None,
-            email=None,
+            email=user.email if user and user.email else None,
             payload={"user_id": user.id if user else None},
         )
 
-        # ghost tickets (unregistered phone) have no deliverable contact
-        if delivery_info["phone"]:
+        # Ghost tickets and legacy users without email have no deliverable contact.
+        if delivery_info["email"]:
             notifications.deliver_otp(**delivery_info)
         return _ticket_response(ticket, status_code=status.HTTP_200_OK)
 
@@ -221,8 +216,8 @@ class PasswordResetResendOtpView(GenericAPIView):
         ticket = serializer.validated_data["ticket"]
         delivery_info = verifications.resend(ticket, purpose=PASSWORD_RESET_PURPOSE)
 
-        # ghost tickets (unregistered phone) have no deliverable contact
-        if delivery_info["phone"]:
+        # Ghost tickets and legacy users without email have no deliverable contact.
+        if delivery_info["email"]:
             notifications.deliver_otp(**delivery_info)
         return _ticket_response(ticket, status_code=status.HTTP_200_OK)
 
