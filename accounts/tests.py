@@ -880,12 +880,7 @@ class UserCRUDTests(UserAPITestCase):
 
         response = self.client.patch(
             self._detail_url(other.pk),
-            {
-                "groups": [
-                    {"id": site_manager.pk},
-                    {"id": site_auditor.pk},
-                ]
-            },
+            {"groups": ["Site Manager", "Site Auditor"]},
             format="json",
         )
 
@@ -901,6 +896,19 @@ class UserCRUDTests(UserAPITestCase):
             other.groups.values_list("id", flat=True),
             [site_manager.pk, site_auditor.pk],
         )
+
+    def test_patch_groups_rejects_unknown_group_name(self):
+        other = self._create_company_user(phone="+8801711116766")
+        Group.objects.create(name="Unassignable Group")
+
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {"groups": ["Unassignable Group"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(other.groups.exists())
 
     def test_patch_sites_replaces_assignments(self):
         other = self._create_company_user(phone="+8801711116767")

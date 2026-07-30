@@ -278,16 +278,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return User.objects.create_user(password=password, **validated_data)
 
 
-class UserGroupSerializer(serializers.ModelSerializer):
-    id = serializers.PrimaryKeyRelatedField(
-        queryset=Group.objects.filter(name__in=ROLE_GROUP_NAMES),
-    )
-
-    class Meta:
-        model = Group
-        fields = ["id", "name"]
-        read_only_fields = ["name"]
-
+class UserGroupRelatedField(serializers.SlugRelatedField):
     def to_representation(self, instance):
         return {"id": instance.pk, "name": instance.name}
 
@@ -298,7 +289,12 @@ class UserSiteRelatedField(serializers.PrimaryKeyRelatedField):
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
-    groups = UserGroupSerializer(many=True, required=False)
+    groups = UserGroupRelatedField(
+        many=True,
+        slug_field="name",
+        queryset=Group.objects.filter(name__in=ROLE_GROUP_NAMES),
+        required=False,
+    )
     sites = UserSiteRelatedField(
         many=True,
         queryset=Site.objects.none(),
@@ -320,12 +316,12 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             )
 
     def update(self, instance, validated_data):
-        groups_data = validated_data.pop("groups", None)
+        groups = validated_data.pop("groups", None)
         sites = validated_data.pop("sites", None)
         instance = super().update(instance, validated_data)
 
-        if groups_data is not None:
-            instance.groups.set(group_data["id"] for group_data in groups_data)
+        if groups is not None:
+            instance.groups.set(groups)
 
         if sites is not None:
             sites_by_id = {site.pk: site for site in sites}
