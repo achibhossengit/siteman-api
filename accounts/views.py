@@ -31,6 +31,7 @@ from .serializers import (
     RegisterConfirmSerializer,
     RegisterSerializer,
     ResendOtpSerializer,
+    UserCreateSerializer,
     UserProfileSerializer,
 
     # password reset serializers
@@ -47,8 +48,8 @@ from .serializers import (
     SiteUserSerializer,
     UserGroupSerializer,
     UserListSerializer,
-    UserSerializer,
     UserSiteSerializer,
+    UserUpdateSerializer,
 )
 
 REGISTER_PURPOSE = "register"
@@ -361,15 +362,12 @@ class UserProfileViewSet(
 class UserViewSet(viewsets.ModelViewSet):
     """Company-scoped user management.
 
-    List / retrieve / create / patch. No delete (soft-delete later).
-    Create sets a random password (user resets via forgot-password).
-    Patch may update name, email, phone, is_active — not password.
-    Groups and sites are nested under this resource.
+    PATCH only updates ``is_active`` and replaces assigned ``groups`` and ``sites``.
     """
 
-    serializer_class = UserSerializer
+    serializer_class = UserProfileSerializer
     queryset = User.objects.none()
-    http_method_names = ["get", "post", "patch", "head", "options"]  # no PUT / DELETE
+    http_method_names = ["get", "post", "patch", "head", "options"]
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ["is_active", "is_companyadmin"]
     search_fields = ["name", "phone_number"]
@@ -377,7 +375,11 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == "list":
             return UserListSerializer
-        return UserSerializer
+        if self.action == "create":
+            return UserCreateSerializer
+        if self.action == "partial_update":
+            return UserUpdateSerializer
+        return UserProfileSerializer
 
     def get_queryset(self):
         user = self.request.user

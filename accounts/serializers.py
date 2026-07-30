@@ -214,14 +214,7 @@ class UserListSerializer(serializers.ModelSerializer):
         ]
 
 
-class UserSerializer(serializers.ModelSerializer):
-    """Create / retrieve / partial update.
-
-    Create: name, phone, optional email — password is system-generated.
-    Patch: name, email, phone, is_active.
-    Password changes go through ``/auth/password/change`` or reset.
-    """
-
+class UserCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
@@ -297,6 +290,60 @@ class UserGroupSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         return {"id": instance.pk, "name": instance.name}
+
+
+class UserSiteRelatedField(serializers.PrimaryKeyRelatedField):
+    def to_representation(self, value):
+        return value.site_id
+
+
+class UserUpdateSerializer(serializers.ModelSerializer):
+    groups = UserGroupSerializer(many=True, required=False)
+    sites = UserSiteRelatedField(
+        many=True,
+        queryset=Site.objects.none(),
+        required=False,
+    )
+
+    class Meta:
+        model = User
+        fields = ["id", "is_active", "groups", "sites"]
+        read_only_fields = ["id"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        company_id = getattr(getattr(request, "user", None), "company_id", None)
+        if company_id is not None:
+            self.fields["sites"].child_relation.queryset = Site.objects.filter(
+                company_id=company_id
+            )
+
+    def update(self, instance, validated_data):
+        groups_data = validated_data.pop("groups", None)
+        sites = validated_data.pop("sites", None)
+        instance = super().update(instance, validated_data)
+
+        if groups_data is not None:
+            instance.groups.set(group_data["id"] for group_data in groups_data)
+
+        if sites is not None:
+            sites_by_id = {site.pk: site for site in sites}
+            instance.sites.exclude(site_id__in=sites_by_id).delete()
+            existing_site_ids = set(
+                instance.sites.values_list("site_id", flat=True)
+            )
+            request = self.context["request"]
+            for site_id, site in sites_by_id.items():
+                if site_id not in existing_site_ids:
+                    UserSite.objects.create(
+                        user=instance,
+                        site=site,
+                        company=request.user.company,
+                        created_by=request.user,
+                    )
+
+        return instance
 
 
 class UserSiteSerializer(serializers.ModelSerializer):

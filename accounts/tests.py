@@ -856,7 +856,7 @@ class UserCRUDTests(UserAPITestCase):
         self.assertIn("company", response.data)
         self.assertNotIn("password", response.data)
 
-    def test_patch_name_email_and_is_active(self):
+    def test_patch_is_active(self):
         other = self._create_company_user(
             name="Old Name",
             phone="+8801711115555",
@@ -864,36 +864,143 @@ class UserCRUDTests(UserAPITestCase):
         )
         response = self.client.patch(
             self._detail_url(other.pk),
-            {
-                "name": "New Name",
-                "email": "new@example.com",
-                "is_active": False,
-            },
+            {"is_active": False},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["name"], "New Name")
-        self.assertEqual(response.data["email"], "new@example.com")
         self.assertFalse(response.data["is_active"])
         other.refresh_from_db()
-        self.assertEqual(other.name, "New Name")
         self.assertFalse(other.is_active)
         self.assertTrue(other.check_password("strong-pass-123"))
 
-    def test_patch_phone_allowed_password_ignored(self):
+    def test_patch_groups_replaces_assignments(self):
         other = self._create_company_user(phone="+8801711116666")
+        site_manager = Group.objects.get(name="Site Manager")
+        site_auditor = Group.objects.get(name="Site Auditor")
+        other.groups.add(site_manager)
+
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {
+                "groups": [
+                    {"id": site_manager.pk},
+                    {"id": site_auditor.pk},
+                ]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(
+            response.data["groups"],
+            [
+                {"id": site_manager.pk, "name": "Site Manager"},
+                {"id": site_auditor.pk, "name": "Site Auditor"},
+            ],
+        )
+        self.assertCountEqual(
+            other.groups.values_list("id", flat=True),
+            [site_manager.pk, site_auditor.pk],
+        )
+
+    def test_patch_sites_replaces_assignments(self):
+        other = self._create_company_user(phone="+8801711116767")
+        old_site = Site.objects.create(
+            name="Old Site",
+            company=self.company,
+            created_by=self.user,
+        )
+        site_a = Site.objects.create(
+            name="Site A",
+            company=self.company,
+            created_by=self.user,
+        )
+        site_b = Site.objects.create(
+            name="Site B",
+            company=self.company,
+            created_by=self.user,
+        )
+        UserSite.objects.create(
+            user=other,
+            site=old_site,
+            company=self.company,
+            created_by=self.user,
+        )
+
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {"sites": [site_a.pk, site_b.pk]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(response.data["sites"], [site_a.pk, site_b.pk])
+        self.assertCountEqual(
+            other.sites.values_list("site_id", flat=True),
+            [site_a.pk, site_b.pk],
+        )
+
+    def test_patch_sites_rejects_site_from_other_company(self):
+        other = self._create_company_user(phone="+8801711116868")
+        other_company = Company.objects.create(name="Other Company")
+        foreign_site = Site.objects.create(
+            name="Foreign Site",
+            company=other_company,
+        )
+
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {"sites": [foreign_site.pk]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(other.sites.exists())
+
+    def test_patch_empty_sites_clears_assignments(self):
+        other = self._create_company_user(phone="+8801711116969")
+        site = Site.objects.create(
+            name="Assigned Site",
+            company=self.company,
+            created_by=self.user,
+        )
+        UserSite.objects.create(
+            user=other,
+            site=site,
+            company=self.company,
+            created_by=self.user,
+        )
+
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {"sites": []},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["sites"], [])
+        self.assertFalse(other.sites.exists())
+
+    def test_patch_ignores_fields_other_than_groups_sites_and_is_active(self):
+        other = self._create_company_user(
+            name="Original Name",
+            phone="+8801711117777",
+            email="original@example.com",
+        )
         response = self.client.patch(
             self._detail_url(other.pk),
             {
                 "phone_number": "+8801799999999",
                 "password": "hijacked-pass-999",
-                "name": "Still Karim",
+                "name": "Changed Name",
+                "email": "changed@example.com",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         other.refresh_from_db()
-        self.assertEqual(other.phone_number, "+8801799999999")
+        self.assertEqual(other.name, "Original Name")
+        self.assertEqual(other.phone_number, "+8801711117777")
+        self.assertEqual(other.email, "original@example.com")
         self.assertTrue(other.check_password("strong-pass-123"))
-        self.assertEqual(other.name, "Still Karim")
 
     def test_patch_same_name_allowed(self):
         other = self._create_company_user(name="Keep", phone="+8801711117777")
