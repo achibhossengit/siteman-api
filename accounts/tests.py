@@ -771,11 +771,12 @@ class UserAuthPermissionTests(UserAPITestCase):
 
 
 class UserCRUDTests(UserAPITestCase):
-    def test_list_includes_self(self):
+    def test_list_excludes_self(self):
+        other = self._create_company_user(phone="+8801711110000")
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], self.user.pk)
+        self.assertEqual(response.data[0]["id"], other.pk)
 
     def test_create_user_success(self):
         response = self.client.post(
@@ -833,7 +834,7 @@ class UserCRUDTests(UserAPITestCase):
         other = self._create_company_user()
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(response.data), 1)
         self.assertCountEqual(
             response.data[0].keys(),
             [
@@ -1078,10 +1079,11 @@ class UserFilterIsolationTests(UserAPITestCase):
             password="strong-pass-123",
             company=other,
         )
+        colleague = self._create_company_user(phone="+8801711110000")
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], self.user.pk)
+        self.assertEqual(response.data[0]["id"], colleague.pk)
 
     def test_filter_by_is_active(self):
         active = self._create_company_user(name="Active", phone="+8801711122222")
@@ -1091,7 +1093,7 @@ class UserFilterIsolationTests(UserAPITestCase):
         response = self.client.get(self.list_url, {"is_active": "true"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = {row["id"] for row in response.data}
-        self.assertIn(self.user.pk, ids)
+        self.assertNotIn(self.user.pk, ids)
         self.assertIn(active.pk, ids)
         self.assertNotIn(inactive.pk, ids)
 
