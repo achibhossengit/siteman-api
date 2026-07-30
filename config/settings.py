@@ -1,5 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
+import dj_database_url
 from decouple import Csv, config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -68,14 +69,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('POSTGRES_DB'),
-        'USER': config('POSTGRES_USER'),
-        'PASSWORD': config('POSTGRES_PASSWORD'),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432'),
-    }
+    'default': dj_database_url.parse(
+        config('DATABASE_URL'),
+        conn_max_age=config('DB_CONN_MAX_AGE', default=60, cast=int),
+        conn_health_checks=True,
+    )
 }
 
 
