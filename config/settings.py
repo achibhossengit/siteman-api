@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'drf_standardized_errors',
     'drf_spectacular',
     'django_filters',
+    'anymail',
 
     # Local
     'core',
@@ -196,6 +197,18 @@ REFRESH_TOKEN_COOKIE_PATH = '/api/v1/auth/token'
 
 
 # OTP / notification delivery
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND',
+    default='anymail.backends.resend.EmailBackend',
+)
+ANYMAIL = {
+    'RESEND_API_KEY': config('RESEND_API_KEY', default=''),
+}
+DEFAULT_FROM_EMAIL = config(
+    'DEFAULT_FROM_EMAIL',
+    default='SiteMan <siteman@achibhossen.me>',
+)
+
 OTP_LENGTH = config('OTP_LENGTH', default=6, cast=int)
 OTP_AGE = config('OTP_AGE', default=300, cast=int)
 OTP_TICKET_TTL = config('OTP_TICKET_TTL', default=3600, cast=int)
