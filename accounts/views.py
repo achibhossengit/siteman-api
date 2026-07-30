@@ -385,6 +385,12 @@ class UserViewSet(viewsets.ModelViewSet):
             User.objects.filter(
                 company_id=user.company_id,
                 deleted_at__isnull=True,
+            ).exclude(id=user.id)
+            .prefetch_related(
+                "groups",
+                "groups__permissions",
+                "user_permissions",
+                "sites__site",
             )
             .order_by("name")
         )
