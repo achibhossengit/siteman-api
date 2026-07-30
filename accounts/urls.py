@@ -12,18 +12,12 @@ from .views import (
     CookieTokenObtainPairView,
     CookieTokenRefreshView,
     CookieTokenBlacklistView,
-    UserGroupViewSet,
     UserProfileViewSet,
-    UserSiteViewSet,
     UserViewSet,
 )
 
 router = routers.SimpleRouter(trailing_slash=False)
 router.register("users", UserViewSet, basename="user")
-
-users_router = routers.NestedSimpleRouter(router, "users", lookup="user")
-users_router.register("groups", UserGroupViewSet, basename="user-group")
-users_router.register("sites", UserSiteViewSet, basename="user-site")
 
 urlpatterns = [
     path("auth/register", RegisterView.as_view(), name="register"),
@@ -54,5 +48,4 @@ urlpatterns = [
     ),
 
     *router.urls,
-    *users_router.urls,
 ]

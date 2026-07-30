@@ -346,41 +346,6 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 
-class UserSiteSerializer(serializers.ModelSerializer):
-    """List/create under ``/users/<user_pk>/sites`` (body: ``site``)."""
-
-    class Meta:
-        model = UserSite
-        fields = ["id", "user", "site", "created_at", "updated_at"]
-        read_only_fields = ["id", "user", "created_at", "updated_at"]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get("request")
-        company_id = getattr(getattr(request, "user", None), "company_id", None)
-        if company_id is not None and "site" in self.fields:
-            self.fields["site"].queryset = Site.objects.filter(company_id=company_id)
-
-
-class SiteUserSerializer(serializers.ModelSerializer):
-    """List/create under ``/sites/<site_pk>/users`` (body: ``user``)."""
-
-    class Meta:
-        model = UserSite
-        fields = ["id", "user", "site", "created_at", "updated_at"]
-        read_only_fields = ["id", "site", "created_at", "updated_at"]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get("request")
-        company_id = getattr(getattr(request, "user", None), "company_id", None)
-        if company_id is not None and "user" in self.fields:
-            self.fields["user"].queryset = User.objects.filter(
-                company_id=company_id,
-                deleted_at__isnull=True,
-            )
-
-
 class CookieTokenObtainPairSerializer(TokenObtainPairSerializer):
     
     def validate_phone_number(self, value):
