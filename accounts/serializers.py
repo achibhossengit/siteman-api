@@ -147,6 +147,20 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return sorted(obj.get_all_permissions())
 
     def get_sites(self, obj):
+        if obj.is_companyadmin and obj.company_id is not None:
+            sites = Site.objects.filter(company_id=obj.company_id).order_by(
+                "name", "id"
+            )
+            return [
+                {
+                    "id": site.pk,
+                    "name": site.name,
+                    "is_active": site.is_active,
+                    "is_closed": site.is_closed,
+                }
+                for site in sites
+            ]
+
         assignments = (
             obj.sites.select_related("site")
             .order_by("site__name", "id")

@@ -1276,6 +1276,46 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
             },
         )
 
+    def test_companyadmin_gets_all_company_sites(self):
+        other_site = Site.objects.create(
+            name="Jamuna Bridge",
+            company=self.company,
+            created_by=self.user,
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(
+            [site["id"] for site in response.data["sites"]],
+            [self.site.pk, other_site.pk],
+        )
+
+    def test_non_admin_gets_only_assigned_sites(self):
+        Site.objects.create(
+            name="Unassigned Site",
+            company=self.company,
+            created_by=self.user,
+        )
+        worker = User.objects.create_user(
+            phone_number="+8801799999999",
+            name="Worker",
+            password="strong-pass-123",
+            company=self.company,
+            is_companyadmin=False,
+        )
+        UserSite.objects.create(
+            user=worker,
+            site=self.site,
+            company=self.company,
+            created_by=self.user,
+        )
+        self.client.force_authenticate(user=worker)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [site["id"] for site in response.data["sites"]],
+            [self.site.pk],
+        )
+
     def test_get_is_only_request_user(self):
         other = User.objects.create_user(
             phone_number="+8801711111111",
