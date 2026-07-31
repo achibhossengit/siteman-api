@@ -121,7 +121,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "company",
-            "email",
             "is_active",
             "is_staff",
             "is_companyadmin",
