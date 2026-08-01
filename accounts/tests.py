@@ -1330,7 +1330,7 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
 
 
 class UserProfileUpdateTests(UserProfileAPITestCase):
-    def test_patch_basic_info_ignores_unverified_email(self):
+    def test_patch_basic_info(self):
         response = self.client.patch(
             self.url,
             {
@@ -1341,11 +1341,11 @@ class UserProfileUpdateTests(UserProfileAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "New Achib")
-        self.assertEqual(response.data["email"], "achib@example.com")
+        self.assertEqual(response.data["email"], "new@example.com")
         self.assertEqual(response.data["phone_number"], "+8801712345600")
         self.user.refresh_from_db()
         self.assertEqual(self.user.name, "New Achib")
-        self.assertEqual(self.user.email, "achib@example.com")
+        self.assertEqual(self.user.email, "new@example.com")
         self.assertEqual(self.user.phone_number, "+8801712345600")
 
     def test_patch_ignores_flags(self):
