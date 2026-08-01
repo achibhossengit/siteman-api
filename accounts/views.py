@@ -4,7 +4,7 @@ from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status, viewsets
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -51,6 +51,15 @@ REGISTER_PURPOSE = "register"
 PASSWORD_RESET_PURPOSE = "password_reset"
 COMPANY_ADMIN_GROUP = "Company Admin"
 
+
+def _ensure_registration_enabled():
+    if not settings.REGISTRATION_ENABLED:
+        raise PermissionDenied(
+            detail="Registration is temporarily unavailable.",
+            code=status_codes.REGISTRATION_DISABLED,
+        )
+
+
 def _set_refresh_token_cookie(response, refresh_token=None):
     if refresh_token is not None:
         response.set_cookie(
@@ -90,6 +99,7 @@ class RegisterView(GenericAPIView):
     throttle_scope = "register"
 
     def post(self, request, *args, **kwargs):
+        _ensure_registration_enabled()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -119,6 +129,7 @@ class RegisterResendOtpView(GenericAPIView):
     throttle_scope = "register"
 
     def post(self, request, *args, **kwargs):
+        _ensure_registration_enabled()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ticket = serializer.validated_data["ticket"]
@@ -136,6 +147,7 @@ class RegisterConfirmView(GenericAPIView):
     throttle_scope = "register"
 
     def post(self, request, *args, **kwargs):
+        _ensure_registration_enabled()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         payload = verifications.verify(

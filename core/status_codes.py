@@ -6,6 +6,7 @@ EXPIRED = "expired"
 
 # OTP / verification
 ALREADY_REGISTERED = "already_registered"
+REGISTRATION_DISABLED = "registration_disabled"
 RESEND_COOLDOWN = "resend_cooldown"
 MAX_RESENDS = "max_resends"
 MAX_ATTEMPTS = "max_attempts"

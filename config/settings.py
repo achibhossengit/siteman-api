@@ -233,6 +233,9 @@ OTP_RESEND_COOLDOWN = config('OTP_RESEND_COOLDOWN', default=60, cast=int)
 OTP_MAX_RESENDS = config('OTP_MAX_RESENDS', default=5, cast=int)
 OTP_MAX_ATTEMPTS = config('OTP_MAX_ATTEMPTS', default=5, cast=int)
 
+# Public self-serve registration (company signup). Off for MVP.
+REGISTRATION_ENABLED = config('REGISTRATION_ENABLED', default=True, cast=bool)
+
 
 LOGGING = {
     'version': 1,

@@ -30,7 +30,7 @@ TEST_THROTTLE_RATES = {
 }
 
 
-@override_settings(CACHES=TEST_CACHES)
+@override_settings(CACHES=TEST_CACHES, REGISTRATION_ENABLED=True)
 class RegistrationFlowTests(APITestCase):
     def setUp(self):
         cache.clear()
@@ -171,6 +171,50 @@ class RegistrationFlowTests(APITestCase):
         self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
 
 
+@override_settings(CACHES=TEST_CACHES, REGISTRATION_ENABLED=False)
+class RegistrationDisabledTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.register_url = reverse("register", kwargs={"version": "v1"})
+        self.resend_url = reverse("register-resend-otp", kwargs={"version": "v1"})
+        self.confirm_url = reverse("register-confirm", kwargs={"version": "v1"})
+
+    def test_register_blocked(self):
+        response = self.client.post(
+            self.register_url,
+            {
+                "name": "Achib Hossen",
+                "phone_number": "+8801712345678",
+                "company_name": "Achib Builders",
+                "password": "strong-pass-123",
+                "email": "achib@example.com",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.REGISTRATION_DISABLED,
+        )
+
+    def test_resend_blocked(self):
+        response = self.client.post(self.resend_url, {"ticket": "unused"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.REGISTRATION_DISABLED,
+        )
+
+    def test_confirm_blocked(self):
+        response = self.client.post(
+            self.confirm_url, {"ticket": "unused", "otp": "123456"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.REGISTRATION_DISABLED,
+        )
+
+
 @override_settings(CACHES=TEST_CACHES)
 class TokenFlowTests(APITestCase):
     """JWT obtain / refresh / blacklist flow, including the httponly
@@ -269,7 +313,7 @@ class TokenFlowTests(APITestCase):
         self.assertEqual(response.cookies[self.REFRESH_TOKEN_COOKIE_NAME].value, "")
 
 
-@override_settings(CACHES=TEST_CACHES)
+@override_settings(CACHES=TEST_CACHES, REGISTRATION_ENABLED=True)
 class AuthenticationRateLimitTests(APITestCase):
     """Throttling for the auth endpoints.
 
