@@ -478,6 +478,97 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
         self.assertEqual(response.data[0]["id"], assigned.pk)
 
 
+class LabourCurrentSiteAssignmentTests(LabourAPITestCase):
+    def _as_site_member(self, site=None):
+        site = site or self.site
+        self.user.is_companyadmin = False
+        self.user.save(update_fields=["is_companyadmin"])
+        UserSite.objects.create(
+            user=self.user,
+            site=site,
+            company=self.company,
+            created_by=self.user,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_non_admin_can_assign_own_site(self):
+        self._as_site_member()
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Mine",
+                "current_site": self.site.pk,
+                "default_salary": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["current_site"], self.site.pk)
+
+    def test_non_admin_cannot_assign_other_site(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        self._as_site_member(self.site)
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Steal",
+                "current_site": other_site.pk,
+                "default_salary": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.UNAUTHORIZED_SITE,
+        )
+
+    def test_non_admin_cannot_clear_current_site(self):
+        labour = self._create_labour(name="Movable")
+        self._as_site_member()
+        response = self.client.patch(
+            self._detail_url(labour.pk),
+            {"current_site": None},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_UNASSIGNED,
+        )
+
+    def test_non_admin_cannot_create_unassigned(self):
+        self._as_site_member()
+        response = self.client.post(
+            self.list_url,
+            {"name": "Pool", "default_salary": 500},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_UNASSIGNED,
+        )
+
+    def test_companyadmin_can_assign_any_company_site(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+            created_by=self.user,
+        )
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Anywhere",
+                "current_site": other_site.pk,
+                "default_salary": 500,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["current_site"], other_site.pk)
+
+
 class LabourSubscriptionTests(LabourAPITestCase):
     def test_create_blocked_when_active_labour_limit_exceeded(self):
         self.subscription.active_labour_limit = 1

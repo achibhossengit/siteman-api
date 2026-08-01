@@ -107,7 +107,13 @@ class LabourSerializer(serializers.ModelSerializer):
         return value
 
     def validate_current_site(self, site):
+        user = self.context["request"].user
         if site is None:
+            if not user.is_companyadmin:
+                raise serializers.ValidationError(
+                    "Only company admin can leave labour unassigned.",
+                    code=status_codes.LABOUR_UNASSIGNED,
+                )
             return site
         if site.company_id != self._company().id:
             raise serializers.ValidationError(
@@ -119,7 +125,32 @@ class LabourSerializer(serializers.ModelSerializer):
                 "Cannot assign labour to a closed site.",
                 code=status_codes.SITE_CLOSED,
             )
+        if not user.is_companyadmin and not site.is_authorized_user(user):
+            raise serializers.ValidationError(
+                "You can only assign labour to a site you belong to.",
+                code=status_codes.UNAUTHORIZED_SITE,
+            )
         return site
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        user = self.context["request"].user
+        # Create with omitted current_site would leave labour unassigned;
+        # non-admins must explicitly pick a site they belong to.
+        if (
+            not user.is_companyadmin
+            and self.instance is None
+            and "current_site" not in attrs
+        ):
+            raise serializers.ValidationError(
+                {
+                    "current_site": serializers.ErrorDetail(
+                        "Only company admin can leave labour unassigned.",
+                        code=status_codes.LABOUR_UNASSIGNED,
+                    )
+                }
+            )
+        return attrs
 
 
 class LabourPaymentListSerializer(serializers.ModelSerializer):
