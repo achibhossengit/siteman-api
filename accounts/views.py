@@ -58,8 +58,8 @@ def _set_refresh_token_cookie(response, refresh_token=None):
             value=str(refresh_token),
             max_age=int(jwt_settings.REFRESH_TOKEN_LIFETIME.total_seconds()),
             httponly=True,
-            secure=getattr(settings, "REFRESH_TOKEN_COOKIE_SECURE", not settings.DEBUG),
-            samesite=getattr(settings, "REFRESH_TOKEN_COOKIE_SAMESITE", "Lax"),
+            secure=getattr(settings, "REFRESH_TOKEN_COOKIE_SECURE"),
+            samesite=getattr(settings, "REFRESH_TOKEN_COOKIE_SAMESITE"),
             path=getattr(settings, "REFRESH_TOKEN_COOKIE_PATH", "/api/v1/auth/token"),
         )
 
@@ -67,6 +67,7 @@ def _clear_refresh_token_cookie(response):
     response.delete_cookie(
         key=getattr(settings, "REFRESH_TOKEN_COOKIE_NAME", "refresh_token"),
         path=getattr(settings, "REFRESH_TOKEN_COOKIE_PATH", "/api/v1/auth/token"),
+        samesite=getattr(settings, "REFRESH_TOKEN_COOKIE_SAMESITE"),
     )
 
 

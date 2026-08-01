@@ -208,8 +208,8 @@ SIMPLE_JWT = {
 # Auth refresh cookie
 # Cross-origin frontends (e.g. Netlify → Railway) need SameSite=None + Secure=True.
 REFRESH_TOKEN_COOKIE_NAME = 'refresh_token'
-REFRESH_TOKEN_COOKIE_SECURE = config('REFRESH_TOKEN_COOKIE_SECURE', default=not DEBUG, cast=bool)
-REFRESH_TOKEN_COOKIE_SAMESITE = config('REFRESH_TOKEN_COOKIE_SAMESITE', default='Lax')
+REFRESH_TOKEN_COOKIE_SECURE = config('REFRESH_TOKEN_COOKIE_SECURE', default='True', cast=bool)
+REFRESH_TOKEN_COOKIE_SAMESITE = config('REFRESH_TOKEN_COOKIE_SAMESITE', default='None')
 REFRESH_TOKEN_COOKIE_PATH = '/api/v1/auth/token'
 
 
