@@ -925,22 +925,43 @@ class UserCRUDTests(UserAPITestCase):
 
         response = self.client.patch(
             self._detail_url(other.pk),
-            {"groups": ["Site Manager", "Site Auditor"]},
+            {"groups": ["Site Auditor"]},
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertCountEqual(
+        self.assertEqual(
             response.data["groups"],
-            [
-                {"id": site_manager.pk, "name": "Site Manager"},
-                {"id": site_auditor.pk, "name": "Site Auditor"},
-            ],
+            [{"id": site_auditor.pk, "name": "Site Auditor"}],
         )
         self.assertCountEqual(
             other.groups.values_list("id", flat=True),
-            [site_manager.pk, site_auditor.pk],
+            [site_auditor.pk],
         )
+
+    def test_patch_groups_rejects_multiple_groups(self):
+        other = self._create_company_user(phone="+8801711116667")
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {"groups": ["Site Manager", "Site Auditor"]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+        self.assertFalse(other.groups.exists())
+
+    def test_patch_groups_rejects_company_admin(self):
+        other = self._create_company_user(phone="+8801711116668")
+        response = self.client.patch(
+            self._detail_url(other.pk),
+            {"groups": ["Company Admin"]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(other.groups.exists())
 
     def test_patch_groups_rejects_unknown_group_name(self):
         other = self._create_company_user(phone="+8801711116766")

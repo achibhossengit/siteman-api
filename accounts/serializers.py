@@ -16,9 +16,9 @@ from .models import UserSite
 User = get_user_model()
 OTP_LENGTH = getattr(settings, "OTP_LENGTH", 6)
 
-# Roles created in accounts.0003_create_groups.
+# Allowed group names for company users.
 ROLE_GROUP_NAMES = (
-    "Company Admin",
+    # "Company Admin",
     "Site Manager",
     "Site Auditor",
 )
@@ -322,6 +322,14 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             self.fields["sites"].child_relation.queryset = Site.objects.filter(
                 company_id=company_id
             )
+
+    def validate_groups(self, groups):
+        if len(groups) > 1:
+            raise serializers.ValidationError(
+                "A user can belong to only one group at a time.",
+                code=status_codes.INVALID,
+            )
+        return groups
 
     def update(self, instance, validated_data):
         groups = validated_data.pop("groups", None)
