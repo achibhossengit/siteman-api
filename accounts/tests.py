@@ -349,7 +349,7 @@ class AuthenticationRateLimitTests(APITestCase):
             "company_name": "Achib Builders",
             "password": "strong-pass-123",
         }
-        self.reset_payload = {"phone_number": "+8801712345678", "name": "Achib Hossen"}
+        self.reset_payload = {"phone_number": "+8801712345678"}
 
     def exhaust_register_scope(self):
         """Use up the whole 'register' bucket (3/min)."""
@@ -477,12 +477,12 @@ class PasswordResetFlowTests(APITestCase):
             company=self.company,
         )
 
-    def request_reset(self, phone="+8801712345678", name="Achib Hossen"):
+    def request_reset(self, phone="+8801712345678"):
         """POST /password/reset with delivery mocked.
         Returns (response, ticket, otp, mocked)."""
         with patch("core.notifications.deliver_otp") as mocked:
             response = self.client.post(
-                self.reset_url, {"phone_number": phone, "name": name}
+                self.reset_url, {"phone_number": phone}
             )
         ticket = response.data.get("ticket") if response.status_code == 200 else None
         otp = mocked.call_args.kwargs.get("otp") if mocked.call_args else None
@@ -527,26 +527,6 @@ class PasswordResetFlowTests(APITestCase):
     def test_reset_request_rejects_invalid_phone(self):
         response, _, _, _ = self.request_reset(phone="+8802123456789")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_reset_request_rejects_invalid_name_same_response_no_delivery(self):
-        response, ticket, _, mocked = self.request_reset(name="Someone Else")
-        # same 200 body as a valid pair — name mismatch is not revealed
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertCountEqual(response.data.keys(), ["ticket", "otp_expires_in", "resend_cooldown"])
-        self.assertIsNotNone(ticket)
-        mocked.assert_not_called()
-
-    def test_reset_request_name_trims_surrounding_spaces(self):
-        # DRF CharField trims leading/trailing whitespace by default
-        _, _, _, mocked = self.request_reset(name="  Achib Hossen  ")
-        mocked.assert_called_once()
-
-    def test_reset_request_name_match_is_exact(self):
-        for name in ["ACHIB HOSSEN", "achib hossen", "Achib  Hossen"]:
-            with self.subTest(name=name):
-                cache.clear()  # reset throttle/ticket state between attempts
-                _, _, _, mocked = self.request_reset(name=name)
-                mocked.assert_not_called()
 
     def test_reset_request_normalizes_phone_before_user_lookup(self):
         _, _, _, mocked = self.request_reset(phone="01712345678")

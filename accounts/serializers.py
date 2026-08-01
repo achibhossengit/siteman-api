@@ -56,7 +56,6 @@ class RegisterConfirmSerializer(serializers.Serializer):
 
 class PasswordResetSerializer(serializers.Serializer):
     phone_number = serializers.CharField(max_length=20)
-    name = serializers.CharField(max_length=255)
 
     def validate_phone_number(self, value):
         # format check only — existence is never validated here, so the

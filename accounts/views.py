@@ -191,17 +191,13 @@ class PasswordResetView(GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         phone = serializer.validated_data["phone_number"]
-        name = serializer.validated_data["name"]
 
         # Anti-enumeration: a ticket is minted and the same 200 body returned
         # whether or not the phone is registered. Only a real, active account
         # with a stored email gets a deliverable contact, so
         # nothing is ever sent and its OTP can never be verified.
-        # hard rule: the account holder's exact name must match too —
-        # keeps reset stricter than a plain phone->OTP flow
         user = User.objects.filter(
             phone_number=phone,
-            name=name,
             is_active=True,
             deleted_at__isnull=True,
         ).first()
