@@ -80,14 +80,12 @@ class LabourSerializer(serializers.ModelSerializer):
             "last_session_date",
             "is_active",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "company",
             "last_session_date",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -184,7 +182,6 @@ class LabourPaymentSerializer(
             "note",
             "is_sealed",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -193,7 +190,6 @@ class LabourPaymentSerializer(
             "site",
             "is_sealed",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -239,7 +235,6 @@ class SiteLabourPaymentSerializer(
             "note",
             "is_sealed",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -247,7 +242,6 @@ class SiteLabourPaymentSerializer(
             "site",
             "is_sealed",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -318,7 +312,6 @@ class SiteLabourAttendanceSerializer(
             "note",
             "is_sealed",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -326,7 +319,6 @@ class SiteLabourAttendanceSerializer(
             "site",
             "is_sealed",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -409,7 +401,6 @@ class AttendanceSerializer(
             "note",
             "is_sealed",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -418,7 +409,6 @@ class AttendanceSerializer(
             "site",
             "is_sealed",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -483,7 +473,6 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "cumulative_payable",
             "is_modified",
             "is_latest",
-            "created_by",
             "created_at",
             "updated_at",
         ]

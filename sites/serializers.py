@@ -25,7 +25,6 @@ class SiteSerializer(serializers.ModelSerializer):
             "is_closed",
             "closed_at",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -33,7 +32,6 @@ class SiteSerializer(serializers.ModelSerializer):
             "company",
             "is_closed",
             "closed_at",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -83,14 +81,12 @@ class BillingCategorySerializer(serializers.ModelSerializer):
             "is_active",
             "is_done",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "site",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -153,14 +149,12 @@ class SiteCashSerializer(SiteLedgerValidationMixin, serializers.ModelSerializer)
             "amount",
             "note",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "site",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
@@ -193,14 +187,12 @@ class PrivateSiteCashSerializer(SiteLedgerValidationMixin, serializers.ModelSeri
             "amount",
             "note",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "site",
             "company",
-            "created_by",
             "created_at",
             "updated_at",
         ]

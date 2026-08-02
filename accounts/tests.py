@@ -981,23 +981,19 @@ class UserCRUDTests(UserAPITestCase):
         old_site = Site.objects.create(
             name="Old Site",
             company=self.company,
-            created_by=self.user,
         )
         site_a = Site.objects.create(
             name="Site A",
             company=self.company,
-            created_by=self.user,
         )
         site_b = Site.objects.create(
             name="Site B",
             company=self.company,
-            created_by=self.user,
         )
         UserSite.objects.create(
             user=other,
             site=old_site,
             company=self.company,
-            created_by=self.user,
         )
 
         response = self.client.patch(
@@ -1035,13 +1031,11 @@ class UserCRUDTests(UserAPITestCase):
         site = Site.objects.create(
             name="Assigned Site",
             company=self.company,
-            created_by=self.user,
         )
         UserSite.objects.create(
             user=other,
             site=site,
             company=self.company,
-            created_by=self.user,
         )
 
         response = self.client.patch(
@@ -1249,13 +1243,11 @@ class UserProfileAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         UserSite.objects.create(
             user=self.user,
             site=self.site,
             company=self.company,
-            created_by=self.user,
         )
         self.client.force_authenticate(user=self.user)
         self.url = reverse("user-profile", kwargs={"version": "v1"})
@@ -1325,7 +1317,6 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         other_site = Site.objects.create(
             name="Jamuna Bridge",
             company=self.company,
-            created_by=self.user,
         )
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1338,7 +1329,6 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         Site.objects.create(
             name="Unassigned Site",
             company=self.company,
-            created_by=self.user,
         )
         worker = User.objects.create_user(
             phone_number="+8801799999999",
@@ -1351,7 +1341,6 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
             user=worker,
             site=self.site,
             company=self.company,
-            created_by=self.user,
         )
         self.client.force_authenticate(user=worker)
         response = self.client.get(self.url)

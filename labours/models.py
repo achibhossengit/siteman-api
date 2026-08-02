@@ -3,10 +3,10 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
-from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
+from core.models import CompanyOwnedMixin, TimeStampedMixin
 
 
-class Labour(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+class Labour(TimeStampedMixin, CompanyOwnedMixin):
     current_site = models.ForeignKey(
         "sites.Site",
         on_delete=models.SET_NULL,
@@ -44,7 +44,7 @@ class LabourPaymentType(models.TextChoices):
     PAYMENT = "payment", "Payment"
     RETURN = "return", "Return"
 
-class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+class LabourPayment(TimeStampedMixin, CompanyOwnedMixin):
     labour = models.ForeignKey(
         Labour,
         on_delete=models.RESTRICT,
@@ -81,7 +81,7 @@ class LabourPayment(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
         return f"Note: {self.note} Amount: {self.amount} Type: {self.get_type_display()}"
 
 
-class Attendance(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+class Attendance(TimeStampedMixin, CompanyOwnedMixin):
     PRESENT_CHOICES = [
         (Decimal("0"), "0"),
         (Decimal("0.5"), "0.5"),
@@ -148,7 +148,7 @@ class Attendance(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
         return f"{self.labour} @ {self.date} (present={self.present})"
 
 
-class LabourSession(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+class LabourSession(TimeStampedMixin, CompanyOwnedMixin):
     labour = models.ForeignKey(
         Labour,
         on_delete=models.RESTRICT,

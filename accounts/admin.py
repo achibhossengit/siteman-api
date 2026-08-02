@@ -140,7 +140,5 @@ class UserAdmin(BaseUserAdmin):
             if isinstance(obj, UserSite):
                 if not obj.company_id:
                     obj.company = form.instance.company
-                if not obj.created_by_id:
-                    obj.created_by = request.user
             obj.save()
         formset.save_m2m()

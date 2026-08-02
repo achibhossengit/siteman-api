@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.core.exceptions import ValidationError
-from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
+from core.models import CompanyOwnedMixin, TimeStampedMixin
 from core.phone import normalize_bd_phone
 from .managers import UserManager
 
@@ -70,7 +70,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
         super().save(*args, **kwargs)
         
 
-class UserSite(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+class UserSite(TimeStampedMixin, CompanyOwnedMixin):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

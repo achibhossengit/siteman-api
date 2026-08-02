@@ -57,7 +57,7 @@ class SiteViewSet(viewsets.ModelViewSet):
         qs = Site.objects.filter(company_id=user.company_id)
         if not user.is_companyadmin:
             qs = qs.filter(users__user_id=user.id)
-        return qs.select_related("created_by").order_by("-created_at")
+        return qs.order_by("-created_at")
 
     @transaction.atomic
     def perform_create(self, serializer):
@@ -71,7 +71,6 @@ class SiteViewSet(viewsets.ModelViewSet):
             raise SubscriptionExpired()
         serializer.save(
             company=company,
-            created_by=self.request.user,
             closed_at=None,
             is_active=True,
         )        
@@ -144,7 +143,7 @@ class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
                 company_id=user.company_id,
                 site_id=int(self.kwargs["site_pk"]),
             )
-            .select_related("site", "created_by")
+            .select_related("site")
             .order_by("display_order", "id")
         )
 
@@ -163,7 +162,6 @@ class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
             serializer.save(
                 site_id=int(self.kwargs["site_pk"]),
                 company=self.request.user.company,
-                created_by=self.request.user,
             )
         except IntegrityError:
             raise serializers.ValidationError(
@@ -209,7 +207,7 @@ class SiteCashViewSet(viewsets.ModelViewSet):
                 company_id=user.company_id,
                 site_id=int(self.kwargs["site_pk"]),
             )
-            .select_related("site", "billing", "created_by")
+            .select_related("site", "billing")
             .order_by("-date", "-id")
         )
 
@@ -217,7 +215,6 @@ class SiteCashViewSet(viewsets.ModelViewSet):
         serializer.save(
             site_id=int(self.kwargs["site_pk"]),
             company=self.request.user.company,
-            created_by=self.request.user,
         )
 
 
@@ -248,7 +245,7 @@ class PrivateSiteCashViewSet(viewsets.ModelViewSet):
                 company_id=user.company_id,
                 site_id=int(self.kwargs["site_pk"]),
             )
-            .select_related("site", "billing", "created_by")
+            .select_related("site", "billing")
             .order_by("-date", "-id")
         )
 
@@ -256,5 +253,4 @@ class PrivateSiteCashViewSet(viewsets.ModelViewSet):
         serializer.save(
             site_id=int(self.kwargs["site_pk"]),
             company=self.request.user.company,
-            created_by=self.request.user,
         )

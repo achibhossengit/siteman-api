@@ -2,10 +2,10 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
-from core.models import CompanyOwnedMixin, CreatedByMixin, TimeStampedMixin
+from core.models import CompanyOwnedMixin, TimeStampedMixin
 
 
-class Site(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+class Site(TimeStampedMixin, CompanyOwnedMixin):
     name = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
     is_closed = models.BooleanField(default=False)
@@ -26,7 +26,7 @@ class Site(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
         return self.name
 
 
-class BillingCategory(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+class BillingCategory(TimeStampedMixin, CompanyOwnedMixin):
     site = models.ForeignKey(
         Site,
         on_delete=models.CASCADE,
@@ -62,7 +62,7 @@ class SiteCashCategory(models.TextChoices):
     EQUIPMENT = "equipment", "Equipment"
 
 
-class SiteCash(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+class SiteCash(TimeStampedMixin, CompanyOwnedMixin):
     site = models.ForeignKey(
         Site,
         on_delete=models.RESTRICT,
@@ -97,7 +97,7 @@ class PrivateSiteCashType(models.TextChoices):
     COST = "cost", "Cost"
 
 
-class PrivateSiteCash(TimeStampedMixin, CompanyOwnedMixin, CreatedByMixin):
+class PrivateSiteCash(TimeStampedMixin, CompanyOwnedMixin):
     site = models.ForeignKey(
         Site,
         on_delete=models.RESTRICT,

@@ -48,7 +48,6 @@ class LabourAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         self.list_url = reverse("labour-list", kwargs={"version": "v1"})
 
@@ -71,7 +70,6 @@ class LabourAPITestCase(APITestCase):
         defaults = {
             "name": name,
             "company": company,
-            "created_by": self.user,
             "current_site": self.site,
             "default_attendance": Decimal("1.0"),
             "default_salary": 500,
@@ -128,8 +126,6 @@ class LabourCRUDTests(LabourAPITestCase):
         self.assertEqual(Decimal(response.data["default_attendance"]), Decimal("1.0"))
         self.assertTrue(response.data["is_active"])
         self.assertEqual(response.data["company"], self.company.pk)
-        self.assertEqual(response.data["created_by"], self.user.pk)
-
     def test_create_forces_is_active_true(self):
         response = self.client.post(
             self.list_url,
@@ -243,12 +239,10 @@ class LabourValidationTests(LabourAPITestCase):
         other_site = Site.objects.create(
             name="Other Site",
             company=other,
-            created_by=self.user,
         )
         Labour.objects.create(
             name="Shared",
             company=other,
-            created_by=self.user,
             current_site=other_site,
             default_salary=500,
         )
@@ -275,7 +269,6 @@ class LabourValidationTests(LabourAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=self.user,
         )
         response = self.client.post(
             self.list_url,
@@ -287,7 +280,6 @@ class LabourValidationTests(LabourAPITestCase):
         closed = Site.objects.create(
             name="Closed Yard",
             company=self.company,
-            created_by=self.user,
             is_closed=True,
             closed_at=timezone.now(),
         )
@@ -316,7 +308,6 @@ class LabourFilterIsolationTests(LabourAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         self._create_labour(name="On Padma", current_site=self.site)
         self._create_labour(name="On Other", current_site=other_site)
@@ -359,11 +350,9 @@ class LabourFilterIsolationTests(LabourAPITestCase):
         Labour.objects.create(
             name="Secret",
             company=other,
-            created_by=other_user,
             current_site=Site.objects.create(
                 name="Other Site",
                 company=other,
-                created_by=other_user,
             ),
             default_salary=500,
         )
@@ -385,11 +374,9 @@ class LabourFilterIsolationTests(LabourAPITestCase):
         foreign = Labour.objects.create(
             name="Secret",
             company=other,
-            created_by=other_user,
             current_site=Site.objects.create(
                 name="Other Site",
                 company=other,
-                created_by=other_user,
             ),
             default_salary=500,
         )
@@ -402,7 +389,6 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         a = self._create_labour(name="On Padma", current_site=self.site)
         b = self._create_labour(name="On Other", current_site=other_site)
@@ -418,7 +404,6 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         assigned_labour = self._create_labour(name="Mine", current_site=self.site)
         self._create_labour(name="Theirs", current_site=other_site)
@@ -429,7 +414,6 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
             user=self.user,
             site=self.site,
             company=self.company,
-            created_by=self.user,
         )
         self.client.force_authenticate(user=self.user)
 
@@ -468,7 +452,6 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
             user=self.user,
             site=self.site,
             company=self.company,
-            created_by=self.user,
         )
         self.client.force_authenticate(user=self.user)
 
@@ -487,7 +470,6 @@ class LabourCurrentSiteAssignmentTests(LabourAPITestCase):
             user=self.user,
             site=site,
             company=self.company,
-            created_by=self.user,
         )
         self.client.force_authenticate(user=self.user)
 
@@ -508,7 +490,6 @@ class LabourCurrentSiteAssignmentTests(LabourAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         self._as_site_member(self.site)
         response = self.client.post(
@@ -555,7 +536,6 @@ class LabourCurrentSiteAssignmentTests(LabourAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         response = self.client.post(
             self.list_url,
@@ -667,7 +647,6 @@ class LabourSessionCacheTests(LabourAPITestCase):
             affected_attendance_rows=1,
             affected_payment_rows=0,
             previous_payable=0,
-            created_by=self.user,
         )
 
     def test_last_session_date_tracks_latest_session_save_and_delete(self):
@@ -711,14 +690,12 @@ class LabourPaymentAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, self.site)
 
         self.labour = Labour.objects.create(
             name="Karim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=500,
             default_fooding=100,
@@ -741,7 +718,6 @@ class LabourPaymentAPITestCase(APITestCase):
             user=user,
             site=site,
             company=user.company,
-            created_by=user,
         )
 
     def _list_url(self, labour_id):
@@ -766,7 +742,6 @@ class LabourPaymentAPITestCase(APITestCase):
             "date": timezone.localdate(),
             "type": LabourPaymentType.PAYMENT,
             "amount": 1000,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return LabourPayment.objects.create(**defaults)
@@ -823,12 +798,10 @@ class LabourPaymentAuthPermissionTests(LabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         foreign_labour = Labour.objects.create(
             name="Secret",
             company=other,
-            created_by=other_user,
             current_site=other_site,
             default_salary=500,
         )
@@ -931,7 +904,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
         self.assertEqual(response.data["labour"], self.labour.pk)
         self.assertEqual(response.data["site"], self.site.pk)
         self.assertEqual(response.data["company"], self.company.pk)
-        self.assertEqual(response.data["created_by"], self.user.pk)
         self.assertEqual(response.data["amount"], 1500)
         self.assertFalse(response.data["is_sealed"])
         self.assertTrue(
@@ -958,7 +930,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         response = self.client.post(
             self.list_url,
@@ -1012,8 +983,6 @@ class LabourPaymentCRUDTests(LabourPaymentAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["note"], "detail")
         self.assertIn("company", response.data)
-        self.assertIn("created_by", response.data)
-
     def test_patch_amount_and_note(self):
         payment = self._create_payment(amount=1000, note="old")
         response = self.client.patch(
@@ -1175,7 +1144,6 @@ class LabourPaymentObjectPermissionTests(LabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Old Yard",
             company=self.company,
-            created_by=self.user,
         )
         # Historical payment recorded at other_site; user is only on current site.
         payment = self._create_payment(site=other_site)
@@ -1193,7 +1161,6 @@ class LabourPaymentObjectPermissionTests(LabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Old Yard",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, other_site)
         payment = self._create_payment(site=other_site, amount=100)
@@ -1223,7 +1190,6 @@ class LabourPaymentFilterIsolationTests(LabourPaymentAPITestCase):
         other_labour = Labour.objects.create(
             name="Rahim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=500,
         )
@@ -1245,12 +1211,10 @@ class LabourPaymentFilterIsolationTests(LabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         other_labour = Labour.objects.create(
             name="Foreign Labour",
             company=other,
-            created_by=other_user,
             current_site=other_site,
             default_salary=500,
         )
@@ -1261,7 +1225,6 @@ class LabourPaymentFilterIsolationTests(LabourPaymentAPITestCase):
             date=timezone.localdate(),
             type=LabourPaymentType.PAYMENT,
             amount=999,
-            created_by=other_user,
         )
         self._create_payment(amount=100)
 
@@ -1337,14 +1300,12 @@ class LabourAttendanceAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, self.site)
 
         self.labour = Labour.objects.create(
             name="Karim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=500,
             default_fooding=100,
@@ -1368,7 +1329,6 @@ class LabourAttendanceAPITestCase(APITestCase):
             user=user,
             site=site,
             company=user.company,
-            created_by=user,
         )
 
     def _create_billing(self, name="Basement", site=None, **kwargs):
@@ -1377,7 +1337,6 @@ class LabourAttendanceAPITestCase(APITestCase):
             "company": site.company,
             "site": site,
             "name": name,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return BillingCategory.objects.create(**defaults)
@@ -1404,7 +1363,6 @@ class LabourAttendanceAPITestCase(APITestCase):
             "date": timezone.localdate(),
             "present": Decimal("1"),
             "salary": 500,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return Attendance.objects.create(**defaults)
@@ -1532,7 +1490,6 @@ class LabourAttendanceCRUDTests(LabourAttendanceAPITestCase):
         self.assertEqual(response.data["labour"], self.labour.pk)
         self.assertEqual(response.data["site"], self.site.pk)
         self.assertEqual(response.data["company"], self.company.pk)
-        self.assertEqual(response.data["created_by"], self.user.pk)
         self.assertEqual(response.data["billing"], self.billing.pk)
         self.assertEqual(Decimal(str(response.data["present"])), Decimal("1"))
         self.assertEqual(response.data["extra"], 100)
@@ -1554,7 +1511,6 @@ class LabourAttendanceCRUDTests(LabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         response = self.client.post(
             self.list_url,
@@ -1608,8 +1564,6 @@ class LabourAttendanceCRUDTests(LabourAttendanceAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["note"], "detail")
         self.assertIn("company", response.data)
-        self.assertIn("created_by", response.data)
-
     def test_patch_present_and_note(self):
         attendance = self._create_attendance(present=Decimal("1"), note="old")
         response = self.client.patch(
@@ -1720,7 +1674,6 @@ class LabourAttendanceValidationTests(LabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         other_billing = self._create_billing(name="Foreign Cat", site=other_site)
         response = self.client.post(
@@ -1776,7 +1729,6 @@ class LabourAttendanceObjectPermissionTests(LabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Old Yard",
             company=self.company,
-            created_by=self.user,
         )
         # Historical attendance at other_site; user is only on current site.
         attendance = self._create_attendance(site=other_site)
@@ -1794,7 +1746,6 @@ class LabourAttendanceObjectPermissionTests(LabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Old Yard",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, other_site)
         attendance = self._create_attendance(site=other_site, present=Decimal("1"))
@@ -1831,7 +1782,6 @@ class LabourAttendanceFilterIsolationTests(LabourAttendanceAPITestCase):
         other_labour = Labour.objects.create(
             name="Rahim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=500,
         )
@@ -1855,12 +1805,10 @@ class LabourAttendanceFilterIsolationTests(LabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         other_labour = Labour.objects.create(
             name="Foreign Labour",
             company=other,
-            created_by=other_user,
             current_site=other_site,
             default_salary=500,
         )
@@ -1870,7 +1818,6 @@ class LabourAttendanceFilterIsolationTests(LabourAttendanceAPITestCase):
             site=other_site,
             date=timezone.localdate(),
             present=Decimal("1"),
-            created_by=other_user,
         )
         self._create_attendance(present=Decimal("1"))
 
@@ -1941,14 +1888,12 @@ class SiteLabourPaymentAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, self.site)
 
         self.labour = Labour.objects.create(
             name="Karim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=500,
             default_fooding=100,
@@ -1956,7 +1901,6 @@ class SiteLabourPaymentAPITestCase(APITestCase):
         self.labour_b = Labour.objects.create(
             name="Rahim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=400,
             default_fooding=80,
@@ -1980,7 +1924,6 @@ class SiteLabourPaymentAPITestCase(APITestCase):
             user=user,
             site=site,
             company=user.company,
-            created_by=user,
         )
 
     def _list_url(self, site_id):
@@ -1999,7 +1942,6 @@ class SiteLabourPaymentAPITestCase(APITestCase):
             "date": timezone.localdate(),
             "type": LabourPaymentType.PAYMENT,
             "amount": 1000,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return LabourPayment.objects.create(**defaults)
@@ -2075,7 +2017,6 @@ class SiteLabourPaymentAuthPermissionTests(SiteLabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         response = self.client.get(self._list_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -2103,7 +2044,6 @@ class SiteLabourPaymentCRUDTests(SiteLabourPaymentAPITestCase):
         by_labour = {row["labour"]: row for row in response.data}
         self.assertEqual(by_labour[self.labour.pk]["site"], self.site.pk)
         self.assertEqual(by_labour[self.labour.pk]["company"], self.company.pk)
-        self.assertEqual(by_labour[self.labour.pk]["created_by"], self.user.pk)
         self.assertFalse(by_labour[self.labour.pk]["is_sealed"])
         self.assertEqual(by_labour[self.labour.pk]["amount"], 500)
         self.assertEqual(by_labour[self.labour_b.pk]["amount"], 700)
@@ -2112,7 +2052,6 @@ class SiteLabourPaymentCRUDTests(SiteLabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         response = self.client.post(
             self.list_url,
@@ -2237,7 +2176,6 @@ class SiteLabourPaymentValidationTests(SiteLabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         self.labour_b.current_site = other_site
         self.labour_b.save(update_fields=["current_site"])
@@ -2264,12 +2202,10 @@ class SiteLabourPaymentValidationTests(SiteLabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         foreign_labour = Labour.objects.create(
             name="Foreign Worker",
             company=other,
-            created_by=other_user,
             current_site=other_site,
         )
         response = self.client.post(
@@ -2339,7 +2275,6 @@ class SiteLabourPaymentFilterIsolationTests(SiteLabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, other_site)
         self._create_payment()
@@ -2358,12 +2293,10 @@ class SiteLabourPaymentFilterIsolationTests(SiteLabourPaymentAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         other_labour = Labour.objects.create(
             name="Foreign Worker",
             company=other,
-            created_by=other_user,
             current_site=other_site,
         )
         LabourPayment.objects.create(
@@ -2373,7 +2306,6 @@ class SiteLabourPaymentFilterIsolationTests(SiteLabourPaymentAPITestCase):
             date=timezone.localdate(),
             type=LabourPaymentType.PAYMENT,
             amount=999,
-            created_by=other_user,
         )
         self._create_payment(amount=100)
 
@@ -2429,14 +2361,12 @@ class SiteLabourAttendanceAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, self.site)
 
         self.labour = Labour.objects.create(
             name="Karim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=500,
             default_fooding=100,
@@ -2444,7 +2374,6 @@ class SiteLabourAttendanceAPITestCase(APITestCase):
         self.labour_b = Labour.objects.create(
             name="Rahim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=400,
             default_fooding=80,
@@ -2469,7 +2398,6 @@ class SiteLabourAttendanceAPITestCase(APITestCase):
             user=user,
             site=site,
             company=user.company,
-            created_by=user,
         )
 
     def _create_billing(self, name="Basement", site=None, **kwargs):
@@ -2478,7 +2406,6 @@ class SiteLabourAttendanceAPITestCase(APITestCase):
             "company": site.company,
             "site": site,
             "name": name,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return BillingCategory.objects.create(**defaults)
@@ -2499,7 +2426,6 @@ class SiteLabourAttendanceAPITestCase(APITestCase):
             "date": timezone.localdate(),
             "present": Decimal("1"),
             "salary": labour.default_salary,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return Attendance.objects.create(**defaults)
@@ -2575,7 +2501,6 @@ class SiteLabourAttendanceAuthPermissionTests(SiteLabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         response = self.client.get(self._list_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -2603,7 +2528,6 @@ class SiteLabourAttendanceCRUDTests(SiteLabourAttendanceAPITestCase):
         by_labour = {row["labour"]: row for row in response.data}
         self.assertEqual(by_labour[self.labour.pk]["site"], self.site.pk)
         self.assertEqual(by_labour[self.labour.pk]["company"], self.company.pk)
-        self.assertEqual(by_labour[self.labour.pk]["created_by"], self.user.pk)
         self.assertFalse(by_labour[self.labour.pk]["is_sealed"])
         self.assertEqual(by_labour[self.labour.pk]["extra"], 50)
         self.assertEqual(Decimal(by_labour[self.labour_b.pk]["present"]), Decimal("0.5"))
@@ -2621,7 +2545,6 @@ class SiteLabourAttendanceCRUDTests(SiteLabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         response = self.client.post(
             self.list_url,
@@ -2757,7 +2680,6 @@ class SiteLabourAttendanceValidationTests(SiteLabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         self.labour_b.current_site = other_site
         self.labour_b.save(update_fields=["current_site"])
@@ -2784,12 +2706,10 @@ class SiteLabourAttendanceValidationTests(SiteLabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         foreign_labour = Labour.objects.create(
             name="Foreign Worker",
             company=other,
-            created_by=other_user,
             current_site=other_site,
         )
         response = self.client.post(
@@ -2804,7 +2724,6 @@ class SiteLabourAttendanceValidationTests(SiteLabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         other_billing = self._create_billing(name="Foreign Cat", site=other_site)
         response = self.client.post(
@@ -2895,7 +2814,6 @@ class SiteLabourAttendanceFilterIsolationTests(SiteLabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, other_site)
         self._create_attendance()
@@ -2914,12 +2832,10 @@ class SiteLabourAttendanceFilterIsolationTests(SiteLabourAttendanceAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         other_labour = Labour.objects.create(
             name="Foreign Worker",
             company=other,
-            created_by=other_user,
             current_site=other_site,
         )
         Attendance.objects.create(
@@ -2928,7 +2844,6 @@ class SiteLabourAttendanceFilterIsolationTests(SiteLabourAttendanceAPITestCase):
             site=other_site,
             date=timezone.localdate(),
             present=Decimal("1"),
-            created_by=other_user,
         )
         self._create_attendance(extra=100)
 
@@ -2984,14 +2899,12 @@ class LabourSessionAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, self.site)
 
         self.labour = Labour.objects.create(
             name="Karim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=500,
             default_fooding=100,
@@ -3013,7 +2926,6 @@ class LabourSessionAPITestCase(APITestCase):
             user=user,
             site=site,
             company=user.company,
-            created_by=user,
         )
 
     def _list_url(self, labour_id):
@@ -3050,7 +2962,6 @@ class LabourSessionAPITestCase(APITestCase):
             "present": Decimal(present),
             "salary": salary,
             "extra": extra,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return Attendance.objects.create(**defaults)
@@ -3070,7 +2981,6 @@ class LabourSessionAPITestCase(APITestCase):
             "date": date,
             "type": type,
             "amount": amount,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return LabourPayment.objects.create(**defaults)
@@ -3091,7 +3001,6 @@ class LabourSessionAPITestCase(APITestCase):
             "affected_attendance_rows": 1,
             "affected_payment_rows": 0,
             "previous_payable": 0,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return LabourSession.objects.create(**defaults)
@@ -3149,12 +3058,10 @@ class LabourSessionAuthPermissionTests(LabourSessionAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         foreign_labour = Labour.objects.create(
             name="Secret",
             company=other,
-            created_by=other_user,
             current_site=other_site,
         )
         response = self.client.get(self._list_url(foreign_labour.pk))
@@ -3227,7 +3134,6 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         other_site = Site.objects.create(
             name="Metro Rail",
             company=self.company,
-            created_by=self.user,
         )
         day1 = timezone.localdate() - timedelta(days=2)
         day2 = timezone.localdate() - timedelta(days=1)
@@ -3268,7 +3174,6 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         other_labour = Labour.objects.create(
             name="Rahim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
         )
         other_attendance = self._create_attendance(
@@ -3417,7 +3322,6 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
         other_labour = Labour.objects.create(
             name="Rahim",
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
         )
         self._create_session_via_orm(labour=other_labour)

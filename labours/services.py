@@ -135,7 +135,6 @@ def create_labour_session(*, labour, user):
                 affected_payment_rows=running["affected_payment_rows"],
                 previous_payable=running["previous_payable"],
                 company=user.company,
-                created_by=user,
             )
         except IntegrityError:
             raise ValidationError(

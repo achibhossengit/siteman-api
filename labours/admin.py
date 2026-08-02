@@ -10,7 +10,7 @@ from .models import Labour, Attendance, LabourPayment, LabourSession
 class LabourAdminForm(forms.ModelForm):
     class Meta:
         model = Labour
-        exclude = ("created_by",)
+        fields = "__all__"
 
     def clean(self):
         cleaned = super().clean()
@@ -67,13 +67,7 @@ class LabourAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "company", "current_site")
     search_fields = ("name",)
     autocomplete_fields = ("company", "current_site")
-    exclude = ("created_by",)
     readonly_fields = ("last_session_date", "created_at", "updated_at")
-
-    def save_model(self, request, obj, form, change):
-        if not change and not obj.created_by_id:
-            obj.created_by = request.user
-        super().save_model(request, obj, form, change)
 
 
 admin.site.register(Attendance)

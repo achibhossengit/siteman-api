@@ -11,7 +11,7 @@ from .models import BillingCategory, Site, SiteCash, PrivateSiteCash
 class SiteAdminForm(forms.ModelForm):
     class Meta:
         model = Site
-        exclude = ("created_by",)
+        fields = "__all__"
 
     def clean(self):
         cleaned = super().clean()
@@ -91,22 +91,13 @@ class SiteAdmin(admin.ModelAdmin):
         "company",
         "is_active",
         "is_closed",
-        "created_by",
         "created_at",
     )
     list_display_links = ("name",)
     list_filter = ("is_active", "company")
     search_fields = ("name",)
     autocomplete_fields = ("company",)
-    exclude = ("created_by",)
     readonly_fields = ("closed_at", "created_at", "updated_at")
-
-    @transaction.atomic
-    def save_model(self, request, obj, form, change):
-        if not change and not obj.created_by_id:
-            obj.created_by = request.user
-
-        super().save_model(request, obj, form, change)
 
     def save_formset(self, request, form, formset, change):
         instances = formset.save(commit=False)
@@ -115,8 +106,6 @@ class SiteAdmin(admin.ModelAdmin):
         for obj in instances:
             if not obj.company_id:
                 obj.company = form.instance.company
-            if hasattr(obj, "created_by_id") and not obj.created_by_id:
-                obj.created_by = request.user
             obj.save()
         formset.save_m2m()
 

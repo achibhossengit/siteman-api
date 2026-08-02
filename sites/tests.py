@@ -73,7 +73,6 @@ class SiteAPITestCase(APITestCase):
         return Site.objects.create(
             name=name,
             company=company,
-            created_by=self.user,
             **kwargs,
         )
 
@@ -117,8 +116,6 @@ class SiteCRUDTests(SiteAPITestCase):
         self.assertFalse(response.data["is_closed"])
         self.assertIsNone(response.data["closed_at"])
         self.assertEqual(response.data["company"], self.company.pk)
-        self.assertEqual(response.data["created_by"], self.user.pk)
-
     def test_create_forces_open_and_active(self):
         response = self.client.post(
             self.list_url,
@@ -191,7 +188,6 @@ class SiteCRUDTests(SiteAPITestCase):
         Site.objects.create(
             name="Shared",
             company=other,
-            created_by=self.user,
         )
         response = self.client.post(self.list_url, {"name": "Shared"})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -253,7 +249,6 @@ class SiteFilterIsolationTests(SiteAPITestCase):
         Site.objects.create(
             name="Other Site",
             company=other_company,
-            created_by=other_user,
         )
         self._create_site(name="Mine")
 
@@ -273,7 +268,6 @@ class SiteFilterIsolationTests(SiteAPITestCase):
         other_site = Site.objects.create(
             name="Secret",
             company=other_company,
-            created_by=other_user,
         )
         response = self.client.get(self._detail_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -300,7 +294,6 @@ class SiteAssignmentVisibilityTests(SiteAPITestCase):
             user=self.user,
             site=assigned,
             company=self.company,
-            created_by=self.user,
         )
         self.client.force_authenticate(user=self.user)
 
@@ -394,7 +387,6 @@ class SiteCashAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, self.site)
         self.billing = self._create_billing(name="Basement")
@@ -416,7 +408,6 @@ class SiteCashAPITestCase(APITestCase):
             user=user,
             site=site,
             company=user.company,
-            created_by=user,
         )
 
     def _create_billing(self, name="Basement", site=None, **kwargs):
@@ -425,7 +416,6 @@ class SiteCashAPITestCase(APITestCase):
             "company": site.company,
             "site": site,
             "name": name,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return BillingCategory.objects.create(**defaults)
@@ -450,7 +440,6 @@ class SiteCashAPITestCase(APITestCase):
             "date": timezone.localdate(),
             "type": SiteCashType.DEPOSIT,
             "amount": 1000,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return SiteCash.objects.create(**defaults)
@@ -534,7 +523,6 @@ class SiteCashAuthPermissionTests(SiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         response = self.client.get(self._list_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -593,7 +581,6 @@ class SiteCashAuthPermissionTests(SiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         response = self.client.get(self._list_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -623,7 +610,6 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["site"], self.site.pk)
         self.assertEqual(response.data["company"], self.company.pk)
-        self.assertEqual(response.data["created_by"], self.user.pk)
         self.assertEqual(response.data["type"], SiteCashType.DEPOSIT)
         self.assertEqual(response.data["amount"], 1500)
         self.assertIsNone(response.data["category"])
@@ -656,7 +642,6 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         response = self.client.post(
             self.list_url,
@@ -697,8 +682,6 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["note"], "detail")
         self.assertIn("company", response.data)
-        self.assertIn("created_by", response.data)
-
     def test_patch_amount_and_note(self):
         cash = self._create_cash(amount=1000, note="old")
         response = self.client.patch(
@@ -751,7 +734,6 @@ class SiteCashValidationTests(SiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         other_billing = self._create_billing(name="Foreign Cat", site=other_site)
         response = self.client.post(
@@ -775,7 +757,6 @@ class SiteCashValidationTests(SiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         other_billing = self._create_billing(name="Foreign Cat", site=other_site)
         response = self.client.patch(
@@ -840,7 +821,6 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, other_site)
         cash = self._create_cash()
@@ -861,7 +841,6 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         SiteCash.objects.create(
             company=other,
@@ -869,7 +848,6 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
             date=timezone.localdate(),
             type=SiteCashType.DEPOSIT,
             amount=999,
-            created_by=other_user,
         )
         self._create_cash(amount=100)
 
@@ -945,7 +923,6 @@ class PrivateSiteCashAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, self.site)
         self.billing = self._create_billing(name="Basement")
@@ -967,7 +944,6 @@ class PrivateSiteCashAPITestCase(APITestCase):
             user=user,
             site=site,
             company=user.company,
-            created_by=user,
         )
 
     def _create_billing(self, name="Basement", site=None, **kwargs):
@@ -976,7 +952,6 @@ class PrivateSiteCashAPITestCase(APITestCase):
             "company": site.company,
             "site": site,
             "name": name,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return BillingCategory.objects.create(**defaults)
@@ -1001,7 +976,6 @@ class PrivateSiteCashAPITestCase(APITestCase):
             "date": timezone.localdate(),
             "type": PrivateSiteCashType.BILL,
             "amount": 1000,
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return PrivateSiteCash.objects.create(**defaults)
@@ -1087,7 +1061,6 @@ class PrivateSiteCashAuthPermissionTests(PrivateSiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         response = self.client.get(self._list_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -1113,7 +1086,6 @@ class PrivateSiteCashCRUDTests(PrivateSiteCashAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["site"], self.site.pk)
         self.assertEqual(response.data["company"], self.company.pk)
-        self.assertEqual(response.data["created_by"], self.user.pk)
         self.assertEqual(response.data["type"], PrivateSiteCashType.BILL)
         self.assertEqual(response.data["amount"], 1500)
         self.assertTrue(
@@ -1144,7 +1116,6 @@ class PrivateSiteCashCRUDTests(PrivateSiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         response = self.client.post(
             self.list_url,
@@ -1184,7 +1155,6 @@ class PrivateSiteCashCRUDTests(PrivateSiteCashAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["note"], "detail")
         self.assertIn("company", response.data)
-        self.assertIn("created_by", response.data)
         self.assertNotIn("category", response.data)
 
     def test_patch_amount_and_note(self):
@@ -1239,7 +1209,6 @@ class PrivateSiteCashValidationTests(PrivateSiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         other_billing = self._create_billing(name="Foreign Cat", site=other_site)
         response = self.client.post(
@@ -1262,7 +1231,6 @@ class PrivateSiteCashValidationTests(PrivateSiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         other_billing = self._create_billing(name="Foreign Cat", site=other_site)
         response = self.client.patch(
@@ -1307,7 +1275,6 @@ class PrivateSiteCashFilterIsolationTests(PrivateSiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, other_site)
         cash = self._create_cash()
@@ -1328,7 +1295,6 @@ class PrivateSiteCashFilterIsolationTests(PrivateSiteCashAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         PrivateSiteCash.objects.create(
             company=other,
@@ -1336,7 +1302,6 @@ class PrivateSiteCashFilterIsolationTests(PrivateSiteCashAPITestCase):
             date=timezone.localdate(),
             type=PrivateSiteCashType.BILL,
             amount=999,
-            created_by=other_user,
         )
         self._create_cash(amount=100)
 
@@ -1411,13 +1376,11 @@ class SiteDailyReportAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         UserSite.objects.create(
             user=self.user,
             site=self.site,
             company=self.company,
-            created_by=self.user,
         )
         self.report_date = timezone.localdate()
         self.url = reverse(
@@ -1438,7 +1401,6 @@ class SiteDailyReportAPITestCase(APITestCase):
         return Labour.objects.create(
             name=name,
             company=self.company,
-            created_by=self.user,
             current_site=self.site,
             default_salary=500,
         )
@@ -1455,7 +1417,6 @@ class SiteDailyReportAuthTests(SiteDailyReportAPITestCase):
         other_site = Site.objects.create(
             name="Foreign Site",
             company=other_company,
-            created_by=self.user,
         )
         url = reverse(
             "site-daily-reports",
@@ -1468,7 +1429,6 @@ class SiteDailyReportAuthTests(SiteDailyReportAPITestCase):
         other = Site.objects.create(
             name="Unassigned",
             company=self.company,
-            created_by=self.user,
         )
         url = reverse(
             "site-daily-reports",
@@ -1516,7 +1476,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             present=Decimal("1.5"),
             salary=500,
             extra=100,
-            created_by=self.user,
         )
         LabourPayment.objects.create(
             company=self.company,
@@ -1525,7 +1484,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             date=self.report_date,
             type=LabourPaymentType.PAYMENT,
             amount=1000,
-            created_by=self.user,
         )
         LabourPayment.objects.create(
             company=self.company,
@@ -1534,7 +1492,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             date=self.report_date,
             type=LabourPaymentType.RETURN,
             amount=200,
-            created_by=self.user,
         )
         labour_b = self._create_labour(name="Rahim")
         LabourPayment.objects.create(
@@ -1544,7 +1501,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             date=self.report_date,
             type=LabourPaymentType.PAYMENT,
             amount=150,
-            created_by=self.user,
         )
         SiteCash.objects.create(
             company=self.company,
@@ -1552,7 +1508,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             type=SiteCashType.DEPOSIT,
             date=self.report_date,
             amount=5000,
-            created_by=self.user,
         )
         SiteCash.objects.create(
             company=self.company,
@@ -1560,7 +1515,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             type=SiteCashType.COST,
             date=self.report_date,
             amount=300,
-            created_by=self.user,
         )
 
         response = self.client.get(self.url, {"date": str(self.report_date)})
@@ -1585,7 +1539,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             type=SiteCashType.DEPOSIT,
             date=yesterday,
             amount=1000,
-            created_by=self.user,
         )
         SiteCash.objects.create(
             company=self.company,
@@ -1593,7 +1546,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             type=SiteCashType.DEPOSIT,
             date=self.report_date,
             amount=500,
-            created_by=self.user,
         )
         SiteCash.objects.create(
             company=self.company,
@@ -1601,7 +1553,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             type=SiteCashType.WITHDRAWAL,
             date=self.report_date,
             amount=200,
-            created_by=self.user,
         )
 
         response = self.client.get(self.url, {"date": str(self.report_date)})
@@ -1623,7 +1574,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             present=Decimal("1"),
             salary=500,
             extra=50,
-            created_by=self.user,
         )
         PrivateSiteCash.objects.create(
             company=self.company,
@@ -1631,7 +1581,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             type=PrivateSiteCashType.BILL,
             date=self.report_date,
             amount=1000,
-            created_by=self.user,
         )
         PrivateSiteCash.objects.create(
             company=self.company,
@@ -1639,7 +1588,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             type=PrivateSiteCashType.COST,
             date=self.report_date,
             amount=250,
-            created_by=self.user,
         )
 
         response = self.client.get(self.url, {"date": str(self.report_date)})
@@ -1654,7 +1602,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             type=PrivateSiteCashType.BILL,
             date=self.report_date,
             amount=1000,
-            created_by=self.user,
         )
         response = self.client.get(self.url, {"date": str(self.report_date)})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1665,7 +1612,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
         other = Site.objects.create(
             name="Metro",
             company=self.company,
-            created_by=self.user,
         )
         SiteCash.objects.create(
             company=self.company,
@@ -1673,7 +1619,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
             type=SiteCashType.DEPOSIT,
             date=self.report_date,
             amount=9999,
-            created_by=self.user,
         )
         response = self.client.get(self.url, {"date": str(self.report_date)})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1702,7 +1647,6 @@ class SiteBillingCategoryAPITestCase(APITestCase):
         self.site = Site.objects.create(
             name="Padma Bridge",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, self.site)
         self.list_url = self._list_url(self.site.pk)
@@ -1723,7 +1667,6 @@ class SiteBillingCategoryAPITestCase(APITestCase):
             user=user,
             site=site,
             company=user.company,
-            created_by=user,
         )
 
     def _list_url(self, site_id):
@@ -1744,7 +1687,6 @@ class SiteBillingCategoryAPITestCase(APITestCase):
             "company": site.company,
             "site": site,
             "name": "Basement",
-            "created_by": self.user,
         }
         defaults.update(kwargs)
         return BillingCategory.objects.create(**defaults)
@@ -1816,7 +1758,6 @@ class SiteBillingCategoryAuthPermissionTests(SiteBillingCategoryAPITestCase):
         other_site = Site.objects.create(
             name="Foreign",
             company=other,
-            created_by=other_user,
         )
         response = self.client.get(self._list_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -1836,7 +1777,6 @@ class SiteBillingCategoryCRUDTests(SiteBillingCategoryAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["site"], self.site.pk)
         self.assertEqual(response.data["company"], self.company.pk)
-        self.assertEqual(response.data["created_by"], self.user.pk)
         self.assertEqual(response.data["name"], "Basement")
         self.assertEqual(response.data["display_order"], 1)
         self.assertTrue(response.data["is_active"])
@@ -1851,7 +1791,6 @@ class SiteBillingCategoryCRUDTests(SiteBillingCategoryAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         response = self.client.post(
             self.list_url,
@@ -1885,8 +1824,6 @@ class SiteBillingCategoryCRUDTests(SiteBillingCategoryAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Floor-1")
         self.assertIn("company", response.data)
-        self.assertIn("created_by", response.data)
-
     def test_patch_name_and_display_order(self):
         billing = self._create_billing(name="Basement", display_order=0)
         response = self.client.patch(
@@ -1950,7 +1887,6 @@ class SiteBillingCategoryValidationTests(SiteBillingCategoryAPITestCase):
         other_site = Site.objects.create(
             name="Other Yard",
             company=self.company,
-            created_by=self.user,
         )
         self._assign_site(self.user, other_site)
         self._create_billing(name="Basement", site=other_site)
@@ -1992,7 +1928,6 @@ class SiteBillingCategoryFilterIsolationTests(SiteBillingCategoryAPITestCase):
         other = Site.objects.create(
             name="Metro",
             company=self.company,
-            created_by=self.user,
         )
         self._create_billing(name="Mine")
         self._create_billing(name="Theirs", site=other)

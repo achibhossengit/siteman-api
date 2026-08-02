@@ -352,7 +352,6 @@ class UserUpdateSerializer(serializers.ModelSerializer):
                         user=instance,
                         site=site,
                         company=request.user.company,
-                        created_by=request.user,
                     )
 
         return instance

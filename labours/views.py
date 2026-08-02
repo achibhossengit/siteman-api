@@ -63,7 +63,7 @@ class LabourViewSet(viewsets.ModelViewSet):
         qs = Labour.objects.filter(company_id=user.company_id)
         if not user.is_companyadmin:
             qs = qs.filter(current_site__users__user_id=user.id)
-        return qs.select_related("current_site", "created_by").order_by("name")
+        return qs.select_related("current_site").order_by("name")
 
     @transaction.atomic
     def perform_create(self, serializer):
@@ -76,7 +76,6 @@ class LabourViewSet(viewsets.ModelViewSet):
             raise SubscriptionExpired()
         serializer.save(
             company=company,
-            created_by=self.request.user,
             is_active=True,
         )
 
@@ -119,7 +118,7 @@ class LabourPaymentViewSet(viewsets.ModelViewSet):
                 company_id=user.company_id,
                 labour_id=self.kwargs["labour_pk"],
             )
-            .select_related("labour", "site", "created_by")
+            .select_related("labour", "site")
             .order_by("-date", "-id")
         )
 
@@ -135,7 +134,6 @@ class LabourPaymentViewSet(viewsets.ModelViewSet):
                 labour=labour,
                 site=labour.current_site,
                 company=self.request.user.company,
-                created_by=self.request.user,
                 is_sealed=False,
             )
         except IntegrityError:
@@ -193,7 +191,7 @@ class LabourAttendanceViewSet(viewsets.ModelViewSet):
                 company_id=user.company_id,
                 labour_id=self.kwargs["labour_pk"],
             )
-            .select_related("labour", "site", "billing", "created_by")
+            .select_related("labour", "site", "billing")
             .order_by("-date", "-id")
         )
 
@@ -209,7 +207,6 @@ class LabourAttendanceViewSet(viewsets.ModelViewSet):
                 labour=labour,
                 site=labour.current_site,
                 company=self.request.user.company,
-                created_by=self.request.user,
                 is_sealed=False,
             )
         except IntegrityError:
@@ -267,7 +264,7 @@ class LabourSessionViewSet(
                 company_id=user.company_id,
                 labour_id=self.kwargs["labour_pk"],
             )
-            .select_related("labour", "created_by")
+            .select_related("labour")
             .order_by("-created_date", "-id")
         )
         
@@ -357,7 +354,7 @@ class SiteLabourPaymentViewSet(
                 company_id=user.company_id,
                 site_id=int(self.kwargs["site_pk"]),
             )
-            .select_related("labour", "site", "created_by")
+            .select_related("labour", "site")
             .order_by("-date", "-id")
         )
 
@@ -367,7 +364,6 @@ class SiteLabourPaymentViewSet(
             serializer.save(
                 site_id=int(self.kwargs["site_pk"]),
                 company=self.request.user.company,
-                created_by=self.request.user,
                 is_sealed=False,
             )
         except IntegrityError:
@@ -416,7 +412,7 @@ class SiteLabourAttendanceViewSet(
                 company_id=user.company_id,
                 site_id=int(self.kwargs["site_pk"]),
             )
-            .select_related("labour", "site", "billing", "created_by")
+            .select_related("labour", "site", "billing")
             .order_by("-date", "-id")
         )
 
@@ -426,7 +422,6 @@ class SiteLabourAttendanceViewSet(
             serializer.save(
                 site_id=int(self.kwargs["site_pk"]),
                 company=self.request.user.company,
-                created_by=self.request.user,
                 is_sealed=False,
             )
         except IntegrityError:
