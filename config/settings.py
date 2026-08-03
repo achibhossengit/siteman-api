@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'labours',
     'accounts',
     'subscription',
+    'activity',
 ]
 
 MIDDLEWARE = [
