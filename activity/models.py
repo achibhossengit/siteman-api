@@ -39,6 +39,20 @@ class ActivityLog(CompanyOwnedMixin):
         related_name="activity_logs",
         help_text="Denormalized site scope when the entity is site-related.",
     )
+    labour = models.ForeignKey(
+        "labours.Labour",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="activity_logs",
+        help_text="Denormalized labour when the entity is labour-related.",
+    )
+    labour_name = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Snapshot of labour name at action time (for client messages).",
+    )
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -63,7 +77,6 @@ class ActivityLog(CompanyOwnedMixin):
         blank=True,
         help_text="Record's business date when applicable (e.g. attendance.date).",
     )
-    summary = models.CharField(max_length=255)
     changes = models.JSONField(
         null=True,
         blank=True,
@@ -101,6 +114,10 @@ class ActivityLog(CompanyOwnedMixin):
             models.Index(
                 fields=["site", "-created_at"],
                 name="actlog_site_created_idx",
+            ),
+            models.Index(
+                fields=["labour", "-created_at"],
+                name="actlog_labour_created_idx",
             ),
             models.Index(
                 fields=["entity_type", "entity_id"],
