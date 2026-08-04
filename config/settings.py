@@ -238,6 +238,12 @@ OTP_MAX_ATTEMPTS = config('OTP_MAX_ATTEMPTS', default=5, cast=int)
 REGISTRATION_ENABLED = config('REGISTRATION_ENABLED', default=True, cast=bool)
 
 
+# Activity log retention (purged by ``purge_activity_logs`` management command)
+ACTIVITY_LOG_RETENTION_DAYS = config(
+    "ACTIVITY_LOG_RETENTION_DAYS", default=180, cast=int
+)
+
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

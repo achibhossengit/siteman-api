@@ -9,10 +9,21 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 
+from activity.hooks import (
+    activity_after_create,
+    activity_after_update,
+    activity_before_destroy,
+    snapshot_for,
+)
 from core import status_codes
 from core.permissions import ActiveSubscriptionOrReadOnly
 from core.services import SubscriptionService
-from core.exceptions import SubscriptionLimitExceededError, SubscriptionExpiredError, SubscriptionExpired, SubscriptionLimitExceeded
+from core.exceptions import (
+    SubscriptionLimitExceededError,
+    SubscriptionExpiredError,
+    SubscriptionExpired,
+    SubscriptionLimitExceeded,
+)
 from .models import BillingCategory, PrivateSiteCash, Site, SiteCash
 from .permissions import HasSitePermissions
 from .serializers import (
@@ -73,13 +84,22 @@ class SiteViewSet(viewsets.ModelViewSet):
             company=company,
             closed_at=None,
             is_active=True,
-        )        
+        )
+        activity_after_create(self, serializer.instance)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        old = snapshot_for(serializer.instance)
+        serializer.save()
+        activity_after_update(self, serializer.instance, old)
 
     def perform_destroy(self, instance):
         # children FKs use on_delete=RESTRICT/PROTECT — the DB layer is the
         # single source of truth for "site still has records"
         try:
-            instance.delete()
+            with transaction.atomic():
+                activity_before_destroy(self, instance)
+                instance.delete()
         except (ProtectedError, RestrictedError):
             raise serializers.ValidationError(
                 detail="This site has existing records; delete them or close the site first.",
@@ -159,10 +179,12 @@ class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         self._apply_status_defaults(serializer)
         try:
-            serializer.save(
-                site_id=int(self.kwargs["site_pk"]),
-                company=self.request.user.company,
-            )
+            with transaction.atomic():
+                serializer.save(
+                    site_id=int(self.kwargs["site_pk"]),
+                    company=self.request.user.company,
+                )
+                activity_after_create(self, serializer.instance)
         except IntegrityError:
             raise serializers.ValidationError(
                 "A billing category with this name already exists on this site.",
@@ -171,13 +193,21 @@ class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         self._apply_status_defaults(serializer)
+        old = snapshot_for(serializer.instance)
         try:
-            serializer.save()
+            with transaction.atomic():
+                serializer.save()
+                activity_after_update(self, serializer.instance, old)
         except IntegrityError:
             raise serializers.ValidationError(
                 "A billing category with this name already exists on this site.",
                 code=status_codes.BILLING_CATEGORY_NAME_EXISTS,
             )
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        activity_before_destroy(self, instance)
+        instance.delete()
 
 
 class SiteCashViewSet(viewsets.ModelViewSet):
@@ -211,11 +241,24 @@ class SiteCashViewSet(viewsets.ModelViewSet):
             .order_by("-date", "-id")
         )
 
+    @transaction.atomic
     def perform_create(self, serializer):
         serializer.save(
             site_id=int(self.kwargs["site_pk"]),
             company=self.request.user.company,
         )
+        activity_after_create(self, serializer.instance)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        old = snapshot_for(serializer.instance)
+        serializer.save()
+        activity_after_update(self, serializer.instance, old)
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        activity_before_destroy(self, instance)
+        instance.delete()
 
 
 class PrivateSiteCashViewSet(viewsets.ModelViewSet):
@@ -249,8 +292,21 @@ class PrivateSiteCashViewSet(viewsets.ModelViewSet):
             .order_by("-date", "-id")
         )
 
+    @transaction.atomic
     def perform_create(self, serializer):
         serializer.save(
             site_id=int(self.kwargs["site_pk"]),
             company=self.request.user.company,
         )
+        activity_after_create(self, serializer.instance)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        old = snapshot_for(serializer.instance)
+        serializer.save()
+        activity_after_update(self, serializer.instance, old)
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        activity_before_destroy(self, instance)
+        instance.delete()

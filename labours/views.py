@@ -8,6 +8,13 @@ from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.exceptions import NotFound
+
+from activity.hooks import (
+    activity_after_create,
+    activity_after_update,
+    activity_before_destroy,
+    snapshot_for,
+)
 from core import status_codes
 from core.exceptions import (
     SubscriptionExpired,
@@ -78,6 +85,15 @@ class LabourViewSet(viewsets.ModelViewSet):
             company=company,
             is_active=True,
         )
+        activity_after_create(self, serializer.instance)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        old = snapshot_for(serializer.instance)
+        serializer.save()
+        activity_after_update(self, serializer.instance, old)
+
+    # Delete log still not included here. Because, currently we are not deleting labours.
 
 
 class LabourPaymentViewSet(viewsets.ModelViewSet):
@@ -130,12 +146,14 @@ class LabourPaymentViewSet(viewsets.ModelViewSet):
                 code=status_codes.LABOUR_UNASSIGNED,
             )
         try:
-            serializer.save(
-                labour=labour,
-                site=labour.current_site,
-                company=self.request.user.company,
-                is_sealed=False,
-            )
+            with transaction.atomic():
+                serializer.save(
+                    labour=labour,
+                    site=labour.current_site,
+                    company=self.request.user.company,
+                    is_sealed=False,
+                )
+                activity_after_create(self, serializer.instance)
         except IntegrityError:
             raise ValidationError(
                 "A payment of this type already exists for this labour on this date.",
@@ -143,14 +161,21 @@ class LabourPaymentViewSet(viewsets.ModelViewSet):
             )
 
     def perform_update(self, serializer):
+        old = snapshot_for(serializer.instance)
         try:
-            serializer.save()
+            with transaction.atomic():
+                serializer.save()
+                activity_after_update(self, serializer.instance, old)
         except IntegrityError:
             raise ValidationError(
                 "A payment of this type already exists for this labour on this date.",
                 code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
             )
-            
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        activity_before_destroy(self, instance)
+        instance.delete()
 
 
 class LabourAttendanceViewSet(viewsets.ModelViewSet):
@@ -195,6 +220,7 @@ class LabourAttendanceViewSet(viewsets.ModelViewSet):
             .order_by("-date", "-id")
         )
 
+    @transaction.atomic
     def perform_create(self, serializer):
         labour = get_labour(self.request, self)
         if labour.current_site_id is None:
@@ -209,6 +235,7 @@ class LabourAttendanceViewSet(viewsets.ModelViewSet):
                 company=self.request.user.company,
                 is_sealed=False,
             )
+            activity_after_create(self, serializer.instance)
         except IntegrityError:
             raise ValidationError(
                 "Attendance already exists for this labour on this date.",
@@ -216,13 +243,21 @@ class LabourAttendanceViewSet(viewsets.ModelViewSet):
             )
 
     def perform_update(self, serializer):
+        old = snapshot_for(serializer.instance)
         try:
-            serializer.save()
+            with transaction.atomic():
+                serializer.save()
+                activity_after_update(self, serializer.instance, old)
         except IntegrityError:
             raise ValidationError(
                 "Attendance already exists for this labour on this date.",
                 code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
             )
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        activity_before_destroy(self, instance)
+        instance.delete()
 
 
 class LabourSessionViewSet(
@@ -267,7 +302,7 @@ class LabourSessionViewSet(
             .select_related("labour")
             .order_by("-created_date", "-id")
         )
-        
+
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
@@ -288,7 +323,7 @@ class LabourSessionViewSet(
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance):
-        delete_labour_session(instance)
+        delete_labour_session(instance, actor=self.request.user)
 
     @action(detail=False, methods=["get"], url_path="running_session")
     def running_session(self, request, *args, **kwargs):
@@ -306,14 +341,16 @@ class LabourSessionViewSet(
         if running_session:
             serializer = RunningLabourSessionSerializer(running_session)
             return Response(serializer.data)
-        session = LabourSession.objects.filter(labour=labour).order_by("-created_date", "-id").first()
+        session = (
+            LabourSession.objects.filter(labour=labour)
+            .order_by("-created_date", "-id")
+            .first()
+        )
         if session is None:
             raise NotFound("No Session Found!")
         serializer = LabourSessionSerializer(session)
         return Response(serializer.data)
-    
 
-# ==== Site Labour Related Views ====
 
 class SiteLabourPaymentViewSet(
     mixins.ListModelMixin,
@@ -366,6 +403,7 @@ class SiteLabourPaymentViewSet(
                 company=self.request.user.company,
                 is_sealed=False,
             )
+            activity_after_create(self, serializer.instance)
         except IntegrityError:
             raise ValidationError(
                 "A payment of this type already exists for a labour on this date.",
@@ -424,6 +462,7 @@ class SiteLabourAttendanceViewSet(
                 company=self.request.user.company,
                 is_sealed=False,
             )
+            activity_after_create(self, serializer.instance)
         except IntegrityError:
             raise ValidationError(
                 "Attendance already exists for a labour on this date.",

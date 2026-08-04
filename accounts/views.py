@@ -352,11 +352,16 @@ class UserProfileViewSet(
         serializer = self.get_serializer(self.get_object())
         return Response(serializer.data)
 
+    @transaction.atomic
     def partial_update(self, request, *args, **kwargs):
+        from activity.services import log_updated, snapshot_user
+
         instance = self.get_object()
+        old_snapshot = snapshot_user(instance)
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        log_updated(request.user, serializer.instance, old_snapshot=old_snapshot)
         return Response(self.get_serializer(self.get_object()).data)
 
 
@@ -417,9 +422,15 @@ class UserViewSet(viewsets.ModelViewSet):
             is_superuser=False,
             is_companyadmin=False,
         )
+        from activity.services import log_created
+
+        # activity log for user create
+        log_created(self.request.user, serializer.instance)
 
     @transaction.atomic
     def perform_update(self, serializer):
+        from activity.services import log_updated, snapshot_user
+
         instance = serializer.instance
         becoming_active = (
             not instance.is_active
@@ -432,4 +443,10 @@ class UserViewSet(viewsets.ModelViewSet):
                 raise SubscriptionLimitExceeded(detail=str(exc))
             except SubscriptionExpiredError:
                 raise SubscriptionExpired()
+        old_snapshot = snapshot_user(instance)
         serializer.save()
+        log_updated(self.request.user, serializer.instance, old_snapshot=old_snapshot)
+
+    # Delete log still not implemented here. Because, currently we are not deleting users.
+    # Now user is delete is not so hard, because no business object track the user id. only logs track id.
+    # But, it is also nullable.

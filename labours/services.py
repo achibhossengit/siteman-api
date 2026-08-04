@@ -16,6 +16,7 @@ from django.db.models.functions import Coalesce
 from rest_framework.exceptions import ValidationError
 
 from core import status_codes
+from activity.services import log_created, log_deleted
 from .models import (
     Attendance,
     LabourPayment,
@@ -141,6 +142,7 @@ def create_labour_session(*, labour, user):
                 "A work session already exists for this labour today.",
                 code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
             )
+        log_created(user, session)
 
     return session
 
@@ -171,7 +173,7 @@ def is_latest_labour_session(session):
     return latest == session.pk
 
 
-def delete_labour_session(session):
+def delete_labour_session(session, *, actor):
     """Delete the labour's most recent work session.
 
     Only allowed when attendance/payment row counts between ``start_date``
@@ -190,4 +192,6 @@ def delete_labour_session(session):
             code=status_codes.SESSION_SNAPSHOT_MISMATCH,
         )
 
-    session.delete()
+    with transaction.atomic():
+        log_deleted(actor, session)
+        session.delete()
