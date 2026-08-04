@@ -49,3 +49,6 @@ RECORD_UNIQUE_CONSTRAINT_VIOLATION = "record_unique_constraint_violation"
 
 # Labour payments
 CATEGORY_NOT_ALLOWED = "category_not_allowed"
+
+# Activity
+ACTIVITY_ALREADY_REVIEWED = "activity_already_reviewed"

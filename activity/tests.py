@@ -246,3 +246,259 @@ class UserActivityAPITests(APITestCase):
         ).latest("id")
         self.assertEqual(log.changes["is_active"]["old"], True)
         self.assertEqual(log.changes["is_active"]["new"], False)
+
+
+class ActivityLogAPITests(APITestCase):
+    def setUp(self):
+        self.company = Company.objects.create(name="API Log Co")
+        Subscription.objects.filter(company=self.company).update(
+            paid_until=timezone.localdate() + timedelta(days=30),
+        )
+        self.other_company = Company.objects.create(name="Other Co")
+        Subscription.objects.filter(company=self.other_company).update(
+            paid_until=timezone.localdate() + timedelta(days=30),
+        )
+
+        self.site_a = Site.objects.create(name="Site A", company=self.company)
+        self.site_b = Site.objects.create(name="Site B", company=self.company)
+        self.other_site = Site.objects.create(
+            name="Other Site", company=self.other_company
+        )
+
+        self.admin = User.objects.create_user(
+            phone_number="+8801766666661",
+            name="Admin",
+            password="pass-12345",
+            company=self.company,
+            is_companyadmin=True,
+        )
+        self.manager = User.objects.create_user(
+            phone_number="+8801766666662",
+            name="Manager",
+            password="pass-12345",
+            company=self.company,
+            is_companyadmin=False,
+        )
+        from accounts.models import UserSite
+
+        UserSite.objects.create(
+            user=self.manager,
+            site=self.site_a,
+            company=self.company,
+        )
+
+        self.labour = Labour.objects.create(
+            name="Worker",
+            company=self.company,
+            current_site=self.site_a,
+            default_salary=500,
+        )
+
+        self.log_site_a = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site_a,
+            labour=self.labour,
+            labour_name=self.labour.name,
+            actor=self.admin,
+            actor_name=self.admin.name,
+            action=ActivityAction.CREATED,
+            entity_type=ActivityEntityType.ATTENDANCE,
+            entity_id=101,
+            business_date=timezone.localdate(),
+            changes={"present": "1"},
+        )
+        self.log_site_b = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site_b,
+            actor=self.admin,
+            actor_name=self.admin.name,
+            action=ActivityAction.CREATED,
+            entity_type=ActivityEntityType.SITE_CASH,
+            entity_id=201,
+            business_date=timezone.localdate(),
+            changes={"amount": 100},
+        )
+        self.log_private = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site_a,
+            actor=self.admin,
+            actor_name=self.admin.name,
+            action=ActivityAction.CREATED,
+            entity_type=ActivityEntityType.PRIVATE_SITE_CASH,
+            entity_id=301,
+            business_date=timezone.localdate(),
+            changes={"amount": 50},
+        )
+        self.log_user = ActivityLog.objects.create(
+            company=self.company,
+            site=None,
+            actor=self.admin,
+            actor_name=self.admin.name,
+            action=ActivityAction.UPDATED,
+            entity_type=ActivityEntityType.USER,
+            entity_id=self.manager.pk,
+            changes={"name": {"old": "Manager", "new": "Mgr"}},
+        )
+        self.log_other_company = ActivityLog.objects.create(
+            company=self.other_company,
+            site=self.other_site,
+            actor=None,
+            actor_name="Someone",
+            action=ActivityAction.CREATED,
+            entity_type=ActivityEntityType.SITE,
+            entity_id=self.other_site.pk,
+            changes={"name": "Other Site"},
+        )
+
+        self.list_url = reverse("activity-list", kwargs={"version": "v1"})
+
+    def _grant(self, user, *perm_strings):
+        for label in perm_strings:
+            app_label, codename = label.split(".")
+            perm = Permission.objects.get(
+                content_type__app_label=app_label,
+                codename=codename,
+            )
+            user.user_permissions.add(perm)
+
+    def test_missing_view_activitylog_returns_403(self):
+        self._grant(self.admin, "labours.view_attendance")
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_sees_company_logs_including_null_site(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "labours.view_attendance",
+            "sites.view_sitecash",
+            "sites.view_privatesitecash",
+            "accounts.view_user",
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(
+            ids,
+            {
+                self.log_site_a.pk,
+                self.log_site_b.pk,
+                self.log_private.pk,
+                self.log_user.pk,
+            },
+        )
+        self.assertNotIn(self.log_other_company.pk, ids)
+
+    def test_manager_only_sees_allowed_site_and_entity(self):
+        self._grant(
+            self.manager,
+            "activity.view_activitylog",
+            "labours.view_attendance",
+            "sites.view_sitecash",
+            "accounts.view_user",
+        )
+        self.client.force_authenticate(user=self.manager)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {row["id"] for row in response.data["results"]}
+        # site A attendance only: no site B, no private (no perm), no user (null site)
+        self.assertEqual(ids, {self.log_site_a.pk})
+
+    def test_filter_by_entity_type_and_entity_id(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "labours.view_attendance",
+            "sites.view_sitecash",
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            self.list_url,
+            {
+                "entity_type": ActivityEntityType.ATTENDANCE,
+                "entity_id": 101,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.log_site_a.pk)
+
+    def test_filter_reviewed_false(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "labours.view_attendance",
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.list_url, {"reviewed": "false"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.log_site_a.pk)
+
+    def test_list_is_paginated(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "labours.view_attendance",
+            "sites.view_sitecash",
+            "sites.view_privatesitecash",
+            "accounts.view_user",
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.list_url, {"page_size": 2})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 4)
+        self.assertEqual(len(response.data["results"]), 2)
+        self.assertIsNotNone(response.data["next"])
+
+    def test_review_requires_change_permission(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "labours.view_attendance",
+        )
+        self.client.force_authenticate(user=self.admin)
+        url = reverse(
+            "activity-review",
+            kwargs={"version": "v1", "pk": self.log_site_a.pk},
+        )
+        response = self.client.patch(url, {"review_note": "ok"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_review_marks_one_way(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "activity.change_activitylog",
+            "labours.view_attendance",
+        )
+        self.client.force_authenticate(user=self.admin)
+        url = reverse(
+            "activity-review",
+            kwargs={"version": "v1", "pk": self.log_site_a.pk},
+        )
+        response = self.client.patch(url, {"review_note": "checked"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(response.data["reviewed_at"])
+        self.assertEqual(response.data["reviewed_by"], self.admin.pk)
+        self.assertEqual(response.data["review_note"], "checked")
+
+        again = self.client.patch(url, {"review_note": "again"})
+        self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_manager_cannot_review_other_site_log(self):
+        self._grant(
+            self.manager,
+            "activity.view_activitylog",
+            "activity.change_activitylog",
+            "sites.view_sitecash",
+        )
+        self.client.force_authenticate(user=self.manager)
+        url = reverse(
+            "activity-review",
+            kwargs={"version": "v1", "pk": self.log_site_b.pk},
+        )
+        response = self.client.patch(url, {})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
