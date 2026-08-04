@@ -199,7 +199,6 @@ class PasswordResetView(GenericAPIView):
         user = User.objects.filter(
             phone_number=phone,
             is_active=True,
-            deleted_at__isnull=True,
         ).first()
         ticket, delivery_info = verifications.create_ticket(
             purpose=PASSWORD_RESET_PURPOSE,
@@ -246,7 +245,7 @@ class PasswordResetConfirmView(GenericAPIView):
             purpose=PASSWORD_RESET_PURPOSE,
         )
         user = User.objects.filter(
-            id=payload["user_id"], is_active=True, deleted_at__isnull=True
+            id=payload["user_id"], is_active=True
         ).first()
         if user is None:
             # ghost ticket, or the account was deactivated mid-flow
@@ -369,11 +368,12 @@ class UserViewSet(viewsets.ModelViewSet):
     """Company-scoped user management.
 
     PATCH only updates ``is_active`` and replaces assigned ``groups`` and ``sites``.
+    DELETE hard-deletes the user (``UserSite`` cascades; activity actor FKs null).
     """
 
     serializer_class = UserProfileSerializer
     queryset = User.objects.none()
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ["is_active", "is_companyadmin"]
     search_fields = ["name", "phone_number"]
@@ -395,7 +395,6 @@ class UserViewSet(viewsets.ModelViewSet):
         return (
             User.objects.filter(
                 company_id=user.company_id,
-                deleted_at__isnull=True,
             ).exclude(id=user.id)
             .prefetch_related(
                 "groups",
@@ -447,6 +446,9 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer.save()
         log_updated(self.request.user, serializer.instance, old_snapshot=old_snapshot)
 
-    # Delete log still not implemented here. Because, currently we are not deleting users.
-    # Now user is delete is not so hard, because no business object track the user id. only logs track id.
-    # But, it is also nullable.
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        from activity.services import log_deleted
+
+        log_deleted(self.request.user, instance)
+        instance.delete()

@@ -506,15 +506,11 @@ class PasswordResetFlowTests(APITestCase):
         self.assertIsNotNone(ticket)
         mocked.assert_not_called()
 
-    def test_reset_request_inactive_or_deleted_user_gets_ghost_ticket(self):
-        cases = {"is_active": False, "deleted_at": timezone.now()}
-        for field, value in cases.items():
-            with self.subTest(field=field):
-                User.objects.filter(pk=self.user.pk).update(is_active=True, deleted_at=None)
-                User.objects.filter(pk=self.user.pk).update(**{field: value})
-                response, _, _, mocked = self.request_reset()
-                self.assertEqual(response.status_code, status.HTTP_200_OK)
-                mocked.assert_not_called()
+    def test_reset_request_inactive_user_gets_ghost_ticket(self):
+        User.objects.filter(pk=self.user.pk).update(is_active=False)
+        response, _, _, mocked = self.request_reset()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mocked.assert_not_called()
 
     def test_reset_request_user_without_email_gets_no_delivery(self):
         self.user.email = None
@@ -1090,10 +1086,34 @@ class UserCRUDTests(UserAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    def test_delete_not_allowed(self):
-        other = self._create_company_user(phone="+8801711119999")
+    def test_delete_removes_user_and_writes_activity(self):
+        from activity.models import ActivityAction, ActivityEntityType, ActivityLog
+
+        other = self._create_company_user(phone="+8801711119999", name="To Delete")
         response = self.client.delete(self._detail_url(other.pk))
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(User.objects.filter(pk=other.pk).exists())
+        log = ActivityLog.objects.filter(
+            entity_type=ActivityEntityType.USER,
+            entity_id=other.pk,
+            action=ActivityAction.DELETED,
+        ).latest("id")
+        self.assertEqual(log.actor_id, self.user.pk)
+        self.assertEqual(log.changes["name"], "To Delete")
+
+    def test_cannot_delete_self(self):
+        response = self.client.delete(self._detail_url(self.user.pk))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+
+    def test_missing_delete_permission_returns_403(self):
+        other = self._create_company_user(phone="+8801711100099")
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_user_permissions(self.user, ["view_user", "change_user"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete(self._detail_url(other.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertTrue(User.objects.filter(pk=other.pk).exists())
 
 

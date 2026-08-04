@@ -20,7 +20,6 @@ TRACKED_FIELDS: dict[str, tuple[str, ...]] = {
         "is_staff",
         "is_superuser",
         "is_companyadmin",
-        "deleted_at",
     ),  # groups/sites handled specially in snapshot_user
     ActivityEntityType.SITE: ("name", "is_active", "is_closed"),
     ActivityEntityType.BILLING_CATEGORY: (

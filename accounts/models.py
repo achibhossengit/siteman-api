@@ -29,7 +29,6 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
         default=False,
         help_text="Company owner/admin; bypasses site assignment checks.",
     )
-    deleted_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 

@@ -91,7 +91,7 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ("is_active", "is_companyadmin", "is_staff", "is_superuser", "company")
     search_fields = ("phone_number", "name", "email")
     ordering = ("name",)
-    readonly_fields = ("last_login", "created_at", "updated_at", "deleted_at")
+    readonly_fields = ("last_login", "created_at", "updated_at")
     filter_horizontal = ("groups", "user_permissions")
 
     fieldsets = (
@@ -112,7 +112,7 @@ class UserAdmin(BaseUserAdmin):
         ),
         (
             "Important dates",
-            {"fields": ("last_login", "created_at", "updated_at", "deleted_at")},
+            {"fields": ("last_login", "created_at", "updated_at")},
         ),
     )
     add_fieldsets = (
