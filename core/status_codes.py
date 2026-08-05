@@ -52,3 +52,4 @@ CATEGORY_NOT_ALLOWED = "category_not_allowed"
 
 # Activity
 ACTIVITY_ALREADY_REVIEWED = "activity_already_reviewed"
+ACTIVITY_UNPAGINATED_FILTERS_REQUIRED = "activity_unpaginated_filters_required"

@@ -41,3 +41,15 @@ class ActivityLogReviewSerializer(serializers.Serializer):
         allow_blank=True,
         allow_null=True,
     )
+
+
+class ActivityLogBulkReviewSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=500,
+    )
+
+    def validate_ids(self, value):
+        # Preserve order while dropping duplicates.
+        return list(dict.fromkeys(value))

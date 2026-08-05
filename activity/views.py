@@ -9,8 +9,14 @@ from core import status_codes
 from .filters import ActivityLogFilter
 from .models import ActivityLog
 from .pagination import ActivityLogPagination
-from .permissions import activity_logs_for_user
-from .serializers import ActivityLogReviewSerializer, ActivityLogSerializer
+from .permissions import ACTIVITY_LOG_PERMISSION_CLASSES, activity_logs_for_user
+from .serializers import (
+    ActivityLogBulkReviewSerializer,
+    ActivityLogReviewSerializer,
+    ActivityLogSerializer,
+)
+
+_UNPAGINATED_REQUIRED_PARAMS = ("site", "business_date", "entity_type")
 
 
 class ActivityLogViewSet(
@@ -21,13 +27,17 @@ class ActivityLogViewSet(
     """Company-scoped activity timeline (read + one-way review).
 
     Global gate: ``view_activitylog`` (list/retrieve), ``change_activitylog``
-    (review). Rows are further narrowed by allowed sites and each entity's
-    ``view_<model>`` permission.
+    (review / review-bulk). Rows are further narrowed by allowed sites and
+    each entity's ``view_<model>`` permission.
+
+    Pass ``paginate=false`` with ``site``, ``business_date``, and
+    ``entity_type`` to return the full filtered list (day-review screens).
     """
 
     serializer_class = ActivityLogSerializer
     queryset = ActivityLog.objects.none()
-    http_method_names = ["get", "patch", "head", "options"]
+    permission_classes = ACTIVITY_LOG_PERMISSION_CLASSES
+    http_method_names = ["get", "post", "patch", "head", "options"]
     filterset_class = ActivityLogFilter
     pagination_class = ActivityLogPagination
 
@@ -37,6 +47,28 @@ class ActivityLogViewSet(
             .select_related("actor", "reviewed_by", "site", "labour")
             .order_by("-created_at", "-id")
         )
+
+    def paginate_queryset(self, queryset):
+        paginate = self.request.query_params.get("paginate", "true").lower()
+        if paginate in ("0", "false", "no"):
+            missing = [
+                name
+                for name in _UNPAGINATED_REQUIRED_PARAMS
+                if not self.request.query_params.get(name)
+            ]
+            if missing:
+                raise ValidationError(
+                    {
+                        "paginate": (
+                            "paginate=false requires site, business_date, "
+                            "and entity_type filters."
+                        ),
+                        "missing": missing,
+                    },
+                    code=status_codes.ACTIVITY_UNPAGINATED_FILTERS_REQUIRED,
+                )
+            return None
+        return super().paginate_queryset(queryset)
 
     @action(detail=True, methods=["patch"], url_path="review")
     @transaction.atomic
@@ -63,5 +95,48 @@ class ActivityLogViewSet(
         )
         return Response(
             ActivityLogSerializer(instance).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["post"], url_path="review-bulk")
+    @transaction.atomic
+    def review_bulk(self, request, *args, **kwargs):
+        """Mark many logs as reviewed (one-way; no note)."""
+        serializer = ActivityLogBulkReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+
+        qs = self.get_queryset().filter(pk__in=ids)
+        found_ids = set(qs.values_list("pk", flat=True))
+        missing = [pk for pk in ids if pk not in found_ids]
+        if missing:
+            raise ValidationError(
+                {
+                    "ids": (
+                        "One or more activity logs were not found or "
+                        "are outside your access."
+                    ),
+                    "missing": missing,
+                },
+                code=status_codes.INVALID,
+            )
+
+        now = timezone.now()
+        to_review = qs.filter(reviewed_at__isnull=True)
+        updated = to_review.update(
+            reviewed_at=now,
+            reviewed_by=request.user,
+            review_note=None,
+        )
+        reviewed = (
+            self.get_queryset()
+            .filter(pk__in=ids)
+            .order_by("-created_at", "-id")
+        )
+        return Response(
+            {
+                "updated": updated,
+                "results": ActivityLogSerializer(reviewed, many=True).data,
+            },
             status=status.HTTP_200_OK,
         )

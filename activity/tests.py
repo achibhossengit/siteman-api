@@ -453,6 +453,38 @@ class ActivityLogAPITests(APITestCase):
         self.assertEqual(len(response.data["results"]), 2)
         self.assertIsNotNone(response.data["next"])
 
+    def test_paginate_false_requires_day_review_filters(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "labours.view_attendance",
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.list_url, {"paginate": "false"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_paginate_false_returns_full_list(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "labours.view_attendance",
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            self.list_url,
+            {
+                "paginate": "false",
+                "site": self.site_a.pk,
+                "business_date": timezone.localdate().isoformat(),
+                "entity_type": ActivityEntityType.ATTENDANCE,
+                "reviewed": "false",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], self.log_site_a.pk)
+
     def test_review_requires_change_permission(self):
         self._grant(
             self.admin,
@@ -487,6 +519,90 @@ class ActivityLogAPITests(APITestCase):
 
         again = self.client.patch(url, {"review_note": "again"})
         self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_review_bulk_marks_many(self):
+        extra = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site_a,
+            labour=self.labour,
+            labour_name=self.labour.name,
+            actor=self.admin,
+            actor_name=self.admin.name,
+            action=ActivityAction.UPDATED,
+            entity_type=ActivityEntityType.ATTENDANCE,
+            entity_id=102,
+            business_date=timezone.localdate(),
+            changes={"present": "0.5"},
+        )
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "activity.change_activitylog",
+            "labours.view_attendance",
+        )
+        self.client.force_authenticate(user=self.admin)
+        url = reverse("activity-review-bulk", kwargs={"version": "v1"})
+        response = self.client.post(
+            url,
+            {"ids": [self.log_site_a.pk, extra.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["updated"], 2)
+        self.assertEqual(len(response.data["results"]), 2)
+        self.log_site_a.refresh_from_db()
+        extra.refresh_from_db()
+        self.assertIsNotNone(self.log_site_a.reviewed_at)
+        self.assertIsNotNone(extra.reviewed_at)
+        self.assertIsNone(self.log_site_a.review_note)
+
+    def test_review_bulk_skips_already_reviewed(self):
+        self.log_site_a.reviewed_at = timezone.now()
+        self.log_site_a.reviewed_by = self.admin
+        self.log_site_a.save(update_fields=["reviewed_at", "reviewed_by"])
+        extra = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site_a,
+            labour=self.labour,
+            labour_name=self.labour.name,
+            actor=self.admin,
+            actor_name=self.admin.name,
+            action=ActivityAction.UPDATED,
+            entity_type=ActivityEntityType.ATTENDANCE,
+            entity_id=103,
+            business_date=timezone.localdate(),
+            changes={"present": "1"},
+        )
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "activity.change_activitylog",
+            "labours.view_attendance",
+        )
+        self.client.force_authenticate(user=self.admin)
+        url = reverse("activity-review-bulk", kwargs={"version": "v1"})
+        response = self.client.post(
+            url,
+            {"ids": [self.log_site_a.pk, extra.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["updated"], 1)
+        extra.refresh_from_db()
+        self.assertIsNotNone(extra.reviewed_at)
+
+    def test_review_bulk_requires_change_permission(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "labours.view_attendance",
+        )
+        self.client.force_authenticate(user=self.admin)
+        url = reverse("activity-review-bulk", kwargs={"version": "v1"})
+        response = self.client.post(
+            url, {"ids": [self.log_site_a.pk]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_manager_cannot_review_other_site_log(self):
         self._grant(

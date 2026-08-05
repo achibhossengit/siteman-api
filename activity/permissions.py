@@ -1,5 +1,11 @@
 """Activity log read scoping: company, site membership, entity view perms."""
 
+from rest_framework.permissions import IsAuthenticated
+
+from core.permissions import (
+    ActiveSubscriptionOrReadOnly,
+    DjangoModelPermissionsWithView,
+)
 from .models import ActivityEntityType, ActivityLog
 
 # entity_type → Django view permission for the business model.
@@ -39,3 +45,19 @@ def activity_logs_for_user(user):
     if not entity_types:
         return qs.none()
     return qs.filter(entity_type__in=entity_types)
+
+
+class ActivityLogPermissions(DjangoModelPermissionsWithView):
+    """Map review-bulk POST to change_activitylog (not add_)."""
+
+    def has_permission(self, request, view):
+        if getattr(view, "action", None) == "review_bulk":
+            return request.user.has_perm("activity.change_activitylog")
+        return super().has_permission(request, view)
+
+
+ACTIVITY_LOG_PERMISSION_CLASSES = [
+    IsAuthenticated,
+    ActivityLogPermissions,
+    ActiveSubscriptionOrReadOnly,
+]
