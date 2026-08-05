@@ -27,8 +27,9 @@ class ActivityLogViewSet(
     """Company-scoped activity timeline (read + one-way review).
 
     Global gate: ``view_activitylog`` (list/retrieve), ``change_activitylog``
-    (review / review-bulk). Rows are further narrowed by allowed sites and
-    each entity's ``view_<model>`` permission.
+    (review / review-bulk). Rows are limited to attendance, labour_payment,
+    and site_cash, then narrowed by allowed sites and each entity's
+    ``view_<model>`` permission.
 
     Pass ``paginate=false`` with ``site``, ``business_date``, and
     ``entity_type`` to return the full filtered list (day-review screens).

@@ -367,11 +367,12 @@ class ActivityLogAPITests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_sees_company_logs_including_null_site(self):
+    def test_admin_sees_only_attendance_payment_and_site_cash(self):
         self._grant(
             self.admin,
             "activity.view_activitylog",
             "labours.view_attendance",
+            "labours.view_labourpayment",
             "sites.view_sitecash",
             "sites.view_privatesitecash",
             "accounts.view_user",
@@ -380,15 +381,9 @@ class ActivityLogAPITests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = {row["id"] for row in response.data["results"]}
-        self.assertEqual(
-            ids,
-            {
-                self.log_site_a.pk,
-                self.log_site_b.pk,
-                self.log_private.pk,
-                self.log_user.pk,
-            },
-        )
+        self.assertEqual(ids, {self.log_site_a.pk, self.log_site_b.pk})
+        self.assertNotIn(self.log_private.pk, ids)
+        self.assertNotIn(self.log_user.pk, ids)
         self.assertNotIn(self.log_other_company.pk, ids)
 
     def test_manager_only_sees_allowed_site_and_entity(self):
@@ -403,7 +398,7 @@ class ActivityLogAPITests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = {row["id"] for row in response.data["results"]}
-        # site A attendance only: no site B, no private (no perm), no user (null site)
+        # site A attendance only: no site B cash, no private/user (not in API allowlist)
         self.assertEqual(ids, {self.log_site_a.pk})
 
     def test_filter_by_entity_type_and_entity_id(self):
@@ -443,14 +438,12 @@ class ActivityLogAPITests(APITestCase):
             "activity.view_activitylog",
             "labours.view_attendance",
             "sites.view_sitecash",
-            "sites.view_privatesitecash",
-            "accounts.view_user",
         )
         self.client.force_authenticate(user=self.admin)
-        response = self.client.get(self.list_url, {"page_size": 2})
+        response = self.client.get(self.list_url, {"page_size": 1})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 4)
-        self.assertEqual(len(response.data["results"]), 2)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual(len(response.data["results"]), 1)
         self.assertIsNotNone(response.data["next"])
 
     def test_paginate_false_requires_day_review_filters(self):
