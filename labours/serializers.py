@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
 from django.utils import timezone
@@ -48,6 +50,34 @@ class LabourRecordDateValidationMixin:
                         code=status_codes.RECORD_DATE_NOT_AFTER_LAST_SESSION,
                     )
                 }
+            )
+        return attrs
+
+
+class AttendancePresentExtraValidationMixin:
+    """Reject attendance when both present and extra are zero/empty."""
+
+    @staticmethod
+    def _is_zero(value):
+        if value is None:
+            return True
+        if isinstance(value, Decimal):
+            return value == 0
+        return value == 0
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            present = attrs["present"] if "present" in attrs else self.instance.present
+            extra = attrs["extra"] if "extra" in attrs else self.instance.extra
+        else:
+            present = attrs.get("present")
+            extra = attrs.get("extra")
+
+        if self._is_zero(present) and self._is_zero(extra):
+            raise serializers.ValidationError(
+                "Present and extra cannot both be zero.",
+                code=status_codes.ATTENDANCE_PRESENT_OR_EXTRA_REQUIRED,
             )
         return attrs
 
@@ -290,7 +320,9 @@ class SiteLabourAttendanceListSerializer(serializers.ModelSerializer):
 
 
 class SiteLabourAttendanceSerializer(
-    LabourRecordDateValidationMixin, serializers.ModelSerializer
+    AttendancePresentExtraValidationMixin,
+    LabourRecordDateValidationMixin,
+    serializers.ModelSerializer,
 ):
     """Bulk-create item for ``/sites/<site_pk>/labour-attendances``.
 
@@ -385,7 +417,9 @@ class AttendanceListSerializer(serializers.ModelSerializer):
 
 
 class AttendanceSerializer(
-    LabourRecordDateValidationMixin, serializers.ModelSerializer
+    AttendancePresentExtraValidationMixin,
+    LabourRecordDateValidationMixin,
+    serializers.ModelSerializer,
 ):
     class Meta:
         model = Attendance

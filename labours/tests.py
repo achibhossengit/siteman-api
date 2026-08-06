@@ -1641,6 +1641,44 @@ class LabourAttendanceValidationTests(LabourAttendanceAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_present_and_extra_both_zero_rejected(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "present": "0",
+                "extra": 0,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.ATTENDANCE_PRESENT_OR_EXTRA_REQUIRED,
+        )
+
+    def test_present_zero_with_extra_allowed(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(timezone.localdate()),
+                "present": "0",
+                "extra": 50,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_patch_cannot_clear_present_and_extra_to_zero(self):
+        attendance = self._create_attendance(present=Decimal("1"), extra=0)
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, attendance.pk),
+            {"present": "0", "extra": 0},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.ATTENDANCE_PRESENT_OR_EXTRA_REQUIRED,
+        )
+
     def test_create_with_active_billing_allowed(self):
         response = self.client.post(
             self.list_url,
@@ -2623,6 +2661,23 @@ class SiteLabourAttendanceValidationTests(SiteLabourAttendanceAPITestCase):
         self.assertEqual(
             response.data["errors"][0]["code"],
             status_codes.RECORD_FUTURE_DATE,
+        )
+        self.assertFalse(Attendance.objects.exists())
+
+    def test_present_and_extra_both_zero_rejected(self):
+        response = self.client.post(
+            self.list_url,
+            [
+                self._attendance_payload(
+                    self.labour, present="0", extra=0
+                ),
+            ],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.ATTENDANCE_PRESENT_OR_EXTRA_REQUIRED,
         )
         self.assertFalse(Attendance.objects.exists())
 
