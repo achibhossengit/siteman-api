@@ -31,7 +31,6 @@ TRACKED_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     ActivityEntityType.SITE_CASH: (
         "type",
-        "category",
         "date",
         "amount",
         "note",

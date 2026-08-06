@@ -220,7 +220,7 @@ class SiteCashViewSet(viewsets.ModelViewSet):
         HasSitePermissions,
     ]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
-    filterset_fields = ["type", "category", "date", "billing"]
+    filterset_fields = ["type", "date", "billing"]
 
     def get_serializer_class(self):
         if self.action == "list":

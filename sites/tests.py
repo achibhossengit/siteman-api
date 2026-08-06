@@ -16,7 +16,6 @@ from sites.models import (
     PrivateSiteCashType,
     Site,
     SiteCash,
-    SiteCashCategory,
     SiteCashType,
 )
 from subscription.models import Subscription
@@ -612,7 +611,6 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         self.assertEqual(response.data["company"], self.company.pk)
         self.assertEqual(response.data["type"], SiteCashType.DEPOSIT)
         self.assertEqual(response.data["amount"], 1500)
-        self.assertIsNone(response.data["category"])
         self.assertTrue(
             SiteCash.objects.filter(
                 site=self.site,
@@ -621,13 +619,12 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
             ).exists()
         )
 
-    def test_create_cost_with_billing_and_category(self):
+    def test_create_cost_with_billing(self):
         response = self.client.post(
             self.list_url,
             {
                 "date": str(timezone.localdate()),
                 "type": SiteCashType.COST,
-                "category": SiteCashCategory.FOOD,
                 "billing": self.billing.pk,
                 "amount": 800,
                 "note": "Lunch",
@@ -635,7 +632,6 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["type"], SiteCashType.COST)
-        self.assertEqual(response.data["category"], SiteCashCategory.FOOD)
         self.assertEqual(response.data["billing"], self.billing.pk)
 
     def test_create_stamps_site_from_url(self):
@@ -666,7 +662,6 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
                 "id",
                 "date",
                 "type",
-                "category",
                 "amount",
                 "note",
                 "billing",
@@ -741,7 +736,6 @@ class SiteCashValidationTests(SiteCashAPITestCase):
             {
                 "date": str(timezone.localdate()),
                 "type": SiteCashType.COST,
-                "category": SiteCashCategory.EQUIPMENT,
                 "billing": other_billing.pk,
                 "amount": 500,
             },
@@ -777,32 +771,12 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
         self._create_cash(
             date=today - timedelta(days=1),
             type=SiteCashType.COST,
-            category=SiteCashCategory.FOOD,
             amount=50,
         )
         response = self.client.get(self.list_url, {"type": SiteCashType.COST})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["type"], SiteCashType.COST)
-
-    def test_filter_by_category(self):
-        today = timezone.localdate()
-        self._create_cash(
-            date=today,
-            type=SiteCashType.COST,
-            category=SiteCashCategory.FOOD,
-        )
-        self._create_cash(
-            date=today - timedelta(days=1),
-            type=SiteCashType.COST,
-            category=SiteCashCategory.EQUIPMENT,
-            amount=80,
-        )
-        response = self.client.get(
-            self.list_url, {"category": SiteCashCategory.EQUIPMENT}
-        )
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["category"], SiteCashCategory.EQUIPMENT)
 
     def test_filter_by_billing(self):
         cat_b = self._create_billing(name="Floor-1")
