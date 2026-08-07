@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils.dateparse import parse_date
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -175,6 +176,7 @@ class SiteDailyRecordViewSet(
 
     serializer_class = SiteDailyRecordSerializer
     queryset = DailyRecord.objects.none()
+    pagination_class = StandardPagination
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
         HasSitePermissions,
@@ -204,6 +206,28 @@ class SiteDailyRecordViewSet(
             .select_related("labour", "site", "billing")
             .order_by("-date", "-id")
         )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"(?P<record_date>\d{4}-\d{2}-\d{2})",
+        url_name="by-date",
+        pagination_class=None,
+    )
+    def by_date(self, request, site_pk=None, record_date=None, **kwargs):
+        """Unpaginated list of all daily records for this site on ``record_date``."""
+        try:
+            parsed = parse_date(record_date)
+        except ValueError:
+            parsed = None
+        if parsed is None:
+            raise ValidationError(
+                {"date": "Enter a valid date (YYYY-MM-DD)."},
+                code=status_codes.INVALID,
+            )
+        qs = self.get_queryset().filter(date=parsed)
+        serializer = SiteDailyRecordListSerializer(qs, many=True)
+        return Response(serializer.data)
 
     @transaction.atomic
     def perform_create(self, serializer):

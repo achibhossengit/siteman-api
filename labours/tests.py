@@ -1377,6 +1377,16 @@ class SiteDailyRecordAPITestCase(APITestCase):
             kwargs={"version": "v1", "site_pk": site_id},
         )
 
+    def _by_date_url(self, site_id, record_date):
+        return reverse(
+            "site-daily-record-by-date",
+            kwargs={
+                "version": "v1",
+                "site_pk": site_id,
+                "record_date": str(record_date),
+            },
+        )
+
     def _create_daily_record(self, labour=None, site=None, **kwargs):
         labour = labour or self.labour
         site = site or self.site
@@ -1447,7 +1457,7 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
     def test_list_empty(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
 
     def test_bulk_create_success(self):
         response = self.client.post(
@@ -1483,9 +1493,10 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
         self._create_daily_record()
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
         self.assertCountEqual(
-            response.data[0].keys(),
+            results[0].keys(),
             [
                 "id",
                 "labour_id",
@@ -1580,8 +1591,9 @@ class SiteDailyRecordFilterIsolationTests(SiteDailyRecordAPITestCase):
         )
         response = self.client.get(self.list_url, {"labour": self.labour.pk})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["labour_id"], self.labour.pk)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["labour_id"], self.labour.pk)
 
     def test_other_site_records_hidden(self):
         other_site = Site.objects.create(
@@ -1599,8 +1611,82 @@ class SiteDailyRecordFilterIsolationTests(SiteDailyRecordAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["labour_id"], self.labour.pk)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["labour_id"], self.labour.pk)
+
+
+class SiteDailyRecordByDateTests(SiteDailyRecordAPITestCase):
+    def test_lists_records_for_date_without_pagination(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        first = self._create_daily_record(labour=self.labour, date=today)
+        second = self._create_daily_record(labour=self.labour_b, date=today)
+        self._create_daily_record(
+            labour=self.labour,
+            date=yesterday,
+        )
+
+        response = self.client.get(self._by_date_url(self.site.pk, today))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertNotIn("results", response.data)
+        self.assertEqual(len(response.data), 2)
+        self.assertEqual(
+            {row["id"] for row in response.data},
+            {first.pk, second.pk},
+        )
+        self.assertCountEqual(
+            response.data[0].keys(),
+            [
+                "id",
+                "labour_id",
+                "labour_name",
+                "date",
+                "present",
+                "wage",
+                "extra_earn",
+                "fooding_pay",
+                "advance_pay",
+                "return_amount",
+                "note",
+                "billing",
+                "is_sealed",
+                "created_at",
+                "updated_at",
+            ],
+        )
+
+    def test_empty_list_when_no_records_for_date(self):
+        self._create_daily_record(date=timezone.localdate() - timedelta(days=1))
+        response = self.client.get(
+            self._by_date_url(self.site.pk, timezone.localdate())
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_invalid_calendar_date_returns_400(self):
+        response = self.client.get(self._by_date_url(self.site.pk, "2026-02-30"))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+
+    def test_unauthenticated_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(
+            self._by_date_url(self.site.pk, timezone.localdate())
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_post_not_allowed(self):
+        response = self.client.post(
+            self._by_date_url(self.site.pk, timezone.localdate()),
+            [],
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 class SiteDailyRecordSubscriptionTests(SiteDailyRecordAPITestCase):
@@ -1627,7 +1713,7 @@ class SiteDailyRecordSubscriptionTests(SiteDailyRecordAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
 
 class LabourSessionAPITestCase(APITestCase):
