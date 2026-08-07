@@ -50,4 +50,3 @@ RECORD_UNIQUE_CONSTRAINT_VIOLATION = "record_unique_constraint_violation"
 
 # Activity
 ACTIVITY_ALREADY_REVIEWED = "activity_already_reviewed"
-ACTIVITY_UNPAGINATED_FILTERS_REQUIRED = "activity_unpaginated_filters_required"

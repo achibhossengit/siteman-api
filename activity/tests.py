@@ -445,38 +445,6 @@ class ActivityLogAPITests(APITestCase):
         self.assertEqual(len(response.data["results"]), 1)
         self.assertIsNotNone(response.data["next"])
 
-    def test_paginate_false_requires_day_review_filters(self):
-        self._grant(
-            self.admin,
-            "activity.view_activitylog",
-            "labours.view_dailyrecord",
-        )
-        self.client.force_authenticate(user=self.admin)
-        response = self.client.get(self.list_url, {"paginate": "false"})
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_paginate_false_returns_full_list(self):
-        self._grant(
-            self.admin,
-            "activity.view_activitylog",
-            "labours.view_dailyrecord",
-        )
-        self.client.force_authenticate(user=self.admin)
-        response = self.client.get(
-            self.list_url,
-            {
-                "paginate": "false",
-                "site": self.site_a.pk,
-                "business_date": timezone.localdate().isoformat(),
-                "entity_type": ActivityEntityType.DAILY_RECORD,
-                "reviewed": "false",
-            },
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], self.log_site_a.pk)
-
     def test_review_requires_change_permission(self):
         self._grant(
             self.admin,

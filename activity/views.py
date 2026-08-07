@@ -6,17 +6,15 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from core import status_codes
+from core.pagination import StandardPagination
 from .filters import ActivityLogFilter
 from .models import ActivityLog
-from .pagination import ActivityLogPagination
 from .permissions import ACTIVITY_LOG_PERMISSION_CLASSES, activity_logs_for_user
 from .serializers import (
     ActivityLogBulkReviewSerializer,
     ActivityLogReviewSerializer,
     ActivityLogSerializer,
 )
-
-_UNPAGINATED_REQUIRED_PARAMS = ("site", "business_date", "entity_type")
 
 
 class ActivityLogViewSet(
@@ -30,9 +28,6 @@ class ActivityLogViewSet(
     (review / review-bulk). Rows are limited to daily_record and site_cash,
     then narrowed by allowed sites and each entity's
     ``view_<model>`` permission.
-
-    Pass ``paginate=false`` with ``site``, ``business_date``, and
-    ``entity_type`` to return the full filtered list (day-review screens).
     """
 
     serializer_class = ActivityLogSerializer
@@ -40,7 +35,7 @@ class ActivityLogViewSet(
     permission_classes = ACTIVITY_LOG_PERMISSION_CLASSES
     http_method_names = ["get", "post", "patch", "head", "options"]
     filterset_class = ActivityLogFilter
-    pagination_class = ActivityLogPagination
+    pagination_class = StandardPagination
 
     def get_queryset(self):
         return (
@@ -48,28 +43,6 @@ class ActivityLogViewSet(
             .select_related("actor", "reviewed_by", "site", "labour")
             .order_by("-created_at", "-id")
         )
-
-    def paginate_queryset(self, queryset):
-        paginate = self.request.query_params.get("paginate", "true").lower()
-        if paginate in ("0", "false", "no"):
-            missing = [
-                name
-                for name in _UNPAGINATED_REQUIRED_PARAMS
-                if not self.request.query_params.get(name)
-            ]
-            if missing:
-                raise ValidationError(
-                    {
-                        "paginate": (
-                            "paginate=false requires site, business_date, "
-                            "and entity_type filters."
-                        ),
-                        "missing": missing,
-                    },
-                    code=status_codes.ACTIVITY_UNPAGINATED_FILTERS_REQUIRED,
-                )
-            return None
-        return super().paginate_queryset(queryset)
 
     @action(detail=True, methods=["patch"], url_path="review")
     @transaction.atomic
