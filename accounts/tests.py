@@ -19,6 +19,15 @@ from .views import PASSWORD_RESET_PURPOSE, REGISTER_PURPOSE
 
 User = get_user_model()
 
+
+def _list_results(response):
+    """Return list rows from a paginated or unpaginated list response."""
+    data = response.data
+    if isinstance(data, dict) and "results" in data:
+        return data["results"]
+    return data
+
+
 TEST_CACHES = {
     "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
 }
@@ -813,8 +822,8 @@ class UserCRUDTests(UserAPITestCase):
         other = self._create_company_user(phone="+8801711110000")
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], other.pk)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["id"], other.pk)
 
     def test_create_user_success(self):
         response = self.client.post(
@@ -874,9 +883,9 @@ class UserCRUDTests(UserAPITestCase):
         other = self._create_company_user()
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
         self.assertCountEqual(
-            response.data[0].keys(),
+            _list_results(response)[0].keys(),
             [
                 "id",
                 "name",
@@ -886,7 +895,7 @@ class UserCRUDTests(UserAPITestCase):
                 "is_companyadmin",
             ],
         )
-        ids = {row["id"] for row in response.data}
+        ids = {row["id"] for row in _list_results(response)}
         self.assertIn(other.pk, ids)
 
     def test_retrieve_user_detail(self):
@@ -1173,8 +1182,8 @@ class UserFilterIsolationTests(UserAPITestCase):
         colleague = self._create_company_user(phone="+8801711110000")
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], colleague.pk)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["id"], colleague.pk)
 
     def test_filter_by_is_active(self):
         active = self._create_company_user(name="Active", phone="+8801711122222")
@@ -1183,7 +1192,7 @@ class UserFilterIsolationTests(UserAPITestCase):
         )
         response = self.client.get(self.list_url, {"is_active": "true"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        ids = {row["id"] for row in response.data}
+        ids = {row["id"] for row in _list_results(response)}
         self.assertNotIn(self.user.pk, ids)
         self.assertIn(active.pk, ids)
         self.assertNotIn(inactive.pk, ids)
@@ -1193,8 +1202,8 @@ class UserFilterIsolationTests(UserAPITestCase):
         self._create_company_user(name="Rahim Uddin", phone="+8801711125555")
         response = self.client.get(self.list_url, {"search": "Karim"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Karim Mia")
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "Karim Mia")
 
 
 class UserSubscriptionTests(UserAPITestCase):

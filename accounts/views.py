@@ -21,6 +21,7 @@ from core.exceptions import (
     SubscriptionLimitExceeded,
     SubscriptionLimitExceededError,
 )
+from core.pagination import StandardPagination
 from core.services import SubscriptionService
 from company.models import Company
 from .models import User
@@ -373,6 +374,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     serializer_class = UserProfileSerializer
     queryset = User.objects.none()
+    pagination_class = StandardPagination
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ["is_active", "is_companyadmin"]

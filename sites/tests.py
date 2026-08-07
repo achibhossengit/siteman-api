@@ -26,6 +26,14 @@ from labours.models import DailyRecord, Labour
 User = get_user_model()
 
 
+def _list_results(response):
+    """Return list rows from a paginated or unpaginated list response."""
+    data = response.data
+    if isinstance(data, dict) and "results" in data:
+        return data["results"]
+    return data
+
+
 class SiteAPITestCase(APITestCase):
     """Shared fixtures for site endpoint tests."""
 
@@ -100,7 +108,7 @@ class SiteCRUDTests(SiteAPITestCase):
     def test_list_empty(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
 
     def test_create_site_success(self):
         response = self.client.post(self.list_url, {"name": "Padma Bridge"})
@@ -124,12 +132,12 @@ class SiteCRUDTests(SiteAPITestCase):
         site = self._create_site(name="List Site")
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
         self.assertCountEqual(
-            response.data[0].keys(),
+            _list_results(response)[0].keys(),
             ["id", "name", "is_active", "is_closed"],
         )
-        self.assertEqual(response.data[0]["id"], site.pk)
+        self.assertEqual(_list_results(response)[0]["id"], site.pk)
 
     def test_retrieve_site_detail(self):
         site = self._create_site(name="Detail Site")
@@ -202,12 +210,12 @@ class SiteFilterIsolationTests(SiteAPITestCase):
 
         response = self.client.get(self.list_url, {"is_active": "true"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Active")
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "Active")
 
         response = self.client.get(self.list_url, {"is_active": "false"})
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Inactive")
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "Inactive")
 
     def test_filter_by_is_closed(self):
         open_site = self._create_site(name="Open")
@@ -218,12 +226,12 @@ class SiteFilterIsolationTests(SiteAPITestCase):
         )
 
         response = self.client.get(self.list_url, {"is_closed": "false"})
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], open_site.pk)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["id"], open_site.pk)
 
         response = self.client.get(self.list_url, {"is_closed": "true"})
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], closed_site.pk)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["id"], closed_site.pk)
         
     def test_cannot_create_site_under_other_company(self):
         other_company = Company.objects.create(name="Other Co")
@@ -248,8 +256,8 @@ class SiteFilterIsolationTests(SiteAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Mine")
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "Mine")
 
     def test_cannot_retrieve_other_company_site(self):
         other_company = Company.objects.create(name="Other Co")
@@ -274,7 +282,7 @@ class SiteAssignmentVisibilityTests(SiteAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertCountEqual(
-            [row["id"] for row in response.data],
+            [row["id"] for row in _list_results(response)],
             [a.pk, b.pk],
         )
 
@@ -293,8 +301,8 @@ class SiteAssignmentVisibilityTests(SiteAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], assigned.pk)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["id"], assigned.pk)
 
     def test_non_admin_cannot_retrieve_unassigned_site(self):
         site = self._create_site(name="Hidden")
@@ -345,7 +353,7 @@ class SiteSubscriptionTests(SiteAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_patch_blocked_when_subscription_expired(self):
         site = self._create_site(name="Editable")
@@ -504,7 +512,7 @@ class SiteCashAuthPermissionTests(SiteCashAPITestCase):
         self.site.save(update_fields=["is_active"])
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_other_company_site_returns_403(self):
         other = Company.objects.create(name="Other Co")
@@ -588,7 +596,7 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
     def test_list_empty(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
 
     def test_create_deposit_success(self):
         today = timezone.localdate()
@@ -650,9 +658,9 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         cash = self._create_cash()
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
         self.assertCountEqual(
-            response.data[0].keys(),
+            _list_results(response)[0].keys(),
             [
                 "id",
                 "date",
@@ -664,7 +672,7 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
                 "updated_at",
             ],
         )
-        self.assertEqual(response.data[0]["id"], cash.pk)
+        self.assertEqual(_list_results(response)[0]["id"], cash.pk)
 
     def test_retrieve_cash_detail(self):
         cash = self._create_cash(note="detail")
@@ -770,8 +778,8 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
         )
         response = self.client.get(self.list_url, {"type": SiteCashType.COST})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["type"], SiteCashType.COST)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["type"], SiteCashType.COST)
 
     def test_filter_by_billing(self):
         cat_b = self._create_billing(name="Floor-1")
@@ -783,8 +791,8 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
         )
         response = self.client.get(self.list_url, {"billing": cat_b.pk})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["billing"], cat_b.pk)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["billing"], cat_b.pk)
 
     def test_nested_under_other_site_hides_cash(self):
         other_site = Site.objects.create(
@@ -795,7 +803,7 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
         cash = self._create_cash()
         response = self.client.get(self._list_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
         response = self.client.get(self._detail_url(other_site.pk, cash.pk))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -822,8 +830,8 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["amount"], 100)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["amount"], 100)
 
 
 class SiteCashSubscriptionTests(SiteCashAPITestCase):
@@ -853,7 +861,7 @@ class SiteCashSubscriptionTests(SiteCashAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_patch_blocked_when_subscription_expired(self):
         cash = self._create_cash(amount=100)
@@ -1017,7 +1025,7 @@ class PrivateSiteCashAuthPermissionTests(PrivateSiteCashAPITestCase):
         self.site.save(update_fields=["is_active"])
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_other_company_site_returns_403(self):
         other = Company.objects.create(name="Other Co")
@@ -1039,7 +1047,7 @@ class PrivateSiteCashCRUDTests(PrivateSiteCashAPITestCase):
     def test_list_empty(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
 
     def test_create_bill_success(self):
         today = timezone.localdate()
@@ -1102,9 +1110,9 @@ class PrivateSiteCashCRUDTests(PrivateSiteCashAPITestCase):
         cash = self._create_cash()
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
         self.assertCountEqual(
-            response.data[0].keys(),
+            _list_results(response)[0].keys(),
             [
                 "id",
                 "date",
@@ -1116,7 +1124,7 @@ class PrivateSiteCashCRUDTests(PrivateSiteCashAPITestCase):
                 "updated_at",
             ],
         )
-        self.assertEqual(response.data[0]["id"], cash.pk)
+        self.assertEqual(_list_results(response)[0]["id"], cash.pk)
 
     def test_retrieve_cash_detail(self):
         cash = self._create_cash(note="detail")
@@ -1224,8 +1232,8 @@ class PrivateSiteCashFilterIsolationTests(PrivateSiteCashAPITestCase):
         )
         response = self.client.get(self.list_url, {"type": PrivateSiteCashType.COST})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["type"], PrivateSiteCashType.COST)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["type"], PrivateSiteCashType.COST)
 
     def test_filter_by_billing(self):
         cat_b = self._create_billing(name="Floor-1")
@@ -1237,8 +1245,8 @@ class PrivateSiteCashFilterIsolationTests(PrivateSiteCashAPITestCase):
         )
         response = self.client.get(self.list_url, {"billing": cat_b.pk})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["billing"], cat_b.pk)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["billing"], cat_b.pk)
 
     def test_nested_under_other_site_hides_cash(self):
         other_site = Site.objects.create(
@@ -1249,7 +1257,7 @@ class PrivateSiteCashFilterIsolationTests(PrivateSiteCashAPITestCase):
         cash = self._create_cash()
         response = self.client.get(self._list_url(other_site.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
         response = self.client.get(self._detail_url(other_site.pk, cash.pk))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -1276,8 +1284,8 @@ class PrivateSiteCashFilterIsolationTests(PrivateSiteCashAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["amount"], 100)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["amount"], 100)
 
 
 class PrivateSiteCashSubscriptionTests(PrivateSiteCashAPITestCase):
@@ -1307,7 +1315,7 @@ class PrivateSiteCashSubscriptionTests(PrivateSiteCashAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_patch_blocked_when_subscription_expired(self):
         cash = self._create_cash(amount=100)

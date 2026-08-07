@@ -20,6 +20,14 @@ from subscription.models import Subscription
 User = get_user_model()
 
 
+def _list_results(response):
+    """Return list rows from a paginated or unpaginated list response."""
+    data = response.data
+    if isinstance(data, dict) and "results" in data:
+        return data["results"]
+    return data
+
+
 class LabourAPITestCase(APITestCase):
     """Shared fixtures for labour endpoint tests."""
 
@@ -102,7 +110,7 @@ class LabourCRUDTests(LabourAPITestCase):
     def test_list_empty(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
 
     def test_create_labour_success(self):
         payload = {
@@ -138,9 +146,9 @@ class LabourCRUDTests(LabourAPITestCase):
         labour = self._create_labour(name="List Labour")
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
         self.assertCountEqual(
-            response.data[0].keys(),
+            _list_results(response)[0].keys(),
             [
                 "id",
                 "name",
@@ -152,7 +160,7 @@ class LabourCRUDTests(LabourAPITestCase):
                 "is_active",
             ],
         )
-        self.assertEqual(response.data[0]["id"], labour.pk)
+        self.assertEqual(_list_results(response)[0]["id"], labour.pk)
 
     def test_retrieve_labour_detail(self):
         labour = self._create_labour(name="Detail Labour")
@@ -292,12 +300,12 @@ class LabourFilterIsolationTests(LabourAPITestCase):
 
         response = self.client.get(self.list_url, {"is_active": "true"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Active")
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "Active")
 
         response = self.client.get(self.list_url, {"is_active": "false"})
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Inactive")
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "Inactive")
 
     def test_filter_by_current_site(self):
         other_site = Site.objects.create(
@@ -308,8 +316,8 @@ class LabourFilterIsolationTests(LabourAPITestCase):
         self._create_labour(name="On Other", current_site=other_site)
 
         response = self.client.get(self.list_url, {"current_site": self.site.pk})
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "On Padma")
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "On Padma")
 
     def test_search_by_name(self):
         self._create_labour(name="Karim Mia")
@@ -317,8 +325,8 @@ class LabourFilterIsolationTests(LabourAPITestCase):
 
         response = self.client.get(self.list_url, {"search": "Karim"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Karim Mia")
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "Karim Mia")
 
     def test_cannot_create_under_other_company(self):
         other = Company.objects.create(name="Other Co")
@@ -355,8 +363,8 @@ class LabourFilterIsolationTests(LabourAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Mine")
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "Mine")
 
     def test_cannot_retrieve_other_company_labour(self):
         other = Company.objects.create(name="Other Co")
@@ -391,7 +399,7 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertCountEqual(
-            [row["id"] for row in response.data],
+            [row["id"] for row in _list_results(response)],
             [a.pk, b.pk],
         )
 
@@ -414,8 +422,8 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], assigned_labour.pk)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["id"], assigned_labour.pk)
 
     def test_non_admin_cannot_retrieve_unassigned_site_labour(self):
         labour = self._create_labour(name="Hidden")
@@ -433,7 +441,7 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertCountEqual(
-            [row["id"] for row in response.data],
+            [row["id"] for row in _list_results(response)],
             [unassigned.pk, assigned.pk],
         )
 
@@ -452,8 +460,8 @@ class LabourAssignmentVisibilityTests(LabourAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], assigned.pk)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["id"], assigned.pk)
 
 
 class LabourCurrentSiteAssignmentTests(LabourAPITestCase):
@@ -606,7 +614,7 @@ class LabourSubscriptionTests(LabourAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_patch_blocked_when_subscription_expired(self):
         labour = self._create_labour(name="Editable")

@@ -20,6 +20,7 @@ from core.exceptions import (
     SubscriptionLimitExceededError,
 )
 from core.permissions import RecordUpdateDeletePermissions
+from core.pagination import StandardPagination
 from core.services import SubscriptionService
 from sites.permissions import HasSitePermissions
 from .permissions import HasSiteAndLabourPermissions, get_labour
@@ -45,6 +46,7 @@ from .services import (
 class LabourViewSet(viewsets.ModelViewSet):
     serializer_class = LabourSerializer
     queryset = Labour.objects.none()
+    pagination_class = StandardPagination
     http_method_names = ["get", "post", "patch", "head", "options"]  # no PUT, no DELETE
     filter_backends = [*api_settings.DEFAULT_FILTER_BACKENDS, SearchFilter]
     filterset_fields = ["is_active", "current_site"]

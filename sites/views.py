@@ -16,6 +16,7 @@ from activity.hooks import (
     snapshot_for,
 )
 from core import status_codes
+from core.pagination import StandardPagination
 from core.permissions import ActiveSubscriptionOrReadOnly
 from core.services import SubscriptionService
 from core.exceptions import (
@@ -52,6 +53,7 @@ class SiteViewSet(viewsets.ModelViewSet):
     """
     serializer_class = SiteSerializer
     queryset = Site.objects.none()  # real queryset in get_queryset; here for router/schema
+    pagination_class = StandardPagination
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]  # no PUT
     filterset_fields = ["is_active", "is_closed"]
 
@@ -215,6 +217,7 @@ class SiteCashViewSet(viewsets.ModelViewSet):
 
     serializer_class = SiteCashSerializer
     queryset = SiteCash.objects.none()
+    pagination_class = StandardPagination
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
         HasSitePermissions,
@@ -266,6 +269,7 @@ class PrivateSiteCashViewSet(viewsets.ModelViewSet):
 
     serializer_class = PrivateSiteCashSerializer
     queryset = PrivateSiteCash.objects.none()
+    pagination_class = StandardPagination
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
         HasSitePermissions,
