@@ -8,7 +8,6 @@ from django.db.models import (
     F,
     Max,
     Min,
-    Q,
     Sum,
     Value,
 )
@@ -17,102 +16,82 @@ from rest_framework.exceptions import ValidationError
 
 from core import status_codes
 from activity.services import log_created, log_deleted
-from .models import (
-    Attendance,
-    LabourPayment,
-    LabourPaymentType,
-    LabourSession,
-)
+from .models import DailyRecord, LabourSession
 
 _ZERO = Value(0)
 _ZERO_DEC = Value(Decimal("0"))
 _DECIMAL = DecimalField(max_digits=20, decimal_places=2)
 
+
 def get_running_session(labour):
     latest_session = labour.sessions.order_by("-created_date", "-id").first()
     latest_session_payable = latest_session.cumulative_payable if latest_session else 0
-    
-    # use this to maintain consistency with the old code
-    # attendance, labour payment records creation are checked against this date
-    # this set by post_save signal of LabourSession model
+
+    # Records after last_session_date (set by LabourSession post_save signal).
     latest_session_date = labour.last_session_date
-    
+
     if latest_session_date is not None:
         date_filter = {"date__gt": latest_session_date}
     else:
         date_filter = {}
 
-    attendance_qs = Attendance.objects.filter(labour=labour, **date_filter)
-    payment_qs = LabourPayment.objects.filter(labour=labour, **date_filter)
+    qs = DailyRecord.objects.filter(labour=labour, **date_filter)
 
-    salary_expr = ExpressionWrapper(
-        Coalesce(F("present"), _ZERO_DEC) * Coalesce(F("salary"), _ZERO),
+    wage_expr = ExpressionWrapper(
+        Coalesce(F("present"), _ZERO_DEC) * Coalesce(F("wage"), _ZERO),
         output_field=_DECIMAL,
     )
-    attendance_agg = attendance_qs.aggregate(
+    agg = qs.aggregate(
         present_days=Coalesce(Sum(Coalesce(F("present"), _ZERO_DEC)), _ZERO_DEC),
-        salary_earnings=Coalesce(Sum(salary_expr), _ZERO_DEC),
-        extra_earnings=Coalesce(Sum(Coalesce(F("extra"), _ZERO)), _ZERO),
-        earliest=Min("date"),
-        latest=Max("date"),
-        row_count=Count("id"),
-    )
-    payment_agg = payment_qs.aggregate(
-        total_payment=Coalesce(
-            Sum("amount", filter=Q(type=LabourPaymentType.PAYMENT)),
-            _ZERO,
-        ),
-        total_return=Coalesce(
-            Sum("amount", filter=Q(type=LabourPaymentType.RETURN)),
-            _ZERO,
-        ),
+        salary_earnings=Coalesce(Sum(wage_expr), _ZERO_DEC),
+        extra_earnings=Coalesce(Sum(Coalesce(F("extra_earn"), _ZERO)), _ZERO),
+        total_fooding_pay=Coalesce(Sum(Coalesce(F("fooding_pay"), _ZERO)), _ZERO),
+        total_advance_pay=Coalesce(Sum(Coalesce(F("advance_pay"), _ZERO)), _ZERO),
+        total_return=Coalesce(Sum(Coalesce(F("return_amount"), _ZERO)), _ZERO),
         earliest=Min("date"),
         latest=Max("date"),
         row_count=Count("id"),
     )
 
-    attendance_count = attendance_agg["row_count"] or 0
-    payment_count = payment_agg["row_count"] or 0
-    if attendance_count == 0 and payment_count == 0:
+    row_count = agg["row_count"] or 0
+    if row_count == 0:
         return None
 
-    starts = [
-        d for d in (attendance_agg["earliest"], payment_agg["earliest"]) if d is not None
-    ]
-    ends = [d for d in (attendance_agg["latest"], payment_agg["latest"]) if d is not None]
-    present_days = attendance_agg["present_days"] or Decimal("0")
-    salary_earnings = int(attendance_agg["salary_earnings"] or 0)
-    extra_earnings = int(attendance_agg["extra_earnings"] or 0)
-    total_payment = int(payment_agg["total_payment"] or 0)
-    total_return = int(payment_agg["total_return"] or 0)
+    present_days = agg["present_days"] or Decimal("0")
+    salary_earnings = int(agg["salary_earnings"] or 0)
+    extra_earnings = int(agg["extra_earnings"] or 0)
+    total_fooding_pay = int(agg["total_fooding_pay"] or 0)
+    total_advance_pay = int(agg["total_advance_pay"] or 0)
+    total_return = int(agg["total_return"] or 0)
+    total_payment = total_fooding_pay + total_advance_pay
     total_earnings = salary_earnings + extra_earnings
     payable = total_earnings + total_return - total_payment
 
-    running = {
-        "start_date": min(starts),
-        "end_date": max(ends),
+    return {
+        "start_date": agg["earliest"],
+        "end_date": agg["latest"],
         "present_days": present_days,
         "salary_earnings": salary_earnings,
         "extra_earnings": extra_earnings,
+        "total_fooding_pay": total_fooding_pay,
+        "total_advance_pay": total_advance_pay,
         "total_payment": total_payment,
         "total_return": total_return,
         "total_earnings": total_earnings,
         "payable": payable,
-        "affected_attendance_rows": attendance_count,
-        "affected_payment_rows": payment_count,
+        "affected_rows": row_count,
         "previous_payable": latest_session_payable,
         "cumulative_payable": latest_session_payable + payable,
     }
-    return running
 
 
 def create_labour_session(*, labour, user):
     """Close the labour's open period into a new work session.
 
-    Aggregates every record dated after ``labour.last_session_date`` and
-    stores the totals plus affected row counts. ``previous_payable`` is
-    the prior session's ``cumulative_payable`` (0 if none). Sealing is
-    done by the ``LabourSession`` post_save signal.
+    Aggregates every DailyRecord dated after ``labour.last_session_date`` and
+    stores the totals plus affected row count. ``previous_payable`` is the
+    prior session's ``cumulative_payable`` (0 if none). Sealing is done by
+    the ``LabourSession`` post_save signal.
     """
     with transaction.atomic():
         running = get_running_session(labour)
@@ -130,10 +109,10 @@ def create_labour_session(*, labour, user):
                 present_days=running["present_days"],
                 salary_earnings=running["salary_earnings"],
                 extra_earnings=running["extra_earnings"],
-                total_payment=running["total_payment"],
+                total_fooding_pay=running["total_fooding_pay"],
+                total_advance_pay=running["total_advance_pay"],
                 total_return=running["total_return"],
-                affected_attendance_rows=running["affected_attendance_rows"],
-                affected_payment_rows=running["affected_payment_rows"],
+                affected_rows=running["affected_rows"],
                 previous_payable=running["previous_payable"],
                 company=user.company,
             )
@@ -148,18 +127,13 @@ def create_labour_session(*, labour, user):
 
 
 def affected_rows_match(session):
-    """True when live attendance/payment counts still match the session."""
+    """True when live DailyRecord count still matches the session snapshot."""
     record_filter = {
         "labour_id": session.labour_id,
         "date__gte": session.start_date,
         "date__lte": session.end_date,
     }
-    attendance_count = Attendance.objects.filter(**record_filter).count()
-    payment_count = LabourPayment.objects.filter(**record_filter).count()
-    return (
-        attendance_count == session.affected_attendance_rows
-        and payment_count == session.affected_payment_rows
-    )
+    return DailyRecord.objects.filter(**record_filter).count() == session.affected_rows
 
 
 def is_latest_labour_session(session):
@@ -176,8 +150,8 @@ def is_latest_labour_session(session):
 def delete_labour_session(session, *, actor):
     """Delete the labour's most recent work session.
 
-    Only allowed when attendance/payment row counts between ``start_date``
-    and ``end_date`` still match the session. Unsealing is done by the
+    Only allowed when DailyRecord row counts between ``start_date`` and
+    ``end_date`` still match the session. Unsealing is done by the
     ``LabourSession`` post_delete signal.
     """
     if not is_latest_labour_session(session):

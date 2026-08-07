@@ -36,6 +36,7 @@ LABOUR_INACTIVE = "labour_inactive"
 LABOUR_NAME_EXISTS = "labour_name_exists"
 LABOUR_UNASSIGNED = "labour_unassigned"
 ATTENDANCE_PRESENT_OR_EXTRA_REQUIRED = "attendance_present_or_extra_required"
+DAILY_RECORD_VALUE_REQUIRED = "daily_record_value_required"
 
 # Labour work sessions
 SESSION_NO_RECORDS = "session_no_records"

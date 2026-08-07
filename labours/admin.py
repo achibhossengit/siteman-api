@@ -4,7 +4,7 @@ from django.db import transaction
 
 from core.exceptions import SubscriptionError
 from core.services import SubscriptionService
-from .models import Labour, Attendance, LabourPayment, LabourSession
+from .models import DailyRecord, Labour, LabourSession
 
 
 class LabourAdminForm(forms.ModelForm):
@@ -70,6 +70,5 @@ class LabourAdmin(admin.ModelAdmin):
     readonly_fields = ("last_session_date", "created_at", "updated_at")
 
 
-admin.site.register(Attendance)
-admin.site.register(LabourPayment)
+admin.site.register(DailyRecord)
 admin.site.register(LabourSession)

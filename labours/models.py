@@ -40,48 +40,9 @@ class Labour(TimeStampedMixin, CompanyOwnedMixin):
         return self.name
 
 
-class LabourPaymentType(models.TextChoices):
-    PAYMENT = "payment", "Payment"
-    RETURN = "return", "Return"
+class DailyRecord(TimeStampedMixin, CompanyOwnedMixin):
+    """One row per labour per date: attendance + cash movement."""
 
-class LabourPayment(TimeStampedMixin, CompanyOwnedMixin):
-    labour = models.ForeignKey(
-        Labour,
-        on_delete=models.RESTRICT,
-        related_name="payments",
-    )
-    site = models.ForeignKey(
-        "sites.Site",
-        on_delete=models.RESTRICT,
-        related_name="labour_payments",
-    )
-    date = models.DateField(default=timezone.localdate)
-    type = models.CharField(
-        max_length=16, 
-        choices=LabourPaymentType.choices,
-        default=LabourPaymentType.PAYMENT,
-        help_text="Payment or Return",
-    )
-    amount = models.IntegerField(validators=[MinValueValidator(0)])
-    note = models.CharField(max_length=255, null=True, blank=True)
-    is_sealed = models.BooleanField(
-        default=False,
-        help_text="True = immutable",
-    )
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["date", "labour", "type"],
-                name="uq_labour_payment_date_labour_type",
-            ),
-        ]
-
-    def __str__(self):
-        return f"Note: {self.note} Amount: {self.amount} Type: {self.get_type_display()}"
-
-
-class Attendance(TimeStampedMixin, CompanyOwnedMixin):
     PRESENT_CHOICES = [
         (Decimal("0"), "0"),
         (Decimal("0.5"), "0.5"),
@@ -91,23 +52,23 @@ class Attendance(TimeStampedMixin, CompanyOwnedMixin):
         (Decimal("2.5"), "2.5"),
         (Decimal("3"), "3"),
     ]
-    
+
     labour = models.ForeignKey(
         Labour,
         on_delete=models.RESTRICT,
-        related_name="attendances",
+        related_name="daily_records",
     )
     site = models.ForeignKey(
         "sites.Site",
         on_delete=models.RESTRICT,
-        related_name="attendances",
+        related_name="daily_records",
     )
     billing = models.ForeignKey(
         "sites.BillingCategory",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="attendances",
+        related_name="daily_records",
         help_text="Optional billing category; site may run without categories.",
     )
     date = models.DateField(default=timezone.localdate)
@@ -118,17 +79,35 @@ class Attendance(TimeStampedMixin, CompanyOwnedMixin):
         blank=True,
         choices=PRESENT_CHOICES,
     )
-    salary = models.IntegerField(
+    wage = models.IntegerField(
         null=True,
         blank=True,
         validators=[MinValueValidator(0)],
         help_text="Snapshot from labour.default_salary.",
     )
-    extra = models.IntegerField(
+    extra_earn = models.IntegerField(
         null=True,
         blank=True,
         validators=[MinValueValidator(0)],
         help_text="Extra work amount for the day.",
+    )
+    fooding_pay = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Fooding cash paid this day.",
+    )
+    advance_pay = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Advance cash paid this day.",
+    )
+    return_amount = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Cash returned by labour this day.",
     )
     note = models.CharField(max_length=255, null=True, blank=True)
     is_sealed = models.BooleanField(
@@ -140,7 +119,7 @@ class Attendance(TimeStampedMixin, CompanyOwnedMixin):
         constraints = [
             models.UniqueConstraint(
                 fields=["date", "labour"],
-                name="uq_attendance_date_labour",
+                name="uq_daily_record_date_labour",
             ),
         ]
 
@@ -168,13 +147,11 @@ class LabourSession(TimeStampedMixin, CompanyOwnedMixin):
     )
     salary_earnings = models.BigIntegerField(validators=[MinValueValidator(0)])
     extra_earnings = models.BigIntegerField(validators=[MinValueValidator(0)])
-    total_payment = models.BigIntegerField(validators=[MinValueValidator(0)])
+    total_fooding_pay = models.BigIntegerField(validators=[MinValueValidator(0)])
+    total_advance_pay = models.BigIntegerField(validators=[MinValueValidator(0)])
     total_return = models.BigIntegerField(validators=[MinValueValidator(0)])
-    affected_attendance_rows = models.PositiveIntegerField(
-        help_text="Attendance rows sealed into this session.",
-    )
-    affected_payment_rows = models.PositiveIntegerField(
-        help_text="Payment rows sealed into this session.",
+    affected_rows = models.PositiveIntegerField(
+        help_text="DailyRecord rows sealed into this session.",
     )
     # it may be negative.
     previous_payable = models.IntegerField()
@@ -190,6 +167,10 @@ class LabourSession(TimeStampedMixin, CompanyOwnedMixin):
     @property
     def total_earnings(self):
         return self.salary_earnings + self.extra_earnings
+
+    @property
+    def total_payment(self):
+        return self.total_fooding_pay + self.total_advance_pay
 
     @property
     def payable(self):

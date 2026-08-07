@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('activity', '0002_remove_summary'),
         ('company', '0002_companyconfig'),
-        ('labours', '0011_remove_created_by'),
+        ('labours', '0001_initial_daily_record'),
         ('sites', '0005_remove_created_by'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]

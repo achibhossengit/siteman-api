@@ -1,7 +1,5 @@
 from rest_framework_nested import routers
 
-from labours.views import SiteLabourAttendanceViewSet, SiteLabourPaymentViewSet
-
 from .views import (
     PrivateSiteCashViewSet,
     SiteBillingCategoryViewSet,
@@ -22,14 +20,6 @@ sites_router.register(
 sites_router.register("cash", SiteCashViewSet, basename="site-cash")
 sites_router.register(
     "private-cash", PrivateSiteCashViewSet, basename="site-private-cash"
-)
-sites_router.register(
-    "labour-payments", SiteLabourPaymentViewSet, basename="site-labour-payment"
-)
-sites_router.register(
-    "labour-attendances",
-    SiteLabourAttendanceViewSet,
-    basename="site-labour-attendance",
 )
 
 urlpatterns = [

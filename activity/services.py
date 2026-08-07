@@ -53,19 +53,13 @@ TRACKED_FIELDS: dict[str, tuple[str, ...]] = {
         "default_fooding",
         "is_active",
     ),
-    ActivityEntityType.LABOUR_PAYMENT: (
-        "type",
-        "date",
-        "amount",
-        "note",
-        "labour_id",
-        "site_id",
-    ),
-    ActivityEntityType.ATTENDANCE: (
+    ActivityEntityType.DAILY_RECORD: (
         "date",
         "present",
-        # "salary",
-        "extra",
+        "extra_earn",
+        "fooding_pay",
+        "advance_pay",
+        "return_amount",
         "note",
         "labour_id",
         "site_id",
@@ -78,7 +72,8 @@ TRACKED_FIELDS: dict[str, tuple[str, ...]] = {
         "present_days",
         "salary_earnings",
         "extra_earnings",
-        "total_payment",
+        "total_fooding_pay",
+        "total_advance_pay",
         "total_return",
         "labour_id",
         "previous_payable",
@@ -92,8 +87,7 @@ MODEL_ENTITY_TYPE: dict[str, str] = {
     "sites.sitecash": ActivityEntityType.SITE_CASH,
     "sites.privatesitecash": ActivityEntityType.PRIVATE_SITE_CASH,
     "labours.labour": ActivityEntityType.LABOUR,
-    "labours.labourpayment": ActivityEntityType.LABOUR_PAYMENT,
-    "labours.attendance": ActivityEntityType.ATTENDANCE,
+    "labours.dailyrecord": ActivityEntityType.DAILY_RECORD,
     "labours.laboursession": ActivityEntityType.LABOUR_SESSION,
 }
 
@@ -163,8 +157,7 @@ def resolve_labour(instance) -> tuple[int | None, str | None]:
     if entity_type == ActivityEntityType.LABOUR:
         return instance.pk, getattr(instance, "name", None)
     if entity_type in (
-        ActivityEntityType.ATTENDANCE,
-        ActivityEntityType.LABOUR_PAYMENT,
+        ActivityEntityType.DAILY_RECORD,
         ActivityEntityType.LABOUR_SESSION,
     ):
         labour_id = getattr(instance, "labour_id", None)
@@ -181,8 +174,7 @@ def resolve_business_date(instance) -> date | None:
     if entity_type in (
         ActivityEntityType.SITE_CASH,
         ActivityEntityType.PRIVATE_SITE_CASH,
-        ActivityEntityType.LABOUR_PAYMENT,
-        ActivityEntityType.ATTENDANCE,
+        ActivityEntityType.DAILY_RECORD,
     ):
         return getattr(instance, "date", None)
     return None

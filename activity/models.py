@@ -17,8 +17,7 @@ class ActivityEntityType(models.TextChoices):
     SITE_CASH = "site_cash", "Site cash"
     PRIVATE_SITE_CASH = "private_site_cash", "Private site cash"
     LABOUR = "labour", "Labour"
-    LABOUR_PAYMENT = "labour_payment", "Labour payment"
-    ATTENDANCE = "attendance", "Attendance"
+    DAILY_RECORD = "daily_record", "Daily record"
     LABOUR_SESSION = "labour_session", "Labour session"
 
 

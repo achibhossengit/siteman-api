@@ -11,8 +11,7 @@ from .models import ActivityEntityType, ActivityLog
 # entity_type → Django view permission for the business model.
 # Read API only exposes day-review entity types.
 ENTITY_VIEW_PERMS: dict[str, str] = {
-    ActivityEntityType.ATTENDANCE: "labours.view_attendance",
-    ActivityEntityType.LABOUR_PAYMENT: "labours.view_labourpayment",
+    ActivityEntityType.DAILY_RECORD: "labours.view_dailyrecord",
     ActivityEntityType.SITE_CASH: "sites.view_sitecash",
 }
 

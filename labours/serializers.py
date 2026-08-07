@@ -1,85 +1,8 @@
-from decimal import Decimal
-
 from rest_framework import serializers
-from rest_framework.exceptions import ErrorDetail
-from django.utils import timezone
 
 from core import status_codes
-from .models import (
-    Attendance,
-    Labour,
-    LabourPayment,
-    LabourSession,
-)
+from .models import Labour, LabourSession
 from .services import affected_rows_match, is_latest_labour_session
-
-class LabourRecordDateValidationMixin:
-    """Shared date rules for labour payment and attendance records."""
-
-    def validate_date(self, value):
-        if value > timezone.localdate():
-            raise serializers.ValidationError(
-                "Date cannot be in the future.",
-                code=status_codes.RECORD_FUTURE_DATE,
-            )
-        return value
-
-    def validate(self, attrs):
-        attrs = super().validate(attrs)
-        labour = attrs.get("labour") or self.context.get("labour")
-        if labour is None and self.instance is not None:
-            labour = self.instance.labour
-
-        record_date = attrs.get("date")
-        if record_date is None:
-            record_date = (
-                self.instance.date
-                if self.instance is not None
-                else timezone.localdate()
-            )
-
-        if (
-            labour is not None
-            and labour.last_session_date is not None
-            and record_date <= labour.last_session_date
-        ):
-            raise serializers.ValidationError(
-                {
-                    "date": ErrorDetail(
-                        "Date must be after the labour's last session date.",
-                        code=status_codes.RECORD_DATE_NOT_AFTER_LAST_SESSION,
-                    )
-                }
-            )
-        return attrs
-
-
-class AttendancePresentExtraValidationMixin:
-    """Reject attendance when both present and extra are zero/empty."""
-
-    @staticmethod
-    def _is_zero(value):
-        if value is None:
-            return True
-        if isinstance(value, Decimal):
-            return value == 0
-        return value == 0
-
-    def validate(self, attrs):
-        attrs = super().validate(attrs)
-        if self.instance is not None:
-            present = attrs["present"] if "present" in attrs else self.instance.present
-            extra = attrs["extra"] if "extra" in attrs else self.instance.extra
-        else:
-            present = attrs.get("present")
-            extra = attrs.get("extra")
-
-        if self._is_zero(present) and self._is_zero(extra):
-            raise serializers.ValidationError(
-                "Present and extra cannot both be zero.",
-                code=status_codes.ATTENDANCE_PRESENT_OR_EXTRA_REQUIRED,
-            )
-        return attrs
 
 
 class LabourListSerializer(serializers.ModelSerializer):
@@ -181,293 +104,6 @@ class LabourSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class LabourPaymentListSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = LabourPayment
-        fields = [
-            "id",
-            "date",
-            "type",
-            "amount",
-            "note",
-            "site",
-            "is_sealed",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class LabourPaymentSerializer(
-    LabourRecordDateValidationMixin, serializers.ModelSerializer
-):
-    class Meta:
-        model = LabourPayment
-        fields = [
-            "id",
-            "labour",
-            "site",
-            "date",
-            "type",
-            "amount",
-            "note",
-            "is_sealed",
-            "company",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "labour",
-            "site",
-            "is_sealed",
-            "company",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class SiteLabourPaymentListSerializer(serializers.ModelSerializer):
-    labour_name = serializers.CharField(source="labour.name", read_only=True)
-
-    class Meta:
-        model = LabourPayment
-        fields = [
-            "id",
-            "labour_id",
-            "labour_name",
-            "date",
-            "type",
-            "amount",
-            "note",
-            "is_sealed",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class SiteLabourPaymentSerializer(
-    LabourRecordDateValidationMixin, serializers.ModelSerializer
-):
-    """Bulk-create item for ``/sites/<site_pk>/labour-payments``.
-
-    Unlike LabourPaymentSerializer, ``labour`` comes from the payload
-    and ``site`` from the URL.
-    """
-
-    class Meta:
-        model = LabourPayment
-        fields = [
-            "id",
-            "labour",
-            "site",
-            "date",
-            "type",
-            "amount",
-            "note",
-            "is_sealed",
-            "company",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "site",
-            "is_sealed",
-            "company",
-            "created_at",
-            "updated_at",
-        ]
-
-    def validate_labour(self, labour):
-        request = self.context["request"]
-        site_id = int(self.context["view"].kwargs["site_pk"])
-
-        if labour.company_id != request.user.company_id:
-            raise serializers.ValidationError(
-                "Labour not found.",
-                code=status_codes.INVALID,
-            )
-        if not labour.is_active:
-            raise serializers.ValidationError(
-                "This labour is inactive; no changes can be made.",
-                code=status_codes.LABOUR_INACTIVE,
-            )
-        if labour.current_site_id != site_id:
-            raise serializers.ValidationError(
-                "Labour is not assigned to this site.",
-                code=status_codes.INVALID,
-            )
-        return labour
-
-
-class SiteLabourAttendanceListSerializer(serializers.ModelSerializer):
-    labour_name = serializers.CharField(source="labour.name", read_only=True)
-
-    class Meta:
-        model = Attendance
-        fields = [
-            "id",
-            "labour_id",
-            "labour_name",
-            "date",
-            "present",
-            "salary",
-            "extra",
-            "note",
-            "billing",
-            "is_sealed",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class SiteLabourAttendanceSerializer(
-    AttendancePresentExtraValidationMixin,
-    LabourRecordDateValidationMixin,
-    serializers.ModelSerializer,
-):
-    """Bulk-create item for ``/sites/<site_pk>/labour-attendances``.
-
-    Unlike AttendanceSerializer, ``labour`` comes from the payload
-    and ``site`` from the URL.
-    """
-
-    class Meta:
-        model = Attendance
-        fields = [
-            "id",
-            "labour",
-            "site",
-            "billing",
-            "date",
-            "present",
-            "salary",
-            "extra",
-            "note",
-            "is_sealed",
-            "company",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "site",
-            "is_sealed",
-            "company",
-            "created_at",
-            "updated_at",
-        ]
-
-    def validate_labour(self, labour):
-        request = self.context["request"]
-        site_id = int(self.context["view"].kwargs["site_pk"])
-
-        if labour.company_id != request.user.company_id:
-            raise serializers.ValidationError(
-                "Labour not found.",
-                code=status_codes.INVALID,
-            )
-        if not labour.is_active:
-            raise serializers.ValidationError(
-                "This labour is inactive; no changes can be made.",
-                code=status_codes.LABOUR_INACTIVE,
-            )
-        if labour.current_site_id != site_id:
-            raise serializers.ValidationError(
-                "Labour is not assigned to this site.",
-                code=status_codes.INVALID,
-            )
-        return labour
-
-    def validate_billing(self, billing):
-        if billing is None:
-            return billing
-
-        request = self.context["request"]
-        site_id = int(self.context["view"].kwargs["site_pk"])
-        if billing.company_id != request.user.company_id or billing.site_id != site_id:
-            raise serializers.ValidationError(
-                "Billing category must belong to this site.",
-                code=status_codes.INVALID,
-            )
-
-        # This endpoint only creates records, so billing must be active.
-        if not billing.is_active:
-            raise serializers.ValidationError(
-                "Billing category must be active.",
-                code=status_codes.BILLING_CATEGORY_INACTIVE,
-            )
-
-        return billing
-
-
-class AttendanceListSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Attendance
-        fields = [
-            "id",
-            "date",
-            "present",
-            "salary",
-            "extra",
-            "note",
-            "billing",
-            "site",
-            "is_sealed",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class AttendanceSerializer(
-    AttendancePresentExtraValidationMixin,
-    LabourRecordDateValidationMixin,
-    serializers.ModelSerializer,
-):
-    class Meta:
-        model = Attendance
-        fields = [
-            "id",
-            "labour",
-            "site",
-            "billing",
-            "date",
-            "present",
-            "salary",
-            "extra",
-            "note",
-            "is_sealed",
-            "company",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "labour",
-            "site",
-            "is_sealed",
-            "company",
-            "created_at",
-            "updated_at",
-        ]
-
-    def validate_billing(self, billing):
-        if billing is None:
-            return billing
-
-        labour = self.context["labour"]
-        site_id = self.instance.site_id if self.instance is not None else labour.current_site_id
-        if billing.company_id != labour.company_id or billing.site_id != site_id:
-            raise serializers.ValidationError(
-                "Billing category must belong to this labour's current site.",
-                code=status_codes.INVALID,
-            )
-
-        if self.instance is None and not billing.is_active:
-            raise serializers.ValidationError(
-                "Billing category must be active.",
-                code=status_codes.BILLING_CATEGORY_INACTIVE,
-            )
-
-        return billing
-
-
 class LabourSessionListSerializer(serializers.Serializer):
     # make id optional because session list may contain running session
     # which does not have an id
@@ -480,12 +116,11 @@ class LabourSessionListSerializer(serializers.Serializer):
 
 class LabourSessionSerializer(serializers.ModelSerializer):
     total_earnings = serializers.IntegerField(read_only=True)
+    total_payment = serializers.IntegerField(read_only=True)
     payable = serializers.IntegerField(read_only=True)
     cumulative_payable = serializers.IntegerField(read_only=True)
 
-    # it is helped client to determine if the session is deleteable or not
-    # because our api not allow to delete the session if it is modified or not latest
-    # so client just verify before sending request to the api.
+    # Helps client decide deleteability before calling the API.
     is_modified = serializers.SerializerMethodField()
     is_latest = serializers.SerializerMethodField()
 
@@ -499,6 +134,8 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "present_days",
             "salary_earnings",
             "extra_earnings",
+            "total_fooding_pay",
+            "total_advance_pay",
             "total_payment",
             "total_return",
             "previous_payable",
@@ -526,6 +163,8 @@ class RunningLabourSessionSerializer(serializers.Serializer):
     present_days = serializers.DecimalField(max_digits=12, decimal_places=2)
     salary_earnings = serializers.IntegerField()
     extra_earnings = serializers.IntegerField()
+    total_fooding_pay = serializers.IntegerField()
+    total_advance_pay = serializers.IntegerField()
     total_payment = serializers.IntegerField()
     total_return = serializers.IntegerField()
     total_earnings = serializers.IntegerField()
