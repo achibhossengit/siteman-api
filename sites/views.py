@@ -15,6 +15,9 @@ from activity.hooks import (
     activity_before_destroy,
     snapshot_for,
 )
+from activity.models import ActivityEntityType
+from activity.permissions import activity_logs_for_user
+from activity.serializers import ActivityLogSerializer
 from core import status_codes
 from core.pagination import StandardPagination
 from core.permissions import ActiveSubscriptionOrReadOnly
@@ -277,15 +280,7 @@ class SiteCashViewSet(viewsets.ModelViewSet):
             .order_by("-date", "-id")
         )
 
-    @action(
-        detail=False,
-        methods=["get"],
-        url_path=r"(?P<cash_date>\d{4}-\d{2}-\d{2})",
-        url_name="by-date",
-        pagination_class=None,
-    )
-    def by_date(self, request, site_pk=None, cash_date=None, **kwargs):
-        """Unpaginated list of all cash entries for this site on ``cash_date``."""
+    def _parse_cash_date(self, cash_date):
         try:
             parsed = parse_date(cash_date)
         except ValueError:
@@ -295,8 +290,48 @@ class SiteCashViewSet(viewsets.ModelViewSet):
                 {"date": "Enter a valid date (YYYY-MM-DD)."},
                 code=status_codes.INVALID,
             )
+        return parsed
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"(?P<cash_date>\d{4}-\d{2}-\d{2})",
+        url_name="by-date",
+        pagination_class=None,
+    )
+    def by_date(self, request, site_pk=None, cash_date=None, **kwargs):
+        """Unpaginated list of all cash entries for this site on ``cash_date``."""
+        parsed = self._parse_cash_date(cash_date)
         qs = self.get_queryset().filter(date=parsed)
         serializer = SiteCashListSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"(?P<cash_date>\d{4}-\d{2}-\d{2})/pending_log",
+        url_name="pending-log",
+        pagination_class=None,
+    )
+    def pending_log(self, request, site_pk=None, cash_date=None, **kwargs):
+        """
+        Unpaginated pending (unreviewed) site-cash activity for this date.
+        It inherits the SiteCashViewSet's permission classes. 
+        and check the `sitecash.view_sitecash` permission.
+        """
+        parsed = self._parse_cash_date(cash_date)
+        qs = (
+            activity_logs_for_user(request.user)
+            .filter(
+                site_id=int(site_pk),
+                business_date=parsed,
+                entity_type=ActivityEntityType.SITE_CASH,
+                reviewed_at__isnull=True,
+            )
+            .select_related("actor", "reviewed_by", "site", "labour")
+            .order_by("-created_at", "-id")
+        )
+        serializer = ActivityLogSerializer(qs, many=True)
         return Response(serializer.data)
 
     @transaction.atomic

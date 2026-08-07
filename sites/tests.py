@@ -10,6 +10,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from company.models import Company
+from activity.models import ActivityAction, ActivityEntityType, ActivityLog
 from sites.models import (
     BillingCategory,
     PrivateSiteCash,
@@ -512,6 +513,16 @@ class SiteCashAPITestCase(APITestCase):
             },
         )
 
+    def _pending_log_url(self, site_id, cash_date):
+        return reverse(
+            "site-cash-pending-log",
+            kwargs={
+                "version": "v1",
+                "site_pk": site_id,
+                "cash_date": str(cash_date),
+            },
+        )
+
     def _create_cash(self, site=None, **kwargs):
         site = site or self.site
         defaults = {
@@ -978,6 +989,90 @@ class SiteCashByDateTests(SiteCashAPITestCase):
         response = self.client.get(self._detail_url(self.site.pk, cash.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], cash.pk)
+
+
+class SiteCashPendingLogTests(SiteCashAPITestCase):
+    def _create_cash_log(self, *, site=None, business_date=None, reviewed=False, **kwargs):
+        site = site or self.site
+        defaults = {
+            "company": site.company,
+            "site": site,
+            "actor": self.user,
+            "actor_name": self.user.name,
+            "action": ActivityAction.CREATED,
+            "entity_type": ActivityEntityType.SITE_CASH,
+            "entity_id": 1,
+            "business_date": business_date or timezone.localdate(),
+            "changes": {"amount": 100},
+        }
+        defaults.update(kwargs)
+        log = ActivityLog.objects.create(**defaults)
+        if reviewed:
+            log.reviewed_at = timezone.now()
+            log.reviewed_by = self.user
+            log.save(update_fields=["reviewed_at", "reviewed_by"])
+        return log
+
+    def test_lists_pending_site_cash_logs_without_pagination(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        pending = self._create_cash_log(business_date=today, entity_id=10)
+        self._create_cash_log(business_date=today, entity_id=11, reviewed=True)
+        self._create_cash_log(business_date=yesterday, entity_id=12)
+        self._create_cash_log(
+            business_date=today,
+            entity_id=13,
+            entity_type=ActivityEntityType.DAILY_RECORD,
+        )
+
+        response = self.client.get(self._pending_log_url(self.site.pk, today))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertNotIn("results", response.data)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], pending.pk)
+        self.assertEqual(response.data[0]["entity_type"], ActivityEntityType.SITE_CASH)
+        self.assertIsNone(response.data[0]["reviewed_at"])
+
+    def test_empty_list_when_no_pending_logs(self):
+        self._create_cash_log(reviewed=True)
+        response = self.client.get(
+            self._pending_log_url(self.site.pk, timezone.localdate())
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_other_site_logs_hidden(self):
+        other_site = Site.objects.create(name="Other Yard", company=self.company)
+        self._assign_site(self.user, other_site)
+        self._create_cash_log(site=other_site)
+        response = self.client.get(
+            self._pending_log_url(self.site.pk, timezone.localdate())
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_invalid_calendar_date_returns_400(self):
+        response = self.client.get(self._pending_log_url(self.site.pk, "2026-02-30"))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+
+    def test_unauthenticated_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(
+            self._pending_log_url(self.site.pk, timezone.localdate())
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_post_not_allowed(self):
+        response = self.client.post(
+            self._pending_log_url(self.site.pk, timezone.localdate()),
+            {},
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 class SiteCashSubscriptionTests(SiteCashAPITestCase):
