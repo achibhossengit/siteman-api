@@ -1783,6 +1783,12 @@ class SiteBillingCategoryAPITestCase(APITestCase):
             kwargs={"version": "v1", "site_pk": site_id},
         )
 
+    def _active_billing_url(self, site_id):
+        return reverse(
+            "site-billing-category-active-billing",
+            kwargs={"version": "v1", "site_pk": site_id},
+        )
+
     def _detail_url(self, site_id, billing_id):
         return reverse(
             "site-billing-category-detail",
@@ -1853,7 +1859,7 @@ class SiteBillingCategoryAuthPermissionTests(SiteBillingCategoryAPITestCase):
         self.site.save(update_fields=["is_active"])
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_other_company_site_returns_403(self):
         other = Company.objects.create(name="Other Co")
@@ -1875,7 +1881,7 @@ class SiteBillingCategoryCRUDTests(SiteBillingCategoryAPITestCase):
     def test_list_empty(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
 
     def test_create_success(self):
         response = self.client.post(
@@ -1911,9 +1917,10 @@ class SiteBillingCategoryCRUDTests(SiteBillingCategoryAPITestCase):
         billing = self._create_billing()
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
         self.assertCountEqual(
-            response.data[0].keys(),
+            results[0].keys(),
             [
                 "id",
                 "name",
@@ -1924,7 +1931,7 @@ class SiteBillingCategoryCRUDTests(SiteBillingCategoryAPITestCase):
                 "updated_at",
             ],
         )
-        self.assertEqual(response.data[0]["id"], billing.pk)
+        self.assertEqual(results[0]["id"], billing.pk)
 
     def test_retrieve_billing_detail(self):
         billing = self._create_billing(name="Floor-1")
@@ -2021,16 +2028,18 @@ class SiteBillingCategoryFilterIsolationTests(SiteBillingCategoryAPITestCase):
         self._create_billing(name="Inactive", is_active=False)
         response = self.client.get(self.list_url, {"is_active": "false"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Inactive")
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["name"], "Inactive")
 
     def test_filter_by_is_done(self):
         self._create_billing(name="Open", is_done=False)
         self._create_billing(name="Done", is_done=True, is_active=False)
         response = self.client.get(self.list_url, {"is_done": "true"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Done")
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["name"], "Done")
 
     def test_other_site_categories_not_listed(self):
         other = Site.objects.create(
@@ -2041,8 +2050,9 @@ class SiteBillingCategoryFilterIsolationTests(SiteBillingCategoryAPITestCase):
         self._create_billing(name="Theirs", site=other)
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Mine")
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["name"], "Mine")
 
     def test_ordered_by_display_order(self):
         self._create_billing(name="Second", display_order=2)
@@ -2050,9 +2060,47 @@ class SiteBillingCategoryFilterIsolationTests(SiteBillingCategoryAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            [row["name"] for row in response.data],
+            [row["name"] for row in _list_results(response)],
             ["First", "Second"],
         )
+
+
+class SiteBillingCategoryActiveBillingTests(SiteBillingCategoryAPITestCase):
+    def test_lists_active_billing_without_pagination(self):
+        active = self._create_billing(name="Active", is_active=True, display_order=2)
+        self._create_billing(name="Inactive", is_active=False, display_order=1)
+        also_active = self._create_billing(
+            name="Also Active", is_active=True, display_order=1
+        )
+
+        response = self.client.get(self._active_billing_url(self.site.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertNotIn("results", response.data)
+        self.assertEqual(len(response.data), 2)
+        self.assertEqual(
+            [row["name"] for row in response.data],
+            ["Also Active", "Active"],
+        )
+        self.assertEqual(
+            {row["id"] for row in response.data},
+            {active.pk, also_active.pk},
+        )
+
+    def test_empty_list_when_no_active_billing(self):
+        self._create_billing(name="Inactive", is_active=False)
+        response = self.client.get(self._active_billing_url(self.site.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_unauthenticated_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self._active_billing_url(self.site.pk))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_post_not_allowed(self):
+        response = self.client.post(self._active_billing_url(self.site.pk), {})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 class SiteBillingCategorySubscriptionTests(SiteBillingCategoryAPITestCase):
@@ -2075,7 +2123,7 @@ class SiteBillingCategorySubscriptionTests(SiteBillingCategoryAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_patch_blocked_when_subscription_expired(self):
         billing = self._create_billing(name="Basement")

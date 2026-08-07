@@ -162,6 +162,7 @@ class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
 
     serializer_class = BillingCategorySerializer
     queryset = BillingCategory.objects.none()
+    pagination_class = StandardPagination
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
         HasSitePermissions,
@@ -187,6 +188,19 @@ class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
             .select_related("site")
             .order_by("display_order", "id")
         )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="active-billing",
+        url_name="active-billing",
+        pagination_class=None,
+    )
+    def active_billing(self, request, site_pk=None, **kwargs):
+        """Unpaginated list of active billing categories for this site."""
+        qs = self.get_queryset().filter(is_active=True)
+        serializer = BillingCategoryListSerializer(qs, many=True)
+        return Response(serializer.data)
 
     def _apply_status_defaults(self, serializer):
         data = serializer.validated_data
