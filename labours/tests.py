@@ -10,6 +10,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import UserSite
+from activity.models import ActivityAction, ActivityEntityType, ActivityLog
 from company.models import Company
 from core import status_codes
 from labours.models import DailyRecord, Labour, LabourSession
@@ -981,6 +982,76 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
         response = self.client.delete(self._detail_url(self.labour.pk, record.pk))
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(DailyRecord.objects.filter(pk=record.pk).exists())
+
+
+class DailyRecordActivityLogTests(DailyRecordAPITestCase):
+    def test_create_writes_activity_log(self):
+        today = timezone.localdate()
+        response = self.client.post(
+            self.list_url,
+            {
+                "date": str(today),
+                "present": "1",
+                "wage": 500,
+                "fooding_pay": 50,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        record_id = response.data["id"]
+        log = ActivityLog.objects.get(
+            entity_type=ActivityEntityType.DAILY_RECORD,
+            entity_id=record_id,
+            action=ActivityAction.CREATED,
+        )
+        self.assertEqual(log.actor_id, self.user.pk)
+        self.assertEqual(log.site_id, self.site.pk)
+        self.assertEqual(log.labour_id, self.labour.pk)
+        self.assertEqual(log.labour_name, self.labour.name)
+        self.assertEqual(log.business_date, today)
+        self.assertEqual(log.changes["present"], "1")
+        self.assertEqual(log.changes["wage"], 500)
+        self.assertEqual(log.changes["fooding_pay"], 50)
+
+    def test_patch_writes_activity_log_diff(self):
+        record = self._create_daily_record(present=Decimal("1"), note="old")
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, record.pk),
+            {"present": "2", "note": "updated"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        log = ActivityLog.objects.get(
+            entity_type=ActivityEntityType.DAILY_RECORD,
+            entity_id=record.pk,
+            action=ActivityAction.UPDATED,
+        )
+        self.assertEqual(log.actor_id, self.user.pk)
+        self.assertEqual(log.labour_id, self.labour.pk)
+        self.assertEqual(log.changes["present"]["old"], "1.00")
+        self.assertEqual(log.changes["present"]["new"], "2")
+        self.assertEqual(log.changes["note"]["old"], "old")
+        self.assertEqual(log.changes["note"]["new"], "updated")
+
+    def test_delete_writes_activity_log(self):
+        record = self._create_daily_record(
+            present=Decimal("1"),
+            wage=500,
+            note="to delete",
+        )
+        record_id = record.pk
+        response = self.client.delete(self._detail_url(self.labour.pk, record_id))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        log = ActivityLog.objects.get(
+            entity_type=ActivityEntityType.DAILY_RECORD,
+            entity_id=record_id,
+            action=ActivityAction.DELETED,
+        )
+        self.assertEqual(log.actor_id, self.user.pk)
+        self.assertEqual(log.site_id, self.site.pk)
+        self.assertEqual(log.labour_id, self.labour.pk)
+        self.assertEqual(log.labour_name, self.labour.name)
+        self.assertEqual(log.changes["present"], "1.00")
+        self.assertEqual(log.changes["wage"], 500)
+        self.assertEqual(log.changes["note"], "to delete")
 
 
 class DailyRecordValidationTests(DailyRecordAPITestCase):

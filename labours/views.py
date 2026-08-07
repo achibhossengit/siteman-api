@@ -147,6 +147,7 @@ class DailyRecordViewSet(viewsets.ModelViewSet):
         )
         activity_after_create(self, serializer.instance)
 
+    @transaction.atomic
     def perform_update(self, serializer):
         old = snapshot_for(serializer.instance)
         serializer.save()
