@@ -39,6 +39,8 @@ from .serializers import (
     SiteSerializer,
 )
 from .services import build_site_daily_report
+from labours.models import Labour
+from labours.serializers import LabourListSerializer
 
 
 class SiteViewSet(viewsets.ModelViewSet):
@@ -135,6 +137,23 @@ class SiteViewSet(viewsets.ModelViewSet):
         )
         serializer = SiteDailyReportSerializer(data=report)
         serializer.is_valid(raise_exception=True)
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="active_labour",
+        permission_classes=[IsAuthenticated, ActiveSubscriptionOrReadOnly, HasSitePermissions],
+    )
+    def active_labour(self, request, pk=None, **kwargs):
+        """Unpaginated list of active labours currently assigned to this site."""
+        site = self.get_object()
+        labours = Labour.objects.filter(
+            company_id=request.user.company_id,
+            current_site_id=site.pk,
+            is_active=True,
+        ).order_by("name")
+        serializer = LabourListSerializer(labours, many=True)
         return Response(serializer.data)
 
 

@@ -370,6 +370,74 @@ class SiteSubscriptionTests(SiteAPITestCase):
         self.assertEqual(site.name, "Editable")
 
 
+class SiteActiveLabourTests(SiteAPITestCase):
+    def _active_labour_url(self, site_id):
+        return reverse(
+            "site-active-labour",
+            kwargs={"version": "v1", "pk": site_id},
+        )
+
+    def test_lists_active_labours_for_site_without_pagination(self):
+        site = self._create_site(name="Yard")
+        active = Labour.objects.create(
+            name="Karim",
+            company=self.company,
+            current_site=site,
+            is_active=True,
+            default_salary=500,
+        )
+        Labour.objects.create(
+            name="Inactive Worker",
+            company=self.company,
+            current_site=site,
+            is_active=False,
+            default_salary=400,
+        )
+        other_site = self._create_site(name="Other Yard")
+        Labour.objects.create(
+            name="Elsewhere",
+            company=self.company,
+            current_site=other_site,
+            is_active=True,
+            default_salary=400,
+        )
+
+        response = self.client.get(self._active_labour_url(site.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertNotIn("results", response.data)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], active.pk)
+        self.assertEqual(response.data[0]["name"], "Karim")
+        self.assertTrue(response.data[0]["is_active"])
+
+    def test_empty_list_when_no_active_labours(self):
+        site = self._create_site(name="Empty Yard")
+        response = self.client.get(self._active_labour_url(site.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_unauthenticated_returns_401(self):
+        site = self._create_site(name="Yard")
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self._active_labour_url(site.pk))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_non_member_cannot_list(self):
+        site = self._create_site(name="Restricted")
+        member = User.objects.create_user(
+            phone_number="+8801711111111",
+            name="Manager",
+            password="strong-pass-123",
+            company=self.company,
+            is_companyadmin=False,
+        )
+        self._grant_site_permissions(member, ["view_site"])
+        self.client.force_authenticate(user=member)
+        response = self.client.get(self._active_labour_url(site.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class SiteCashAPITestCase(APITestCase):
     """Shared fixtures for nested site cash endpoints."""
 
