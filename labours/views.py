@@ -13,6 +13,9 @@ from activity.hooks import (
     activity_before_destroy,
     snapshot_for,
 )
+from activity.models import ActivityEntityType
+from activity.permissions import activity_logs_for_user
+from activity.serializers import ActivityLogSerializer
 from core import status_codes
 from core.exceptions import (
     SubscriptionExpired,
@@ -207,15 +210,7 @@ class SiteDailyRecordViewSet(
             .order_by("-date", "-id")
         )
 
-    @action(
-        detail=False,
-        methods=["get"],
-        url_path=r"(?P<record_date>\d{4}-\d{2}-\d{2})",
-        url_name="by-date",
-        pagination_class=None,
-    )
-    def by_date(self, request, site_pk=None, record_date=None, **kwargs):
-        """Unpaginated list of all daily records for this site on ``record_date``."""
+    def _parse_record_date(self, record_date):
         try:
             parsed = parse_date(record_date)
         except ValueError:
@@ -225,8 +220,48 @@ class SiteDailyRecordViewSet(
                 {"date": "Enter a valid date (YYYY-MM-DD)."},
                 code=status_codes.INVALID,
             )
+        return parsed
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"(?P<record_date>\d{4}-\d{2}-\d{2})",
+        url_name="by-date",
+        pagination_class=None,
+    )
+    def by_date(self, request, site_pk=None, record_date=None, **kwargs):
+        """Unpaginated list of all daily records for this site on ``record_date``."""
+        parsed = self._parse_record_date(record_date)
         qs = self.get_queryset().filter(date=parsed)
         serializer = SiteDailyRecordListSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"(?P<record_date>\d{4}-\d{2}-\d{2})/pending_log",
+        url_name="pending-log",
+        pagination_class=None,
+    )
+    def pending_log(self, request, site_pk=None, record_date=None, **kwargs):
+        """
+        Unpaginated pending (unreviewed) daily-record activity for this date.
+        It inherits the SiteDailyRecordViewSet's permission classes. 
+        and check the `dailyrecord.view_dailyrecord` permission.
+        """
+        parsed = self._parse_record_date(record_date)
+        qs = (
+            activity_logs_for_user(request.user)
+            .filter(
+                site_id=int(site_pk),
+                business_date=parsed,
+                entity_type=ActivityEntityType.DAILY_RECORD,
+                reviewed_at__isnull=True,
+            )
+            .select_related("actor", "reviewed_by", "site", "labour")
+            .order_by("-created_at", "-id")
+        )
+        serializer = ActivityLogSerializer(qs, many=True)
         return Response(serializer.data)
 
     @transaction.atomic
