@@ -42,12 +42,6 @@ class ActivityLogReviewSerializer(serializers.Serializer):
         allow_empty=False,
         max_length=500,
     )
-    review_note = serializers.CharField(
-        max_length=255,
-        required=False,
-        allow_blank=True,
-        allow_null=True,
-    )
 
     def validate_ids(self, value):
         # Preserve order while dropping duplicates.

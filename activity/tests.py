@@ -456,7 +456,7 @@ class ActivityLogAPITests(APITestCase):
         url = reverse("activity-review", kwargs={"version": "v1"})
         response = self.client.post(
             url,
-            {"ids": [self.log_site_a.pk], "review_note": "ok"},
+            {"ids": [self.log_site_a.pk]},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -472,7 +472,7 @@ class ActivityLogAPITests(APITestCase):
         url = reverse("activity-review", kwargs={"version": "v1"})
         response = self.client.post(
             url,
-            {"ids": [self.log_site_a.pk], "review_note": "checked"},
+            {"ids": [self.log_site_a.pk]},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -481,17 +481,18 @@ class ActivityLogAPITests(APITestCase):
         self.assertEqual(response.data["results"][0]["id"], self.log_site_a.pk)
         self.assertIsNotNone(response.data["results"][0]["reviewed_at"])
         self.assertEqual(response.data["results"][0]["reviewed_by"], self.admin.pk)
-        self.assertEqual(response.data["results"][0]["review_note"], "checked")
+        self.assertIsNone(response.data["results"][0]["review_note"])
 
         again = self.client.post(
             url,
-            {"ids": [self.log_site_a.pk], "review_note": "again"},
+            {"ids": [self.log_site_a.pk]},
             format="json",
         )
         self.assertEqual(again.status_code, status.HTTP_200_OK)
         self.assertEqual(again.data["updated"], 0)
         self.log_site_a.refresh_from_db()
-        self.assertEqual(self.log_site_a.review_note, "checked")
+        self.assertIsNotNone(self.log_site_a.reviewed_at)
+        self.assertIsNone(self.log_site_a.review_note)
 
     def test_review_marks_many(self):
         extra = ActivityLog.objects.create(

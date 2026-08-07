@@ -48,9 +48,6 @@ class ActivityLogViewSet(
         serializer = ActivityLogReviewSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ids = serializer.validated_data["ids"]
-        note = serializer.validated_data.get("review_note")
-        if note == "":
-            note = None
 
         qs = self.get_queryset().filter(pk__in=ids)
         found_ids = set(qs.values_list("pk", flat=True))
@@ -71,7 +68,6 @@ class ActivityLogViewSet(
         updated = qs.filter(reviewed_at__isnull=True).update(
             reviewed_at=now,
             reviewed_by=request.user,
-            review_note=note,
         )
         reviewed = (
             self.get_queryset()
