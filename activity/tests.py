@@ -19,6 +19,7 @@ from activity.services import (
     snapshot_instance,
 )
 from company.models import Company
+from core import status_codes
 from labours.models import DailyRecord, Labour
 from sites.models import Site, SiteCash, SiteCashType
 from subscription.models import Subscription
@@ -452,14 +453,15 @@ class ActivityLogAPITests(APITestCase):
             "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
-        url = reverse(
-            "activity-review",
-            kwargs={"version": "v1", "pk": self.log_site_a.pk},
+        url = reverse("activity-review", kwargs={"version": "v1"})
+        response = self.client.post(
+            url,
+            {"ids": [self.log_site_a.pk], "review_note": "ok"},
+            format="json",
         )
-        response = self.client.patch(url, {"review_note": "ok"})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_review_marks_one_way(self):
+    def test_review_marks_one(self):
         self._grant(
             self.admin,
             "activity.view_activitylog",
@@ -467,20 +469,31 @@ class ActivityLogAPITests(APITestCase):
             "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
-        url = reverse(
-            "activity-review",
-            kwargs={"version": "v1", "pk": self.log_site_a.pk},
+        url = reverse("activity-review", kwargs={"version": "v1"})
+        response = self.client.post(
+            url,
+            {"ids": [self.log_site_a.pk], "review_note": "checked"},
+            format="json",
         )
-        response = self.client.patch(url, {"review_note": "checked"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsNotNone(response.data["reviewed_at"])
-        self.assertEqual(response.data["reviewed_by"], self.admin.pk)
-        self.assertEqual(response.data["review_note"], "checked")
+        self.assertEqual(response.data["updated"], 1)
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["id"], self.log_site_a.pk)
+        self.assertIsNotNone(response.data["results"][0]["reviewed_at"])
+        self.assertEqual(response.data["results"][0]["reviewed_by"], self.admin.pk)
+        self.assertEqual(response.data["results"][0]["review_note"], "checked")
 
-        again = self.client.patch(url, {"review_note": "again"})
-        self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
+        again = self.client.post(
+            url,
+            {"ids": [self.log_site_a.pk], "review_note": "again"},
+            format="json",
+        )
+        self.assertEqual(again.status_code, status.HTTP_200_OK)
+        self.assertEqual(again.data["updated"], 0)
+        self.log_site_a.refresh_from_db()
+        self.assertEqual(self.log_site_a.review_note, "checked")
 
-    def test_review_bulk_marks_many(self):
+    def test_review_marks_many(self):
         extra = ActivityLog.objects.create(
             company=self.company,
             site=self.site_a,
@@ -501,7 +514,7 @@ class ActivityLogAPITests(APITestCase):
             "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
-        url = reverse("activity-review-bulk", kwargs={"version": "v1"})
+        url = reverse("activity-review", kwargs={"version": "v1"})
         response = self.client.post(
             url,
             {"ids": [self.log_site_a.pk, extra.pk]},
@@ -516,7 +529,7 @@ class ActivityLogAPITests(APITestCase):
         self.assertIsNotNone(extra.reviewed_at)
         self.assertIsNone(self.log_site_a.review_note)
 
-    def test_review_bulk_skips_already_reviewed(self):
+    def test_review_skips_already_reviewed(self):
         self.log_site_a.reviewed_at = timezone.now()
         self.log_site_a.reviewed_by = self.admin
         self.log_site_a.save(update_fields=["reviewed_at", "reviewed_by"])
@@ -540,7 +553,7 @@ class ActivityLogAPITests(APITestCase):
             "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
-        url = reverse("activity-review-bulk", kwargs={"version": "v1"})
+        url = reverse("activity-review", kwargs={"version": "v1"})
         response = self.client.post(
             url,
             {"ids": [self.log_site_a.pk, extra.pk]},
@@ -551,19 +564,6 @@ class ActivityLogAPITests(APITestCase):
         extra.refresh_from_db()
         self.assertIsNotNone(extra.reviewed_at)
 
-    def test_review_bulk_requires_change_permission(self):
-        self._grant(
-            self.admin,
-            "activity.view_activitylog",
-            "labours.view_dailyrecord",
-        )
-        self.client.force_authenticate(user=self.admin)
-        url = reverse("activity-review-bulk", kwargs={"version": "v1"})
-        response = self.client.post(
-            url, {"ids": [self.log_site_a.pk]}, format="json"
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
     def test_manager_cannot_review_other_site_log(self):
         self._grant(
             self.manager,
@@ -572,9 +572,9 @@ class ActivityLogAPITests(APITestCase):
             "sites.view_sitecash",
         )
         self.client.force_authenticate(user=self.manager)
-        url = reverse(
-            "activity-review",
-            kwargs={"version": "v1", "pk": self.log_site_b.pk},
+        url = reverse("activity-review", kwargs={"version": "v1"})
+        response = self.client.post(
+            url, {"ids": [self.log_site_b.pk]}, format="json"
         )
-        response = self.client.patch(url, {})
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["code"], status_codes.INVALID)

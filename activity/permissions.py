@@ -42,10 +42,10 @@ def activity_logs_for_user(user):
 
 
 class ActivityLogPermissions(DjangoModelPermissionsWithView):
-    """Map review-bulk POST to change_activitylog (not add_)."""
+    """Map review POST to change_activitylog (not add_)."""
 
     def has_permission(self, request, view):
-        if getattr(view, "action", None) == "review_bulk":
+        if getattr(view, "action", None) == "review":
             return request.user.has_perm("activity.change_activitylog")
         return super().has_permission(request, view)
 

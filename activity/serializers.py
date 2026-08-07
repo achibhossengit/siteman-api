@@ -35,19 +35,18 @@ class ActivityLogSerializer(serializers.ModelSerializer):
 
 
 class ActivityLogReviewSerializer(serializers.Serializer):
+    """POST ``/activities/review`` — one or many ids."""
+
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=500,
+    )
     review_note = serializers.CharField(
         max_length=255,
         required=False,
         allow_blank=True,
         allow_null=True,
-    )
-
-
-class ActivityLogBulkReviewSerializer(serializers.Serializer):
-    ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
-        allow_empty=False,
-        max_length=500,
     )
 
     def validate_ids(self, value):

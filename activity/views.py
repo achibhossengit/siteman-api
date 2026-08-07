@@ -1,4 +1,3 @@
-from django.db import transaction
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -11,7 +10,6 @@ from .filters import ActivityLogFilter
 from .models import ActivityLog
 from .permissions import ACTIVITY_LOG_PERMISSION_CLASSES, activity_logs_for_user
 from .serializers import (
-    ActivityLogBulkReviewSerializer,
     ActivityLogReviewSerializer,
     ActivityLogSerializer,
 )
@@ -25,7 +23,7 @@ class ActivityLogViewSet(
     """Company-scoped activity timeline (read + one-way review).
 
     Global gate: ``view_activitylog`` (list/retrieve), ``change_activitylog``
-    (review / review-bulk). Rows are limited to daily_record and site_cash,
+    (review). Rows are limited to daily_record and site_cash,
     then narrowed by allowed sites and each entity's
     ``view_<model>`` permission.
     """
@@ -33,7 +31,7 @@ class ActivityLogViewSet(
     serializer_class = ActivityLogSerializer
     queryset = ActivityLog.objects.none()
     permission_classes = ACTIVITY_LOG_PERMISSION_CLASSES
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    http_method_names = ["get", "post", "head", "options"]
     filterset_class = ActivityLogFilter
     pagination_class = StandardPagination
 
@@ -44,41 +42,15 @@ class ActivityLogViewSet(
             .order_by("-created_at", "-id")
         )
 
-    @action(detail=True, methods=["patch"], url_path="review")
-    @transaction.atomic
+    @action(detail=False, methods=["post"], url_path="review")
     def review(self, request, *args, **kwargs):
-        """Mark a log as reviewed (one-way; cannot undo)."""
-        instance = self.get_object()
-        if instance.reviewed_at is not None:
-            raise ValidationError(
-                "This activity log has already been reviewed.",
-                code=status_codes.ACTIVITY_ALREADY_REVIEWED,
-            )
-
+        """Mark one or more logs as reviewed (one-way; skips already reviewed)."""
         serializer = ActivityLogReviewSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        note = serializer.validated_data.get("review_note") or None
+        ids = serializer.validated_data["ids"]
+        note = serializer.validated_data.get("review_note")
         if note == "":
             note = None
-
-        instance.reviewed_at = timezone.now()
-        instance.reviewed_by = request.user
-        instance.review_note = note
-        instance.save(
-            update_fields=["reviewed_at", "reviewed_by", "review_note"]
-        )
-        return Response(
-            ActivityLogSerializer(instance).data,
-            status=status.HTTP_200_OK,
-        )
-
-    @action(detail=False, methods=["post"], url_path="review-bulk")
-    @transaction.atomic
-    def review_bulk(self, request, *args, **kwargs):
-        """Mark many logs as reviewed (one-way; no note)."""
-        serializer = ActivityLogBulkReviewSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ids = serializer.validated_data["ids"]
 
         qs = self.get_queryset().filter(pk__in=ids)
         found_ids = set(qs.values_list("pk", flat=True))
@@ -96,11 +68,10 @@ class ActivityLogViewSet(
             )
 
         now = timezone.now()
-        to_review = qs.filter(reviewed_at__isnull=True)
-        updated = to_review.update(
+        updated = qs.filter(reviewed_at__isnull=True).update(
             reviewed_at=now,
             reviewed_by=request.user,
-            review_note=None,
+            review_note=note,
         )
         reviewed = (
             self.get_queryset()
