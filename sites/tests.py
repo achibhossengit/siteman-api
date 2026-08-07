@@ -502,6 +502,16 @@ class SiteCashAPITestCase(APITestCase):
             kwargs={"version": "v1", "site_pk": site_id, "pk": cash_id},
         )
 
+    def _by_date_url(self, site_id, cash_date):
+        return reverse(
+            "site-cash-by-date",
+            kwargs={
+                "version": "v1",
+                "site_pk": site_id,
+                "cash_date": str(cash_date),
+            },
+        )
+
     def _create_cash(self, site=None, **kwargs):
         site = site or self.site
         defaults = {
@@ -900,6 +910,74 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(_list_results(response)), 1)
         self.assertEqual(_list_results(response)[0]["amount"], 100)
+
+
+class SiteCashByDateTests(SiteCashAPITestCase):
+    def test_lists_cash_for_date_without_pagination(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        first = self._create_cash(date=today, amount=1000, type=SiteCashType.DEPOSIT)
+        second = self._create_cash(date=today, amount=200, type=SiteCashType.COST)
+        self._create_cash(date=yesterday, amount=500)
+
+        response = self.client.get(self._by_date_url(self.site.pk, today))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertNotIn("results", response.data)
+        self.assertEqual(len(response.data), 2)
+        self.assertEqual(
+            {row["id"] for row in response.data},
+            {first.pk, second.pk},
+        )
+        self.assertCountEqual(
+            response.data[0].keys(),
+            [
+                "id",
+                "date",
+                "type",
+                "amount",
+                "note",
+                "billing",
+                "created_at",
+                "updated_at",
+            ],
+        )
+
+    def test_empty_list_when_no_cash_for_date(self):
+        self._create_cash(date=timezone.localdate() - timedelta(days=1))
+        response = self.client.get(
+            self._by_date_url(self.site.pk, timezone.localdate())
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_invalid_calendar_date_returns_400(self):
+        response = self.client.get(self._by_date_url(self.site.pk, "2026-02-30"))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+
+    def test_unauthenticated_returns_401(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(
+            self._by_date_url(self.site.pk, timezone.localdate())
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_post_not_allowed(self):
+        response = self.client.post(
+            self._by_date_url(self.site.pk, timezone.localdate()),
+            {},
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_numeric_detail_still_works(self):
+        cash = self._create_cash()
+        response = self.client.get(self._detail_url(self.site.pk, cash.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], cash.pk)
 
 
 class SiteCashSubscriptionTests(SiteCashAPITestCase):

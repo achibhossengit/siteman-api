@@ -263,6 +263,28 @@ class SiteCashViewSet(viewsets.ModelViewSet):
             .order_by("-date", "-id")
         )
 
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"(?P<cash_date>\d{4}-\d{2}-\d{2})",
+        url_name="by-date",
+        pagination_class=None,
+    )
+    def by_date(self, request, site_pk=None, cash_date=None, **kwargs):
+        """Unpaginated list of all cash entries for this site on ``cash_date``."""
+        try:
+            parsed = parse_date(cash_date)
+        except ValueError:
+            parsed = None
+        if parsed is None:
+            raise serializers.ValidationError(
+                {"date": "Enter a valid date (YYYY-MM-DD)."},
+                code=status_codes.INVALID,
+            )
+        qs = self.get_queryset().filter(date=parsed)
+        serializer = SiteCashListSerializer(qs, many=True)
+        return Response(serializer.data)
+
     @transaction.atomic
     def perform_create(self, serializer):
         serializer.save(
