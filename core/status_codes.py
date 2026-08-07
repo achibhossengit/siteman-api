@@ -35,7 +35,6 @@ USER_NAME_EXISTS = "user_name_exists"
 LABOUR_INACTIVE = "labour_inactive"
 LABOUR_NAME_EXISTS = "labour_name_exists"
 LABOUR_UNASSIGNED = "labour_unassigned"
-ATTENDANCE_PRESENT_OR_EXTRA_REQUIRED = "attendance_present_or_extra_required"
 DAILY_RECORD_VALUE_REQUIRED = "daily_record_value_required"
 
 # Labour work sessions
@@ -48,9 +47,6 @@ RECORD_FUTURE_DATE = "record_future_date"
 RECORD_DATE_NOT_AFTER_LAST_SESSION = "record_date_not_after_last_session"
 RECORD_SEALED = "record_sealed"
 RECORD_UNIQUE_CONSTRAINT_VIOLATION = "record_unique_constraint_violation"
-
-# Labour payments
-CATEGORY_NOT_ALLOWED = "category_not_allowed"
 
 # Activity
 ACTIVITY_ALREADY_REVIEWED = "activity_already_reviewed"
