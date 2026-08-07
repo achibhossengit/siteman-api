@@ -1,7 +1,7 @@
 from rest_framework_nested import routers
 
 from .views import (
-    DailyRecordViewSet,
+    LabourDailyRecordViewSet,
     LabourSessionViewSet,
     LabourViewSet,
 )
@@ -11,7 +11,7 @@ router.register("labours", LabourViewSet, basename="labour")
 
 labours_router = routers.NestedSimpleRouter(router, "labours", lookup="labour")
 labours_router.register(
-    "daily-records", DailyRecordViewSet, basename="labour-daily-record"
+    "daily-records", LabourDailyRecordViewSet, basename="labour-daily-record"
 )
 labours_router.register("sessions", LabourSessionViewSet, basename="labour-session")
 

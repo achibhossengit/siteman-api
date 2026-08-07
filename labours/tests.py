@@ -839,7 +839,7 @@ class DailyRecordAuthPermissionTests(DailyRecordAPITestCase):
         self.labour.save(update_fields=["is_active"])
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_unassigned_labour_blocks_create_for_companyadmin(self):
         self.user.is_companyadmin = True
@@ -874,7 +874,7 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
     def test_list_empty(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
 
     def test_create_daily_record_success(self):
         today = timezone.localdate()
@@ -943,9 +943,10 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
         record = self._create_daily_record()
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
         self.assertCountEqual(
-            response.data[0].keys(),
+            results[0].keys(),
             [
                 "id",
                 "date",
@@ -963,7 +964,7 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
                 "updated_at",
             ],
         )
-        self.assertEqual(response.data[0]["id"], record.pk)
+        self.assertEqual(results[0]["id"], record.pk)
 
     def test_retrieve_daily_record_detail(self):
         record = self._create_daily_record(note="detail")
@@ -1230,8 +1231,9 @@ class DailyRecordFilterIsolationTests(DailyRecordAPITestCase):
 
         response = self.client.get(self.list_url, {"date": str(today)})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["date"], str(today))
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["date"], str(today))
 
     def test_filter_by_is_sealed(self):
         self._create_daily_record(is_sealed=False)
@@ -1241,8 +1243,9 @@ class DailyRecordFilterIsolationTests(DailyRecordAPITestCase):
         )
         response = self.client.get(self.list_url, {"is_sealed": "true"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], sealed.pk)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], sealed.pk)
 
     def test_nested_under_other_labour_hides_records(self):
         other_labour = Labour.objects.create(
@@ -1254,7 +1257,7 @@ class DailyRecordFilterIsolationTests(DailyRecordAPITestCase):
         self._create_daily_record()
         response = self.client.get(self._list_url(other_labour.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
 
 
 class DailyRecordSubscriptionTests(DailyRecordAPITestCase):
@@ -1280,7 +1283,7 @@ class DailyRecordSubscriptionTests(DailyRecordAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)
 
     def test_patch_blocked_when_subscription_expired(self):
         record = self._create_daily_record(present=Decimal("1"))

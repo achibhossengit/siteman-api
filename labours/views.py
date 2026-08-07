@@ -91,11 +91,12 @@ class LabourViewSet(viewsets.ModelViewSet):
     # Delete log still not included here. Because, currently we are not deleting labours.
 
 
-class DailyRecordViewSet(viewsets.ModelViewSet):
+class LabourDailyRecordViewSet(viewsets.ModelViewSet):
     """Nested under ``/labours/<labour_pk>/daily-records``."""
 
     serializer_class = DailyRecordSerializer
     queryset = DailyRecord.objects.none()
+    pagination_class = StandardPagination
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
         HasSiteAndLabourPermissions,
