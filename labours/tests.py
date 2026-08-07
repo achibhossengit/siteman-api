@@ -2057,15 +2057,16 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
     def test_list_empty(self):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(_list_results(response), [])
 
     def test_list_uses_list_serializer_fields(self):
         self._create_session_via_orm()
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
         self.assertCountEqual(
-            list(response.data[0].keys()),
+            list(results[0].keys()),
             [
                 "id",
                 "start_date",
@@ -2083,7 +2084,7 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            [row["id"] for row in response.data], [latest.pk, older.pk]
+            [row["id"] for row in _list_results(response)], [latest.pk, older.pk]
         )
 
     def test_retrieve_session(self):
@@ -2129,7 +2130,9 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
         )
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual([row["id"] for row in response.data], [mine.pk])
+        self.assertEqual(
+            [row["id"] for row in _list_results(response)], [mine.pk]
+        )
 
 
 class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
@@ -2295,4 +2298,4 @@ class LabourSessionSubscriptionTests(LabourSessionAPITestCase):
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_list_results(response)), 1)

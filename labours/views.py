@@ -257,6 +257,7 @@ class LabourSessionViewSet(
 
     serializer_class = LabourSessionSerializer
     queryset = LabourSession.objects.none()
+    pagination_class = StandardPagination
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
         HasSiteAndLabourPermissions,
@@ -284,14 +285,22 @@ class LabourSessionViewSet(
         )
 
     def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        sessions = serializer.data
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
         labour = get_labour(request, self)
         running_session = get_running_session(labour)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            sessions = list(serializer.data)
+            if running_session and self.paginator.page.number == 1:
+                sessions.insert(0, self.get_serializer(running_session).data)
+            return self.get_paginated_response(sessions)
+
+        serializer = self.get_serializer(queryset, many=True)
+        sessions = list(serializer.data)
         if running_session:
-            serialized_running_session = self.get_serializer(running_session)
-            sessions.insert(0, serialized_running_session.data)
+            sessions.insert(0, self.get_serializer(running_session).data)
         return Response(sessions)
 
     def create(self, request, *args, **kwargs):
