@@ -1,5 +1,4 @@
 from django.db import transaction
-from django.db.utils import IntegrityError
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -140,31 +139,18 @@ class DailyRecordViewSet(viewsets.ModelViewSet):
                 "Labour must be assigned to a site before creating records.",
                 code=status_codes.LABOUR_UNASSIGNED,
             )
-        try:
-            serializer.save(
-                labour=labour,
-                site=labour.current_site,
-                company=self.request.user.company,
-                is_sealed=False,
-            )
-            activity_after_create(self, serializer.instance)
-        except IntegrityError:
-            raise ValidationError(
-                "A daily record already exists for this labour on this date.",
-                code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
-            )
+        serializer.save(
+            labour=labour,
+            site=labour.current_site,
+            company=self.request.user.company,
+            is_sealed=False,
+        )
+        activity_after_create(self, serializer.instance)
 
     def perform_update(self, serializer):
         old = snapshot_for(serializer.instance)
-        try:
-            with transaction.atomic():
-                serializer.save()
-                activity_after_update(self, serializer.instance, old)
-        except IntegrityError:
-            raise ValidationError(
-                "A daily record already exists for this labour on this date.",
-                code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
-            )
+        serializer.save()
+        activity_after_update(self, serializer.instance, old)
 
     @transaction.atomic
     def perform_destroy(self, instance):
@@ -217,18 +203,12 @@ class SiteDailyRecordViewSet(
 
     @transaction.atomic
     def perform_create(self, serializer):
-        try:
-            serializer.save(
-                site_id=int(self.kwargs["site_pk"]),
-                company=self.request.user.company,
-                is_sealed=False,
-            )
-            activity_after_create(self, serializer.instance)
-        except IntegrityError:
-            raise ValidationError(
-                "A daily record already exists for a labour on this date.",
-                code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
-            )
+        serializer.save(
+            site_id=int(self.kwargs["site_pk"]),
+            company=self.request.user.company,
+            is_sealed=False,
+        )
+        activity_after_create(self, serializer.instance)
 
 
 

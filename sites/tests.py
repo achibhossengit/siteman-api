@@ -21,12 +21,7 @@ from sites.models import (
 from subscription.models import Subscription
 from accounts.models import UserSite
 from core import status_codes
-from labours.models import (
-    Attendance,
-    Labour,
-    LabourPayment,
-    LabourPaymentType,
-)
+from labours.models import DailyRecord, Labour
 
 User = get_user_model()
 
@@ -1442,39 +1437,24 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
 
     def test_public_summary_aggregates(self):
         labour = self._create_labour()
-        Attendance.objects.create(
+        DailyRecord.objects.create(
             company=self.company,
             labour=labour,
             site=self.site,
             date=self.report_date,
             present=Decimal("1.5"),
-            salary=500,
-            extra=100,
-        )
-        LabourPayment.objects.create(
-            company=self.company,
-            labour=labour,
-            site=self.site,
-            date=self.report_date,
-            type=LabourPaymentType.PAYMENT,
-            amount=1000,
-        )
-        LabourPayment.objects.create(
-            company=self.company,
-            labour=labour,
-            site=self.site,
-            date=self.report_date,
-            type=LabourPaymentType.RETURN,
-            amount=200,
+            wage=500,
+            extra_earn=100,
+            advance_pay=1000,
+            return_amount=200,
         )
         labour_b = self._create_labour(name="Rahim")
-        LabourPayment.objects.create(
+        DailyRecord.objects.create(
             company=self.company,
             labour=labour_b,
             site=self.site,
             date=self.report_date,
-            type=LabourPaymentType.PAYMENT,
-            amount=150,
+            advance_pay=150,
         )
         SiteCash.objects.create(
             company=self.company,
@@ -1540,14 +1520,14 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
     def test_private_fields_included_with_permission(self):
         self._grant_private_cash_view(self.user)
         labour = self._create_labour()
-        Attendance.objects.create(
+        DailyRecord.objects.create(
             company=self.company,
             labour=labour,
             site=self.site,
             date=self.report_date,
             present=Decimal("1"),
-            salary=500,
-            extra=50,
+            wage=500,
+            extra_earn=50,
         )
         PrivateSiteCash.objects.create(
             company=self.company,

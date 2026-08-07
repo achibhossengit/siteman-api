@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
+from rest_framework.validators import UniqueTogetherValidator
 
 from core import status_codes
 from .models import DailyRecord, Labour, LabourSession
@@ -251,6 +252,21 @@ class DailyRecordSerializer(
             "created_at",
             "updated_at",
         ]
+        # labour is read_only, so DRF will not auto-build UniqueTogetherValidator.
+        validators = [
+            UniqueTogetherValidator(
+                queryset=DailyRecord.objects.all(),
+                fields=["date", "labour"],
+            )
+        ]
+
+    def to_internal_value(self, data):
+        attrs = super().to_internal_value(data)
+        # labour is read_only (from URL); inject so UniqueTogetherValidator can run.
+        labour = self.context.get("labour")
+        if labour is not None and "labour" not in attrs:
+            attrs["labour"] = labour
+        return attrs
 
     def validate_billing(self, billing):
         if billing is None:

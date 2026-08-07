@@ -19,7 +19,7 @@ from activity.services import (
     snapshot_instance,
 )
 from company.models import Company
-from labours.models import Attendance, Labour
+from labours.models import DailyRecord, Labour
 from sites.models import Site, SiteCash, SiteCashType
 from subscription.models import Subscription
 
@@ -44,39 +44,39 @@ class ActivityServiceTests(APITestCase):
             default_salary=500,
         )
 
-    def test_log_created_attendance(self):
-        att = Attendance.objects.create(
+    def test_log_created_daily_record(self):
+        record = DailyRecord.objects.create(
             labour=self.labour,
             site=self.site,
             company=self.company,
             date=timezone.localdate(),
             present=Decimal("1"),
-            salary=500,
+            wage=500,
         )
-        log = log_created(self.user, att)
+        log = log_created(self.user, record)
         self.assertEqual(log.action, ActivityAction.CREATED)
-        self.assertEqual(log.entity_type, ActivityEntityType.ATTENDANCE)
-        self.assertEqual(log.entity_id, att.pk)
+        self.assertEqual(log.entity_type, ActivityEntityType.DAILY_RECORD)
+        self.assertEqual(log.entity_id, record.pk)
         self.assertEqual(log.site_id, self.site.pk)
-        self.assertEqual(log.business_date, att.date)
+        self.assertEqual(log.business_date, record.date)
         self.assertEqual(log.actor_id, self.user.pk)
         self.assertEqual(log.labour_id, self.labour.pk)
         self.assertEqual(log.labour_name, "Worker")
         self.assertIn("present", log.changes)
 
-    def test_log_updated_attendance_keeps_labour_name(self):
-        att = Attendance.objects.create(
+    def test_log_updated_daily_record_keeps_labour_name(self):
+        record = DailyRecord.objects.create(
             labour=self.labour,
             site=self.site,
             company=self.company,
             date=timezone.localdate(),
             present=Decimal("1"),
-            salary=500,
+            wage=500,
         )
-        old = snapshot_instance(att)
-        att.present = Decimal("1.5")
-        att.save(update_fields=["present"])
-        log = log_updated(self.user, att, old_snapshot=old)
+        old = snapshot_instance(record)
+        record.present = Decimal("1.5")
+        record.save(update_fields=["present"])
+        log = log_updated(self.user, record, old_snapshot=old)
         self.assertEqual(log.labour_id, self.labour.pk)
         self.assertEqual(log.labour_name, "Worker")
         self.assertEqual(log.changes["present"]["old"], "1")
@@ -302,7 +302,7 @@ class ActivityLogAPITests(APITestCase):
             actor=self.admin,
             actor_name=self.admin.name,
             action=ActivityAction.CREATED,
-            entity_type=ActivityEntityType.ATTENDANCE,
+            entity_type=ActivityEntityType.DAILY_RECORD,
             entity_id=101,
             business_date=timezone.localdate(),
             changes={"present": "1"},
@@ -362,17 +362,16 @@ class ActivityLogAPITests(APITestCase):
             user.user_permissions.add(perm)
 
     def test_missing_view_activitylog_returns_403(self):
-        self._grant(self.admin, "labours.view_attendance")
+        self._grant(self.admin, "labours.view_dailyrecord")
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_sees_only_attendance_payment_and_site_cash(self):
+    def test_admin_sees_only_daily_record_and_site_cash(self):
         self._grant(
             self.admin,
             "activity.view_activitylog",
-            "labours.view_attendance",
-            "labours.view_labourpayment",
+            "labours.view_dailyrecord",
             "sites.view_sitecash",
             "sites.view_privatesitecash",
             "accounts.view_user",
@@ -390,7 +389,7 @@ class ActivityLogAPITests(APITestCase):
         self._grant(
             self.manager,
             "activity.view_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
             "sites.view_sitecash",
             "accounts.view_user",
         )
@@ -398,21 +397,21 @@ class ActivityLogAPITests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = {row["id"] for row in response.data["results"]}
-        # site A attendance only: no site B cash, no private/user (not in API allowlist)
+        # site A daily record only: no site B cash, no private/user (not in API allowlist)
         self.assertEqual(ids, {self.log_site_a.pk})
 
     def test_filter_by_entity_type_and_entity_id(self):
         self._grant(
             self.admin,
             "activity.view_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
             "sites.view_sitecash",
         )
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(
             self.list_url,
             {
-                "entity_type": ActivityEntityType.ATTENDANCE,
+                "entity_type": ActivityEntityType.DAILY_RECORD,
                 "entity_id": 101,
             },
         )
@@ -424,7 +423,7 @@ class ActivityLogAPITests(APITestCase):
         self._grant(
             self.admin,
             "activity.view_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.list_url, {"reviewed": "false"})
@@ -436,7 +435,7 @@ class ActivityLogAPITests(APITestCase):
         self._grant(
             self.admin,
             "activity.view_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
             "sites.view_sitecash",
         )
         self.client.force_authenticate(user=self.admin)
@@ -450,7 +449,7 @@ class ActivityLogAPITests(APITestCase):
         self._grant(
             self.admin,
             "activity.view_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.list_url, {"paginate": "false"})
@@ -460,7 +459,7 @@ class ActivityLogAPITests(APITestCase):
         self._grant(
             self.admin,
             "activity.view_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(
@@ -469,7 +468,7 @@ class ActivityLogAPITests(APITestCase):
                 "paginate": "false",
                 "site": self.site_a.pk,
                 "business_date": timezone.localdate().isoformat(),
-                "entity_type": ActivityEntityType.ATTENDANCE,
+                "entity_type": ActivityEntityType.DAILY_RECORD,
                 "reviewed": "false",
             },
         )
@@ -482,7 +481,7 @@ class ActivityLogAPITests(APITestCase):
         self._grant(
             self.admin,
             "activity.view_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
         url = reverse(
@@ -497,7 +496,7 @@ class ActivityLogAPITests(APITestCase):
             self.admin,
             "activity.view_activitylog",
             "activity.change_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
         url = reverse(
@@ -522,7 +521,7 @@ class ActivityLogAPITests(APITestCase):
             actor=self.admin,
             actor_name=self.admin.name,
             action=ActivityAction.UPDATED,
-            entity_type=ActivityEntityType.ATTENDANCE,
+            entity_type=ActivityEntityType.DAILY_RECORD,
             entity_id=102,
             business_date=timezone.localdate(),
             changes={"present": "0.5"},
@@ -531,7 +530,7 @@ class ActivityLogAPITests(APITestCase):
             self.admin,
             "activity.view_activitylog",
             "activity.change_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
         url = reverse("activity-review-bulk", kwargs={"version": "v1"})
@@ -561,7 +560,7 @@ class ActivityLogAPITests(APITestCase):
             actor=self.admin,
             actor_name=self.admin.name,
             action=ActivityAction.UPDATED,
-            entity_type=ActivityEntityType.ATTENDANCE,
+            entity_type=ActivityEntityType.DAILY_RECORD,
             entity_id=103,
             business_date=timezone.localdate(),
             changes={"present": "1"},
@@ -570,7 +569,7 @@ class ActivityLogAPITests(APITestCase):
             self.admin,
             "activity.view_activitylog",
             "activity.change_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
         url = reverse("activity-review-bulk", kwargs={"version": "v1"})
@@ -588,7 +587,7 @@ class ActivityLogAPITests(APITestCase):
         self._grant(
             self.admin,
             "activity.view_activitylog",
-            "labours.view_attendance",
+            "labours.view_dailyrecord",
         )
         self.client.force_authenticate(user=self.admin)
         url = reverse("activity-review-bulk", kwargs={"version": "v1"})
