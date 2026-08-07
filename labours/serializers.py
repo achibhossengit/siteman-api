@@ -1,8 +1,101 @@
+from decimal import Decimal
+
+from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import ErrorDetail
 
 from core import status_codes
-from .models import Labour, LabourSession
+from .models import DailyRecord, Labour, LabourSession
 from .services import affected_rows_match, is_latest_labour_session
+
+
+class LabourRecordDateValidationMixin:
+    """Shared date rules for daily labour records."""
+
+    # Validate that the date is not in the future.
+    def validate_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError(
+                "Date cannot be in the future.",
+                code=status_codes.RECORD_FUTURE_DATE,
+            )
+        return value
+
+    # Validate that the date is after the labour's last session date.
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        labour = attrs.get("labour") or self.context.get("labour")
+        if labour is None and self.instance is not None:
+            labour = self.instance.labour
+
+        record_date = attrs.get("date")
+        if record_date is None:
+            record_date = (
+                self.instance.date
+                if self.instance is not None
+                else timezone.localdate()
+            )
+
+        if (
+            labour is not None
+            and labour.last_session_date is not None
+            and record_date <= labour.last_session_date
+        ):
+            raise serializers.ValidationError(
+                {
+                    "date": ErrorDetail(
+                        "Date must be after the labour's last session date.",
+                        code=status_codes.RECORD_DATE_NOT_AFTER_LAST_SESSION,
+                    )
+                }
+            )
+        return attrs
+
+
+class DailyRecordValueValidationMixin:
+    """Require at least one meaningful day value.
+    
+    present: attendance
+    extra_earn: extra earnings for the day.
+    fooding_pay: fooding pay for the day.
+    advance_pay: advance pay for the day.
+    return_amount: return amount for the day.
+    """
+
+    _VALUE_FIELDS = (
+        "present",
+        "extra_earn",
+        "fooding_pay",
+        "advance_pay",
+        "return_amount",
+    )
+
+    @staticmethod
+    def _is_zero(value):
+        if value is None:
+            return True
+        if isinstance(value, Decimal):
+            return value == 0
+        return value == 0
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        resolved = {}
+        for field in self._VALUE_FIELDS:
+            if field in attrs:
+                resolved[field] = attrs[field]
+            elif self.instance is not None:
+                resolved[field] = getattr(self.instance, field)
+            else:
+                resolved[field] = None
+
+        if all(self._is_zero(resolved[field]) for field in self._VALUE_FIELDS):
+            raise serializers.ValidationError(
+                "At least one of present, extra_earn, fooding_pay, "
+                "advance_pay, or return_amount is required.",
+                code=status_codes.DAILY_RECORD_VALUE_REQUIRED,
+            )
+        return attrs
 
 
 class LabourListSerializer(serializers.ModelSerializer):
@@ -102,6 +195,205 @@ class LabourSerializer(serializers.ModelSerializer):
                 }
             )
         return attrs
+
+
+class DailyRecordListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DailyRecord
+        fields = [
+            "id",
+            "date",
+            "present",
+            "wage",
+            "extra_earn",
+            "fooding_pay",
+            "advance_pay",
+            "return_amount",
+            "note",
+            "billing",
+            "site",
+            "is_sealed",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class DailyRecordSerializer(
+    DailyRecordValueValidationMixin,
+    LabourRecordDateValidationMixin,
+    serializers.ModelSerializer,
+):
+    class Meta:
+        model = DailyRecord
+        fields = [
+            "id",
+            "labour",
+            "site",
+            "billing",
+            "date",
+            "present",
+            "wage",
+            "extra_earn",
+            "fooding_pay",
+            "advance_pay",
+            "return_amount",
+            "note",
+            "is_sealed",
+            "company",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "labour",
+            "site",
+            "is_sealed",
+            "company",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_billing(self, billing):
+        if billing is None:
+            return billing
+
+        labour = self.context["labour"]
+        site_id = (
+            self.instance.site_id
+            if self.instance is not None
+            else labour.current_site_id
+        )
+        if billing.company_id != labour.company_id or billing.site_id != site_id:
+            raise serializers.ValidationError(
+                "Billing category must belong to this labour's current site.",
+                code=status_codes.INVALID,
+            )
+
+        if self.instance is None and not billing.is_active:
+            raise serializers.ValidationError(
+                "Billing category must be active.",
+                code=status_codes.BILLING_CATEGORY_INACTIVE,
+            )
+
+        return billing
+
+    def create(self, validated_data):
+        if "wage" not in validated_data or validated_data.get("wage") is None:
+            labour = validated_data.get("labour") or self.context.get("labour")
+            if labour is not None:
+                validated_data["wage"] = labour.default_salary
+        return super().create(validated_data)
+
+
+class SiteDailyRecordListSerializer(serializers.ModelSerializer):
+    labour_name = serializers.CharField(source="labour.name", read_only=True)
+
+    class Meta:
+        model = DailyRecord
+        fields = [
+            "id",
+            "labour_id",
+            "labour_name",
+            "date",
+            "present",
+            "wage",
+            "extra_earn",
+            "fooding_pay",
+            "advance_pay",
+            "return_amount",
+            "note",
+            "billing",
+            "is_sealed",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class SiteDailyRecordSerializer(
+    DailyRecordValueValidationMixin,
+    LabourRecordDateValidationMixin,
+    serializers.ModelSerializer,
+):
+    """Bulk-create item for ``/sites/<site_pk>/daily-records``.
+
+    ``labour`` comes from the payload; ``site`` from the URL.
+    """
+
+    class Meta:
+        model = DailyRecord
+        fields = [
+            "id",
+            "labour",
+            "site",
+            "billing",
+            "date",
+            "present",
+            "wage",
+            "extra_earn",
+            "fooding_pay",
+            "advance_pay",
+            "return_amount",
+            "note",
+            "is_sealed",
+            "company",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "site",
+            "is_sealed",
+            "company",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_labour(self, labour):
+        request = self.context["request"]
+        site_id = int(self.context["view"].kwargs["site_pk"])
+
+        if labour.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Labour not found.",
+                code=status_codes.INVALID,
+            )
+        if not labour.is_active:
+            raise serializers.ValidationError(
+                "This labour is inactive; no changes can be made.",
+                code=status_codes.LABOUR_INACTIVE,
+            )
+        if labour.current_site_id != site_id:
+            raise serializers.ValidationError(
+                "Labour is not assigned to this site.",
+                code=status_codes.INVALID,
+            )
+        return labour
+
+    def validate_billing(self, billing):
+        if billing is None:
+            return billing
+
+        request = self.context["request"]
+        site_id = int(self.context["view"].kwargs["site_pk"])
+        if billing.company_id != request.user.company_id or billing.site_id != site_id:
+            raise serializers.ValidationError(
+                "Billing category must belong to this site.",
+                code=status_codes.INVALID,
+            )
+
+        # This endpoint only creates records, so billing must be active.
+        if not billing.is_active:
+            raise serializers.ValidationError(
+                "Billing category must be active.",
+                code=status_codes.BILLING_CATEGORY_INACTIVE,
+            )
+
+        return billing
+
+    def create(self, validated_data):
+        if "wage" not in validated_data or validated_data.get("wage") is None:
+            labour = validated_data.get("labour")
+            if labour is not None:
+                validated_data["wage"] = labour.default_salary
+        return super().create(validated_data)
 
 
 class LabourSessionListSerializer(serializers.Serializer):
