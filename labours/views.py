@@ -23,11 +23,15 @@ from core.exceptions import (
     SubscriptionLimitExceeded,
     SubscriptionLimitExceededError,
 )
-from core.permissions import RecordUpdateDeletePermissions
+from core.permissions import HasRecordSiteAccess, IsRecordNotSealed
 from core.pagination import StandardPagination
 from core.services import SubscriptionService
 from sites.permissions import HasSitePermissions
-from .permissions import HasSiteAndLabourPermissions, get_labour
+from .permissions import (
+    HasLabourCurrentSiteAccess,
+    IsLabourActive,
+    get_labour,
+)
 from .models import DailyRecord, Labour, LabourSession
 from .serializers import (
     DailyRecordListSerializer,
@@ -101,11 +105,6 @@ class LabourDailyRecordViewSet(viewsets.ModelViewSet):
     serializer_class = DailyRecordSerializer
     queryset = DailyRecord.objects.none()
     pagination_class = StandardPagination
-    permission_classes = [
-        *api_settings.DEFAULT_PERMISSION_CLASSES,
-        HasSiteAndLabourPermissions,
-        RecordUpdateDeletePermissions,
-    ]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     filterset_fields = {
         "date": ["exact", "gte", "lte"],
@@ -113,6 +112,16 @@ class LabourDailyRecordViewSet(viewsets.ModelViewSet):
         "is_sealed": ["exact"],
         "site": ["exact"],
     }
+
+    def get_permissions(self):
+        perms = list(api_settings.DEFAULT_PERMISSION_CLASSES)
+        if self.action == "create":
+            perms += [HasLabourCurrentSiteAccess, IsLabourActive]
+        elif self.action in ("update", "partial_update", "destroy"):
+            perms += [HasRecordSiteAccess, IsRecordNotSealed]
+        else:
+            perms += [HasLabourCurrentSiteAccess]
+        return [permission() for permission in perms]
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -164,7 +173,7 @@ class LabourDailyRecordViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         activity_before_destroy(self, instance)
         instance.delete()
-        
+
 
 class SiteDailyRecordViewSet(
     mixins.ListModelMixin,
@@ -293,12 +302,15 @@ class LabourSessionViewSet(
     serializer_class = LabourSessionSerializer
     queryset = LabourSession.objects.none()
     pagination_class = StandardPagination
-    permission_classes = [
-        *api_settings.DEFAULT_PERMISSION_CLASSES,
-        HasSiteAndLabourPermissions,
-    ]
     http_method_names = ["get", "post", "delete", "head", "options"]
     filterset_fields = ["created_date", "start_date", "end_date"]
+
+    def get_permissions(self):
+        perms = list(api_settings.DEFAULT_PERMISSION_CLASSES)
+        perms.append(HasLabourCurrentSiteAccess)
+        if self.action == "create":
+            perms.append(IsLabourActive)
+        return [permission() for permission in perms]
 
     def get_serializer_class(self):
         if self.action == "list":

@@ -69,21 +69,31 @@ class ActiveSubscriptionOrReadOnly(BasePermission):
         return True
 
 
-class RecordUpdateDeletePermissions(BasePermission):
-    
+class IsRecordNotSealed(BasePermission):
+    """Object-level: sealed records are immutable."""
+
     def has_object_permission(self, request, view, obj):
         if request.method in SAFE_METHODS:
             return True
-        
+
+        if getattr(obj, "is_sealed", False):
+            raise PermissionDenied(
+                detail="Sealed records cannot be updated or deleted.",
+                code=status_codes.RECORD_SEALED,
+            )
+        return True
+
+
+class HasRecordSiteAccess(BasePermission):
+    """Object-level: user must have access to the record's site."""
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in SAFE_METHODS:
+            return True
+
         if not request.user.has_site_access(obj.site_id):
             raise PermissionDenied(
                 detail="You are not allowed to update or delete other site records",
                 code=status_codes.UNAUTHORIZED_SITE,
-            )
-
-        if obj.is_sealed:
-            raise PermissionDenied(
-                detail="Sealed records cannot be updated or deleted.",
-                code=status_codes.RECORD_SEALED,
             )
         return True
