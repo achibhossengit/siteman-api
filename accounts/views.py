@@ -323,7 +323,7 @@ class UserProfileViewSet(
 ):
     """Current authenticated user's profile.
 
-    ``GET /profile`` — basic info, groups, permissions, and sites
+    ``GET /profile`` — basic info, groups, permissions, and site ids
     (all company sites for company admins; otherwise assigned sites only).
     ``PATCH /profile`` — update name, email, phone.
     Password changes use ``/auth/password/change`` or reset.
@@ -345,7 +345,7 @@ class UserProfileViewSet(
             )
         )
         if not self.request.user.is_companyadmin:
-            qs = qs.prefetch_related("sites__site")
+            qs = qs.prefetch_related("sites")
         return qs.get()
 
     def retrieve(self, request, *args, **kwargs):

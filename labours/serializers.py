@@ -199,7 +199,6 @@ class LabourSerializer(serializers.ModelSerializer):
 
 
 class DailyRecordListSerializer(serializers.ModelSerializer):
-    site_name = serializers.CharField(source="site.name", read_only=True)
     billing_name = serializers.CharField(
         source="billing.name", read_only=True, allow_null=True
     )
@@ -219,7 +218,6 @@ class DailyRecordListSerializer(serializers.ModelSerializer):
             "billing",
             "billing_name",
             "site",
-            "site_name",
             "is_sealed",
             "created_at",
             "updated_at",

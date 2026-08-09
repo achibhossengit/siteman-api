@@ -144,7 +144,7 @@ class LabourDailyRecordViewSet(viewsets.ModelViewSet):
                 company_id=user.company_id,
                 labour_id=self.kwargs["labour_pk"],
             )
-            .select_related("labour", "site", "billing")
+            .select_related("billing")
             .order_by("-date", "-id")
         )
 

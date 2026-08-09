@@ -970,7 +970,6 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
                 "billing",
                 "billing_name",
                 "site",
-                "site_name",
                 "is_sealed",
                 "created_at",
                 "updated_at",
@@ -978,7 +977,6 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
         )
         self.assertEqual(results[0]["id"], record.pk)
         self.assertEqual(results[0]["site"], self.site.pk)
-        self.assertEqual(results[0]["site_name"], self.site.name)
         self.assertEqual(results[0]["billing"], self.billing.pk)
         self.assertEqual(results[0]["billing_name"], self.billing.name)
 

@@ -1331,16 +1331,7 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
     def test_get_returns_assigned_sites(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data["sites"]), 1)
-        self.assertEqual(
-            response.data["sites"][0],
-            {
-                "id": self.site.pk,
-                "name": "Padma Bridge",
-                "is_active": True,
-                "is_closed": False,
-            },
-        )
+        self.assertEqual(response.data["sites"], [self.site.pk])
 
     def test_companyadmin_gets_all_company_sites(self):
         other_site = Site.objects.create(
@@ -1350,7 +1341,7 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertCountEqual(
-            [site["id"] for site in response.data["sites"]],
+            response.data["sites"],
             [self.site.pk, other_site.pk],
         )
 
@@ -1374,10 +1365,7 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         self.client.force_authenticate(user=worker)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            [site["id"] for site in response.data["sites"]],
-            [self.site.pk],
-        )
+        self.assertEqual(response.data["sites"], [self.site.pk])
 
     def test_get_is_only_request_user(self):
         other = User.objects.create_user(
