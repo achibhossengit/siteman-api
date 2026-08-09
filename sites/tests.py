@@ -233,7 +233,16 @@ class SiteFilterIsolationTests(SiteAPITestCase):
         response = self.client.get(self.list_url, {"is_closed": "true"})
         self.assertEqual(len(_list_results(response)), 1)
         self.assertEqual(_list_results(response)[0]["id"], closed_site.pk)
-        
+
+    def test_search_by_name(self):
+        self._create_site(name="Padma Bridge")
+        self._create_site(name="Metro Rail")
+
+        response = self.client.get(self.list_url, {"search": "Padma"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(_list_results(response)), 1)
+        self.assertEqual(_list_results(response)[0]["name"], "Padma Bridge")
+
     def test_cannot_create_site_under_other_company(self):
         other_company = Company.objects.create(name="Other Co")
         response = self.client.post(self.list_url, {"name": "Other Site", "company": other_company.pk})

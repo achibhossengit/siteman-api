@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
+from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
@@ -60,7 +61,9 @@ class SiteViewSet(viewsets.ModelViewSet):
     queryset = Site.objects.none()  # real queryset in get_queryset; here for router/schema
     pagination_class = StandardPagination
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]  # no PUT
+    filter_backends = [*api_settings.DEFAULT_FILTER_BACKENDS, SearchFilter]
     filterset_fields = ["is_active", "is_closed"]
+    search_fields = ["name"]
 
     def get_serializer_class(self):
         if self.action == "list":
