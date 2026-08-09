@@ -968,7 +968,6 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
                 "return_amount",
                 "note",
                 "billing",
-                "billing_name",
                 "site",
                 "is_sealed",
                 "created_at",
@@ -978,7 +977,6 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
         self.assertEqual(results[0]["id"], record.pk)
         self.assertEqual(results[0]["site"], self.site.pk)
         self.assertEqual(results[0]["billing"], self.billing.pk)
-        self.assertEqual(results[0]["billing_name"], self.billing.name)
 
     def test_retrieve_daily_record_detail(self):
         record = self._create_daily_record(note="detail")
@@ -1515,14 +1513,12 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
                 "return_amount",
                 "note",
                 "billing",
-                "billing_name",
                 "is_sealed",
                 "created_at",
                 "updated_at",
             ],
         )
         self.assertEqual(results[0]["billing"], self.billing.pk)
-        self.assertEqual(results[0]["billing_name"], self.billing.name)
         self.assertEqual(results[0]["labour_current_site"], self.site.pk)
 
 

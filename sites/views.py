@@ -244,7 +244,6 @@ class SiteCashViewSet(viewsets.ModelViewSet):
                 company_id=user.company_id,
                 site_id=int(self.kwargs["site_pk"]),
             )
-            .select_related("site", "billing")
             .order_by("-date", "-id")
         )
 

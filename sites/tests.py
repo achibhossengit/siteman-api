@@ -678,14 +678,12 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
                 "amount",
                 "note",
                 "billing",
-                "billing_name",
                 "created_at",
                 "updated_at",
             ],
         )
         self.assertEqual(results[0]["id"], cash.pk)
         self.assertEqual(results[0]["billing"], self.billing.pk)
-        self.assertEqual(results[0]["billing_name"], self.billing.name)
 
     def test_retrieve_cash_detail(self):
         cash = self._create_cash(note="detail")

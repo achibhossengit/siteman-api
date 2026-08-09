@@ -199,10 +199,6 @@ class LabourSerializer(serializers.ModelSerializer):
 
 
 class DailyRecordListSerializer(serializers.ModelSerializer):
-    billing_name = serializers.CharField(
-        source="billing.name", read_only=True, allow_null=True
-    )
-
     class Meta:
         model = DailyRecord
         fields = [
@@ -216,7 +212,6 @@ class DailyRecordListSerializer(serializers.ModelSerializer):
             "return_amount",
             "note",
             "billing",
-            "billing_name",
             "site",
             "is_sealed",
             "created_at",
@@ -310,9 +305,6 @@ class SiteDailyRecordListSerializer(serializers.ModelSerializer):
     labour_current_site = serializers.IntegerField(
         source="labour.current_site_id", read_only=True, allow_null=True
     )
-    billing_name = serializers.CharField(
-        source="billing.name", read_only=True, allow_null=True
-    )
 
     class Meta:
         model = DailyRecord
@@ -330,7 +322,6 @@ class SiteDailyRecordListSerializer(serializers.ModelSerializer):
             "return_amount",
             "note",
             "billing",
-            "billing_name",
             "is_sealed",
             "created_at",
             "updated_at",
