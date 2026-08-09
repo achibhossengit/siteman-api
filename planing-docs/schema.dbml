@@ -365,7 +365,7 @@ Table labour {
   default_salary  int           [not null]
   default_present decimal(12,2) [not null]
   default_fooding int           [not null]
-  last_session_date date        [null, note: 'cached latest labour_session.created_date; labour record dates must be greater']
+  last_session_date date        [null, note: 'cached latest labour_session.end_date; labour record dates must be greater']
   is_active       boolean       [not null, default: true, note: 'sealed work session auto-deactivates (F6.3)']
   created_at      timestamp     [not null]
   created_by      bigint        [ref: > user.id, not null]
@@ -394,9 +394,8 @@ Table labour_session {
   company_id   bigint        [ref: > company.id, not null]
   labour_id    bigint    [ref: > labour.id, not null]
   site_id      bigint    [ref: > site.id, null, note: 'snapshot of labour.current_site at session create']
-  start_date   date      [not null, note: 'first record after previous session end']
-  end_date     date      [not null, note: 'last sealed record date']
-  created_date       date      [not null, note: 'Unique Constraint (created_date, labour)']
+  start_date   date      [not null, note: 'first record after previous session end; Unique (labour, start_date)']
+  end_date     date      [not null, note: 'last sealed record date; Unique (labour, end_date)']
 
   present_days      decimal(12,2) [not null, note: 'intotal present days carried']
   salary_earnings       bigint    [not null, note: 'intotal salary carried']
@@ -405,7 +404,7 @@ Table labour_session {
   total_payment        bigint    [not null, note: 'total payment carried']
   total_return         bigint    [not null, note: 'total return carried']
   // payable; not field create as a model method to calculate the payable
-  created_at         timestamp [not null, note: 'index will use created_at::date for session uniqueness']
+  created_at         timestamp [not null]
   created_by         bigint    [ref: > user.id, not null]
   updated_at         timestamp [not null]
 }

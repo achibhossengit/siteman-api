@@ -7,7 +7,7 @@ from .models import DailyRecord, Labour, LabourSession
 
 def _sync_labour_last_session_date(labour_id):
     latest_date = LabourSession.objects.filter(labour_id=labour_id).aggregate(
-        latest=Max("created_date")
+        latest=Max("end_date")
     )["latest"]
     Labour.objects.filter(pk=labour_id).update(last_session_date=latest_date)
 

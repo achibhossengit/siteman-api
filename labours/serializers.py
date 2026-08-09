@@ -453,7 +453,6 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "id",
             "start_date",
             "end_date",
-            "created_date",
             "present_days",
             "salary_earnings",
             "extra_earnings",

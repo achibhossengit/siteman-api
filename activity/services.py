@@ -70,7 +70,6 @@ TRACKED_FIELDS: dict[str, tuple[str, ...]] = {
         "labour_id",
         "start_date",
         "end_date",
-        "created_date",
         "present_days",
         "salary_earnings",
         "extra_earnings",
@@ -172,7 +171,7 @@ def resolve_labour(instance) -> tuple[int | None, str | None]:
 def resolve_business_date(instance) -> date | None:
     entity_type = entity_type_for(instance)
     if entity_type == ActivityEntityType.LABOUR_SESSION:
-        return getattr(instance, "created_date", None)
+        return getattr(instance, "end_date", None)
     if entity_type in (
         ActivityEntityType.SITE_CASH,
         ActivityEntityType.PRIVATE_SITE_CASH,

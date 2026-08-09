@@ -645,13 +645,12 @@ class LabourSubscriptionTests(LabourAPITestCase):
         self.assertEqual(labour.name, "Editable")
 
 class LabourSessionCacheTests(LabourAPITestCase):
-    def _create_session(self, labour, created_date):
+    def _create_session(self, labour, session_date):
         return LabourSession.objects.create(
             company=self.company,
             labour=labour,
-            start_date=created_date,
-            end_date=created_date,
-            created_date=created_date,
+            start_date=session_date,
+            end_date=session_date,
             present_days=Decimal("1"),
             salary_earnings=500,
             extra_earnings=0,
@@ -1926,14 +1925,17 @@ class LabourSessionAPITestCase(APITestCase):
             defaults["present"] = Decimal(str(defaults["present"]))
         return DailyRecord.objects.create(**defaults)
 
-    def _create_session_via_orm(self, labour=None, created_date=None, **kwargs):
+    def _create_session_via_orm(self, labour=None, *, start_date=None, end_date=None, **kwargs):
         labour = labour or self.labour
+        if end_date is None:
+            end_date = timezone.localdate() - timedelta(days=1)
+        if start_date is None:
+            start_date = end_date - timedelta(days=2)
         defaults = {
             "company": labour.company,
             "labour": labour,
-            "start_date": timezone.localdate() - timedelta(days=3),
-            "end_date": timezone.localdate() - timedelta(days=1),
-            "created_date": created_date or timezone.localdate(),
+            "start_date": start_date,
+            "end_date": end_date,
             "present_days": Decimal("1"),
             "salary_earnings": 500,
             "extra_earnings": 0,
@@ -2029,7 +2031,8 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         data = response.data
         self.assertEqual(data["start_date"], str(self.day1))
         self.assertEqual(data["end_date"], str(self.day2))
-        self.assertEqual(data["created_date"], str(timezone.localdate()))
+        self.assertIn("created_at", data)
+        self.assertNotIn("created_date", data)
         self.assertEqual(Decimal(data["present_days"]), Decimal("1.5"))
         self.assertEqual(data["salary_earnings"], 750)  # 1*500 + 0.5*500
         self.assertEqual(data["extra_earnings"], 100)
@@ -2050,11 +2053,11 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         self.assertEqual(session.cumulative_payable, 50)
 
         self.labour.refresh_from_db()
-        self.assertEqual(self.labour.last_session_date, timezone.localdate())
+        self.assertEqual(self.labour.last_session_date, self.day2)
 
     def test_create_carries_previous_cumulative_payable(self):
         first = self._create_session_via_orm(
-            created_date=timezone.localdate() - timedelta(days=2),
+            end_date=timezone.localdate() - timedelta(days=2),
             salary_earnings=500,
             extra_earnings=0,
             total_fooding_pay=200,
@@ -2207,9 +2210,9 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
 
     def test_list_orders_latest_first(self):
         older = self._create_session_via_orm(
-            created_date=timezone.localdate() - timedelta(days=5)
+            end_date=timezone.localdate() - timedelta(days=5)
         )
-        latest = self._create_session_via_orm(created_date=timezone.localdate())
+        latest = self._create_session_via_orm(end_date=timezone.localdate())
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
@@ -2239,9 +2242,9 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
 
     def test_retrieve_marks_not_latest_for_older_session(self):
         older = self._create_session_via_orm(
-            created_date=timezone.localdate() - timedelta(days=5)
+            end_date=timezone.localdate() - timedelta(days=5)
         )
-        self._create_session_via_orm(created_date=timezone.localdate())
+        self._create_session_via_orm(end_date=timezone.localdate())
 
         response = self.client.get(self._detail_url(self.labour.pk, older.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -2254,9 +2257,7 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
             current_site=self.site,
         )
         self._create_session_via_orm(labour=other_labour)
-        mine = self._create_session_via_orm(
-            created_date=timezone.localdate() - timedelta(days=1)
-        )
+        mine = self._create_session_via_orm()
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
@@ -2289,7 +2290,7 @@ class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
 
     def test_running_session_includes_previous_cumulative_payable(self):
         self._create_session_via_orm(
-            created_date=timezone.localdate() - timedelta(days=5),
+            end_date=timezone.localdate() - timedelta(days=5),
             salary_earnings=500,
             extra_earnings=0,
             total_fooding_pay=200,
@@ -2339,9 +2340,9 @@ class LabourSessionDeleteTests(LabourSessionAPITestCase):
 
     def test_delete_non_latest_session_returns_400(self):
         older = self._create_session_via_orm(
-            created_date=timezone.localdate() - timedelta(days=5)
+            end_date=timezone.localdate() - timedelta(days=5)
         )
-        self._create_session_via_orm(created_date=timezone.localdate())
+        self._create_session_via_orm(end_date=timezone.localdate())
 
         response = self.client.delete(self._detail_url(self.labour.pk, older.pk))
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

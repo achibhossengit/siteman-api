@@ -304,7 +304,7 @@ class LabourSessionViewSet(
     queryset = LabourSession.objects.none()
     pagination_class = StandardPagination
     http_method_names = ["get", "post", "delete", "head", "options"]
-    filterset_fields = ["created_date", "start_date", "end_date"]
+    filterset_fields = ["start_date", "end_date"]
 
     def get_permissions(self):
         perms = list(api_settings.DEFAULT_PERMISSION_CLASSES)
@@ -329,7 +329,7 @@ class LabourSessionViewSet(
                 labour_id=self.kwargs["labour_pk"],
             )
             .select_related("labour")
-            .order_by("-created_date", "-id")
+            .order_by("-end_date", "-id")
         )
 
     def list(self, request, *args, **kwargs):

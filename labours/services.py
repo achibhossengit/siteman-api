@@ -24,7 +24,7 @@ _DECIMAL = DecimalField(max_digits=20, decimal_places=2)
 
 
 def get_running_session(labour):
-    latest_session = labour.sessions.order_by("-created_date", "-id").first()
+    latest_session = labour.sessions.order_by("-end_date", "-id").first()
     latest_session_payable = latest_session.cumulative_payable if latest_session else 0
 
     # Records after last_session_date (set by LabourSession post_save signal).
@@ -118,7 +118,8 @@ def create_labour_session(*, labour, user):
             )
         except IntegrityError:
             raise ValidationError(
-                "A work session already exists for this labour today.",
+                "A work session already exists for this labour with the same "
+                "start or end date.",
                 code=status_codes.RECORD_UNIQUE_CONSTRAINT_VIOLATION,
             )
         log_created(user, session)
@@ -140,7 +141,7 @@ def is_latest_labour_session(session):
     """True when ``session`` is the labour's most recent work session."""
     latest = (
         LabourSession.objects.filter(labour_id=session.labour_id)
-        .order_by("-created_date", "-id")
+        .order_by("-end_date", "-id")
         .values_list("pk", flat=True)
         .first()
     )
