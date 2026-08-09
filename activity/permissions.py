@@ -13,6 +13,7 @@ from .models import ActivityEntityType, ActivityLog
 ENTITY_VIEW_PERMS: dict[str, str] = {
     ActivityEntityType.DAILY_RECORD: "labours.view_dailyrecord",
     ActivityEntityType.SITE_CASH: "sites.view_sitecash",
+    ActivityEntityType.LABOUR_SESSION: "labours.view_laboursession",
 }
 
 

@@ -23,8 +23,8 @@ class ActivityLogViewSet(
     """Company-scoped activity timeline (read + one-way review).
 
     Global gate: ``view_activitylog`` (list/retrieve), ``change_activitylog``
-    (review). Rows are limited to daily_record and site_cash,
-    then narrowed by allowed sites and each entity's
+    (review). Rows are limited to daily_record, site_cash, and
+    labour_session, then narrowed by allowed sites and each entity's
     ``view_<model>`` permission.
     """
 

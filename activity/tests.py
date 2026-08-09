@@ -319,6 +319,19 @@ class ActivityLogAPITests(APITestCase):
             business_date=timezone.localdate(),
             changes={"amount": 100},
         )
+        self.log_session = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site_a,
+            labour=self.labour,
+            labour_name=self.labour.name,
+            actor=self.admin,
+            actor_name=self.admin.name,
+            action=ActivityAction.CREATED,
+            entity_type=ActivityEntityType.LABOUR_SESSION,
+            entity_id=401,
+            business_date=timezone.localdate(),
+            changes={"payable": 50},
+        )
         self.log_private = ActivityLog.objects.create(
             company=self.company,
             site=self.site_a,
@@ -368,11 +381,12 @@ class ActivityLogAPITests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_sees_only_daily_record_and_site_cash(self):
+    def test_admin_sees_daily_record_site_cash_and_session(self):
         self._grant(
             self.admin,
             "activity.view_activitylog",
             "labours.view_dailyrecord",
+            "labours.view_laboursession",
             "sites.view_sitecash",
             "sites.view_privatesitecash",
             "accounts.view_user",
@@ -381,16 +395,33 @@ class ActivityLogAPITests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = {row["id"] for row in response.data["results"]}
-        self.assertEqual(ids, {self.log_site_a.pk, self.log_site_b.pk})
+        self.assertEqual(
+            ids, {self.log_site_a.pk, self.log_site_b.pk, self.log_session.pk}
+        )
         self.assertNotIn(self.log_private.pk, ids)
         self.assertNotIn(self.log_user.pk, ids)
         self.assertNotIn(self.log_other_company.pk, ids)
+
+    def test_session_hidden_without_view_laboursession(self):
+        self._grant(
+            self.admin,
+            "activity.view_activitylog",
+            "labours.view_dailyrecord",
+            "sites.view_sitecash",
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(ids, {self.log_site_a.pk, self.log_site_b.pk})
+        self.assertNotIn(self.log_session.pk, ids)
 
     def test_manager_only_sees_allowed_site_and_entity(self):
         self._grant(
             self.manager,
             "activity.view_activitylog",
             "labours.view_dailyrecord",
+            "labours.view_laboursession",
             "sites.view_sitecash",
             "accounts.view_user",
         )
@@ -398,8 +429,8 @@ class ActivityLogAPITests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = {row["id"] for row in response.data["results"]}
-        # site A daily record only: no site B cash, no private/user (not in API allowlist)
-        self.assertEqual(ids, {self.log_site_a.pk})
+        # site A daily record + session only: no site B cash, no private/user
+        self.assertEqual(ids, {self.log_site_a.pk, self.log_session.pk})
 
     def test_filter_by_entity_type_and_entity_id(self):
         self._grant(
