@@ -744,12 +744,13 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         self.assertEqual(response.data["site"], self.site.pk)
 
     def test_list_uses_list_serializer_fields(self):
-        cash = self._create_cash()
+        cash = self._create_cash(billing=self.billing)
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(_list_results(response)), 1)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
         self.assertCountEqual(
-            _list_results(response)[0].keys(),
+            results[0].keys(),
             [
                 "id",
                 "date",
@@ -757,11 +758,14 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
                 "amount",
                 "note",
                 "billing",
+                "billing_name",
                 "created_at",
                 "updated_at",
             ],
         )
-        self.assertEqual(_list_results(response)[0]["id"], cash.pk)
+        self.assertEqual(results[0]["id"], cash.pk)
+        self.assertEqual(results[0]["billing"], self.billing.pk)
+        self.assertEqual(results[0]["billing_name"], self.billing.name)
 
     def test_retrieve_cash_detail(self):
         cash = self._create_cash(note="detail")
@@ -949,6 +953,7 @@ class SiteCashByDateTests(SiteCashAPITestCase):
                 "amount",
                 "note",
                 "billing",
+                "billing_name",
                 "created_at",
                 "updated_at",
             ],

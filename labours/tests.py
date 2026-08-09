@@ -940,7 +940,7 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
         self.assertFalse(response.data["is_sealed"])
 
     def test_list_uses_list_serializer_fields(self):
-        record = self._create_daily_record()
+        record = self._create_daily_record(billing=self.billing)
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = _list_results(response)
@@ -958,13 +958,19 @@ class DailyRecordCRUDTests(DailyRecordAPITestCase):
                 "return_amount",
                 "note",
                 "billing",
+                "billing_name",
                 "site",
+                "site_name",
                 "is_sealed",
                 "created_at",
                 "updated_at",
             ],
         )
         self.assertEqual(results[0]["id"], record.pk)
+        self.assertEqual(results[0]["site"], self.site.pk)
+        self.assertEqual(results[0]["site_name"], self.site.name)
+        self.assertEqual(results[0]["billing"], self.billing.pk)
+        self.assertEqual(results[0]["billing_name"], self.billing.name)
 
     def test_retrieve_daily_record_detail(self):
         record = self._create_daily_record(note="detail")
@@ -1500,7 +1506,7 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
         self.assertEqual(DailyRecord.objects.count(), 2)
 
     def test_list_uses_list_serializer_fields(self):
-        self._create_daily_record()
+        self._create_daily_record(billing=self.billing)
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = _list_results(response)
@@ -1511,6 +1517,7 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
                 "id",
                 "labour_id",
                 "labour_name",
+                "labour_current_site",
                 "date",
                 "present",
                 "wage",
@@ -1520,11 +1527,15 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
                 "return_amount",
                 "note",
                 "billing",
+                "billing_name",
                 "is_sealed",
                 "created_at",
                 "updated_at",
             ],
         )
+        self.assertEqual(results[0]["billing"], self.billing.pk)
+        self.assertEqual(results[0]["billing_name"], self.billing.name)
+        self.assertEqual(results[0]["labour_current_site"], self.site.pk)
 
 
 class SiteDailyRecordValidationTests(SiteDailyRecordAPITestCase):
@@ -1652,6 +1663,7 @@ class SiteDailyRecordByDateTests(SiteDailyRecordAPITestCase):
                 "id",
                 "labour_id",
                 "labour_name",
+                "labour_current_site",
                 "date",
                 "present",
                 "wage",
@@ -1661,6 +1673,7 @@ class SiteDailyRecordByDateTests(SiteDailyRecordAPITestCase):
                 "return_amount",
                 "note",
                 "billing",
+                "billing_name",
                 "is_sealed",
                 "created_at",
                 "updated_at",

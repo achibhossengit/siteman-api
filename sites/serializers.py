@@ -121,6 +121,10 @@ class SiteLedgerValidationMixin:
 
 
 class SiteCashListSerializer(serializers.ModelSerializer):
+    billing_name = serializers.CharField(
+        source="billing.name", read_only=True, allow_null=True
+    )
+
     class Meta:
         model = SiteCash
         fields = [
@@ -130,6 +134,7 @@ class SiteCashListSerializer(serializers.ModelSerializer):
             "amount",
             "note",
             "billing",
+            "billing_name",
             "created_at",
             "updated_at",
         ]
