@@ -319,6 +319,17 @@ class LabourFilterIsolationTests(LabourAPITestCase):
         self.assertEqual(len(_list_results(response)), 1)
         self.assertEqual(_list_results(response)[0]["name"], "On Padma")
 
+    def test_filter_by_current_site_null(self):
+        self._create_labour(name="Unassigned", current_site=None)
+        self._create_labour(name="On Padma", current_site=self.site)
+
+        response = self.client.get(self.list_url, {"current_site": "null"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["name"], "Unassigned")
+        self.assertIsNone(results[0]["current_site"])
+
     def test_search_by_name(self):
         self._create_labour(name="Karim Mia")
         self._create_labour(name="Rahim Uddin")
