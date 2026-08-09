@@ -24,7 +24,11 @@ class Labour(TimeStampedMixin, CompanyOwnedMixin):
     )
     default_salary = models.IntegerField(validators=[MinValueValidator(0)], default=0)
     default_fooding = models.IntegerField(validators=[MinValueValidator(0)], default=0)
-    last_session_date = models.DateField(null=True, blank=True)
+    last_session_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Cached latest labour session end_date; new records must be after this.",
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -139,7 +143,6 @@ class LabourSession(TimeStampedMixin, CompanyOwnedMixin):
     end_date = models.DateField(
         help_text="Last sealed record date.",
     )
-    created_date = models.DateField(default=timezone.localdate)
     present_days = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -159,8 +162,12 @@ class LabourSession(TimeStampedMixin, CompanyOwnedMixin):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["created_date", "labour"],
-                name="uq_labour_session_created_date_labour",
+                fields=["labour", "start_date"],
+                name="uq_labour_session_labour_start_date",
+            ),
+            models.UniqueConstraint(
+                fields=["labour", "end_date"],
+                name="uq_labour_session_labour_end_date",
             ),
         ]
 
