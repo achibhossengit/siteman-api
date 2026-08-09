@@ -10,7 +10,6 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from company.models import Company
-from activity.models import ActivityAction, ActivityEntityType, ActivityLog
 from sites.models import (
     BillingCategory,
     PrivateSiteCash,
@@ -380,74 +379,6 @@ class SiteSubscriptionTests(SiteAPITestCase):
         self.assertEqual(site.name, "Editable")
 
 
-class SiteActiveLabourTests(SiteAPITestCase):
-    def _active_labour_url(self, site_id):
-        return reverse(
-            "site-active-labour",
-            kwargs={"version": "v1", "pk": site_id},
-        )
-
-    def test_lists_active_labours_for_site_without_pagination(self):
-        site = self._create_site(name="Yard")
-        active = Labour.objects.create(
-            name="Karim",
-            company=self.company,
-            current_site=site,
-            is_active=True,
-            default_salary=500,
-        )
-        Labour.objects.create(
-            name="Inactive Worker",
-            company=self.company,
-            current_site=site,
-            is_active=False,
-            default_salary=400,
-        )
-        other_site = self._create_site(name="Other Yard")
-        Labour.objects.create(
-            name="Elsewhere",
-            company=self.company,
-            current_site=other_site,
-            is_active=True,
-            default_salary=400,
-        )
-
-        response = self.client.get(self._active_labour_url(site.pk))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
-        self.assertNotIn("results", response.data)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], active.pk)
-        self.assertEqual(response.data[0]["name"], "Karim")
-        self.assertTrue(response.data[0]["is_active"])
-
-    def test_empty_list_when_no_active_labours(self):
-        site = self._create_site(name="Empty Yard")
-        response = self.client.get(self._active_labour_url(site.pk))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
-
-    def test_unauthenticated_returns_401(self):
-        site = self._create_site(name="Yard")
-        self.client.force_authenticate(user=None)
-        response = self.client.get(self._active_labour_url(site.pk))
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_non_member_cannot_list(self):
-        site = self._create_site(name="Restricted")
-        member = User.objects.create_user(
-            phone_number="+8801711111111",
-            name="Manager",
-            password="strong-pass-123",
-            company=self.company,
-            is_companyadmin=False,
-        )
-        self._grant_site_permissions(member, ["view_site"])
-        self.client.force_authenticate(user=member)
-        response = self.client.get(self._active_labour_url(site.pk))
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-
 class SiteCashAPITestCase(APITestCase):
     """Shared fixtures for nested site cash endpoints."""
 
@@ -510,26 +441,6 @@ class SiteCashAPITestCase(APITestCase):
         return reverse(
             "site-cash-detail",
             kwargs={"version": "v1", "site_pk": site_id, "pk": cash_id},
-        )
-
-    def _by_date_url(self, site_id, cash_date):
-        return reverse(
-            "site-cash-by-date",
-            kwargs={
-                "version": "v1",
-                "site_pk": site_id,
-                "cash_date": str(cash_date),
-            },
-        )
-
-    def _pending_log_url(self, site_id, cash_date):
-        return reverse(
-            "site-cash-pending-log",
-            kwargs={
-                "version": "v1",
-                "site_pk": site_id,
-                "cash_date": str(cash_date),
-            },
         )
 
     def _create_cash(self, site=None, **kwargs):
@@ -934,159 +845,6 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(_list_results(response)), 1)
         self.assertEqual(_list_results(response)[0]["amount"], 100)
-
-
-class SiteCashByDateTests(SiteCashAPITestCase):
-    def test_lists_cash_for_date_without_pagination(self):
-        today = timezone.localdate()
-        yesterday = today - timedelta(days=1)
-        first = self._create_cash(date=today, amount=1000, type=SiteCashType.DEPOSIT)
-        second = self._create_cash(date=today, amount=200, type=SiteCashType.COST)
-        self._create_cash(date=yesterday, amount=500)
-
-        response = self.client.get(self._by_date_url(self.site.pk, today))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
-        self.assertNotIn("results", response.data)
-        self.assertEqual(len(response.data), 2)
-        self.assertEqual(
-            {row["id"] for row in response.data},
-            {first.pk, second.pk},
-        )
-        self.assertCountEqual(
-            response.data[0].keys(),
-            [
-                "id",
-                "date",
-                "type",
-                "amount",
-                "note",
-                "billing",
-                "billing_name",
-                "created_at",
-                "updated_at",
-            ],
-        )
-
-    def test_empty_list_when_no_cash_for_date(self):
-        self._create_cash(date=timezone.localdate() - timedelta(days=1))
-        response = self.client.get(
-            self._by_date_url(self.site.pk, timezone.localdate())
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
-
-    def test_invalid_calendar_date_returns_400(self):
-        response = self.client.get(self._by_date_url(self.site.pk, "2026-02-30"))
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.INVALID,
-        )
-
-    def test_unauthenticated_returns_401(self):
-        self.client.force_authenticate(user=None)
-        response = self.client.get(
-            self._by_date_url(self.site.pk, timezone.localdate())
-        )
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_post_not_allowed(self):
-        response = self.client.post(
-            self._by_date_url(self.site.pk, timezone.localdate()),
-            {},
-        )
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
-
-    def test_numeric_detail_still_works(self):
-        cash = self._create_cash()
-        response = self.client.get(self._detail_url(self.site.pk, cash.pk))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], cash.pk)
-
-
-class SiteCashPendingLogTests(SiteCashAPITestCase):
-    def _create_cash_log(self, *, site=None, business_date=None, reviewed=False, **kwargs):
-        site = site or self.site
-        defaults = {
-            "company": site.company,
-            "site": site,
-            "actor": self.user,
-            "actor_name": self.user.name,
-            "action": ActivityAction.CREATED,
-            "entity_type": ActivityEntityType.SITE_CASH,
-            "entity_id": 1,
-            "business_date": business_date or timezone.localdate(),
-            "changes": {"amount": 100},
-        }
-        defaults.update(kwargs)
-        log = ActivityLog.objects.create(**defaults)
-        if reviewed:
-            log.reviewed_at = timezone.now()
-            log.reviewed_by = self.user
-            log.save(update_fields=["reviewed_at", "reviewed_by"])
-        return log
-
-    def test_lists_pending_site_cash_logs_without_pagination(self):
-        today = timezone.localdate()
-        yesterday = today - timedelta(days=1)
-        pending = self._create_cash_log(business_date=today, entity_id=10)
-        self._create_cash_log(business_date=today, entity_id=11, reviewed=True)
-        self._create_cash_log(business_date=yesterday, entity_id=12)
-        self._create_cash_log(
-            business_date=today,
-            entity_id=13,
-            entity_type=ActivityEntityType.DAILY_RECORD,
-        )
-
-        response = self.client.get(self._pending_log_url(self.site.pk, today))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
-        self.assertNotIn("results", response.data)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], pending.pk)
-        self.assertEqual(response.data[0]["entity_type"], ActivityEntityType.SITE_CASH)
-        self.assertIsNone(response.data[0]["reviewed_at"])
-
-    def test_empty_list_when_no_pending_logs(self):
-        self._create_cash_log(reviewed=True)
-        response = self.client.get(
-            self._pending_log_url(self.site.pk, timezone.localdate())
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
-
-    def test_other_site_logs_hidden(self):
-        other_site = Site.objects.create(name="Other Yard", company=self.company)
-        self._assign_site(self.user, other_site)
-        self._create_cash_log(site=other_site)
-        response = self.client.get(
-            self._pending_log_url(self.site.pk, timezone.localdate())
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
-
-    def test_invalid_calendar_date_returns_400(self):
-        response = self.client.get(self._pending_log_url(self.site.pk, "2026-02-30"))
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.INVALID,
-        )
-
-    def test_unauthenticated_returns_401(self):
-        self.client.force_authenticate(user=None)
-        response = self.client.get(
-            self._pending_log_url(self.site.pk, timezone.localdate())
-        )
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_post_not_allowed(self):
-        response = self.client.post(
-            self._pending_log_url(self.site.pk, timezone.localdate()),
-            {},
-        )
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 class SiteCashSubscriptionTests(SiteCashAPITestCase):
@@ -1892,12 +1650,6 @@ class SiteBillingCategoryAPITestCase(APITestCase):
             kwargs={"version": "v1", "site_pk": site_id},
         )
 
-    def _active_billing_url(self, site_id):
-        return reverse(
-            "site-billing-category-active-billing",
-            kwargs={"version": "v1", "site_pk": site_id},
-        )
-
     def _detail_url(self, site_id, billing_id):
         return reverse(
             "site-billing-category-detail",
@@ -2172,44 +1924,6 @@ class SiteBillingCategoryFilterIsolationTests(SiteBillingCategoryAPITestCase):
             [row["name"] for row in _list_results(response)],
             ["First", "Second"],
         )
-
-
-class SiteBillingCategoryActiveBillingTests(SiteBillingCategoryAPITestCase):
-    def test_lists_active_billing_without_pagination(self):
-        active = self._create_billing(name="Active", is_active=True, display_order=2)
-        self._create_billing(name="Inactive", is_active=False, display_order=1)
-        also_active = self._create_billing(
-            name="Also Active", is_active=True, display_order=1
-        )
-
-        response = self.client.get(self._active_billing_url(self.site.pk))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
-        self.assertNotIn("results", response.data)
-        self.assertEqual(len(response.data), 2)
-        self.assertEqual(
-            [row["name"] for row in response.data],
-            ["Also Active", "Active"],
-        )
-        self.assertEqual(
-            {row["id"] for row in response.data},
-            {active.pk, also_active.pk},
-        )
-
-    def test_empty_list_when_no_active_billing(self):
-        self._create_billing(name="Inactive", is_active=False)
-        response = self.client.get(self._active_billing_url(self.site.pk))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
-
-    def test_unauthenticated_returns_401(self):
-        self.client.force_authenticate(user=None)
-        response = self.client.get(self._active_billing_url(self.site.pk))
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_post_not_allowed(self):
-        response = self.client.post(self._active_billing_url(self.site.pk), {})
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 class SiteBillingCategorySubscriptionTests(SiteBillingCategoryAPITestCase):

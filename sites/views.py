@@ -16,9 +16,6 @@ from activity.hooks import (
     activity_before_destroy,
     snapshot_for,
 )
-from activity.models import ActivityEntityType
-from activity.permissions import activity_logs_for_user
-from activity.serializers import ActivityLogSerializer
 from core import status_codes
 from core.pagination import StandardPagination
 from core.permissions import ActiveSubscriptionOrReadOnly
@@ -43,8 +40,6 @@ from .serializers import (
     SiteSerializer,
 )
 from .services import build_site_daily_report
-from labours.models import Labour
-from labours.serializers import LabourListSerializer
 
 
 class SiteViewSet(viewsets.ModelViewSet):
@@ -145,23 +140,6 @@ class SiteViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         return Response(serializer.data)
 
-    @action(
-        detail=True,
-        methods=["get"],
-        url_path="active_labour",
-        permission_classes=[IsAuthenticated, ActiveSubscriptionOrReadOnly, HasSitePermissions],
-    )
-    def active_labour(self, request, pk=None, **kwargs):
-        """Unpaginated list of active labours currently assigned to this site."""
-        site = self.get_object()
-        labours = Labour.objects.filter(
-            company_id=request.user.company_id,
-            current_site_id=site.pk,
-            is_active=True,
-        ).order_by("name")
-        serializer = LabourListSerializer(labours, many=True)
-        return Response(serializer.data)
-
 
 class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
     """Nested under ``/sites/<site_pk>/billing-categories``."""
@@ -194,19 +172,6 @@ class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
             .select_related("site")
             .order_by("display_order", "id")
         )
-
-    @action(
-        detail=False,
-        methods=["get"],
-        url_path="active-billing",
-        url_name="active-billing",
-        pagination_class=None,
-    )
-    def active_billing(self, request, site_pk=None, **kwargs):
-        """Unpaginated list of active billing categories for this site."""
-        qs = self.get_queryset().filter(is_active=True)
-        serializer = BillingCategoryListSerializer(qs, many=True)
-        return Response(serializer.data)
 
     def _apply_status_defaults(self, serializer):
         data = serializer.validated_data
@@ -282,60 +247,6 @@ class SiteCashViewSet(viewsets.ModelViewSet):
             .select_related("site", "billing")
             .order_by("-date", "-id")
         )
-
-    def _parse_cash_date(self, cash_date):
-        try:
-            parsed = parse_date(cash_date)
-        except ValueError:
-            parsed = None
-        if parsed is None:
-            raise serializers.ValidationError(
-                {"date": "Enter a valid date (YYYY-MM-DD)."},
-                code=status_codes.INVALID,
-            )
-        return parsed
-
-    @action(
-        detail=False,
-        methods=["get"],
-        url_path=r"(?P<cash_date>\d{4}-\d{2}-\d{2})",
-        url_name="by-date",
-        pagination_class=None,
-    )
-    def by_date(self, request, site_pk=None, cash_date=None, **kwargs):
-        """Unpaginated list of all cash entries for this site on ``cash_date``."""
-        parsed = self._parse_cash_date(cash_date)
-        qs = self.get_queryset().filter(date=parsed)
-        serializer = SiteCashListSerializer(qs, many=True)
-        return Response(serializer.data)
-
-    @action(
-        detail=False,
-        methods=["get"],
-        url_path=r"(?P<cash_date>\d{4}-\d{2}-\d{2})/pending_log",
-        url_name="pending-log",
-        pagination_class=None,
-    )
-    def pending_log(self, request, site_pk=None, cash_date=None, **kwargs):
-        """
-        Unpaginated pending (unreviewed) site-cash activity for this date.
-        It inherits the SiteCashViewSet's permission classes. 
-        and check the `sitecash.view_sitecash` permission.
-        """
-        parsed = self._parse_cash_date(cash_date)
-        qs = (
-            activity_logs_for_user(request.user)
-            .filter(
-                site_id=int(site_pk),
-                business_date=parsed,
-                entity_type=ActivityEntityType.SITE_CASH,
-                reviewed_at__isnull=True,
-            )
-            .select_related("actor", "reviewed_by", "site", "labour")
-            .order_by("-created_at", "-id")
-        )
-        serializer = ActivityLogSerializer(qs, many=True)
-        return Response(serializer.data)
 
     @transaction.atomic
     def perform_create(self, serializer):
