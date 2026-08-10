@@ -17,3 +17,17 @@ def normalize_bd_phone(raw):
     if not match:
         raise ValidationError("Enter a valid Bangladeshi phone number.")
     return "+880" + match.group(1)
+
+
+def format_bd_phone_local(phone):
+    """Format a stored BD mobile as 01XXXXXXXXX for API responses.
+
+    Returns the original value unchanged if it is empty or not a valid BD mobile.
+    """
+    if not phone:
+        return phone
+    cleaned = re.sub(r"[\s\-()]", "", str(phone))
+    match = BD_PHONE_RE.match(cleaned)
+    if not match:
+        return phone
+    return "0" + match.group(1)

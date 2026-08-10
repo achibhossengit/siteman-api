@@ -7,7 +7,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.serializers import TokenBlacklistSerializer, TokenObtainPairSerializer, TokenRefreshSerializer
 from core import status_codes
-from core.phone import normalize_bd_phone
+from core.phone import format_bd_phone_local, normalize_bd_phone
 from sites.models import Site
 from .models import UserSite
 
@@ -20,6 +20,13 @@ ROLE_GROUP_NAMES = (
     "Site Manager",
     "Site Auditor",
 )
+
+
+class BDPhoneNumberField(serializers.CharField):
+    """Store as +880…; serialize responses as 01XXXXXXXXX."""
+
+    def to_representation(self, value):
+        return format_bd_phone_local(value)
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -99,6 +106,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     groups = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
     sites = serializers.SerializerMethodField()
+    phone_number = BDPhoneNumberField()
 
     class Meta:
         model = User
@@ -183,6 +191,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class UserListSerializer(serializers.ModelSerializer):
+    phone_number = BDPhoneNumberField(read_only=True)
+
     class Meta:
         model = User
         fields = [
@@ -204,6 +214,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
     """
 
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
+    phone_number = BDPhoneNumberField()
 
     class Meta:
         model = User
