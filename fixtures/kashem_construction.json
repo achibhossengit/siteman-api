@@ -1,0 +1,2469 @@
+[
+  {
+    "model": "company.company",
+    "pk": 100,
+    "fields": {
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "name": "Kashem Construction",
+      "is_active": true,
+      "deleted_at": null
+    }
+  },
+  {
+    "model": "company.companyconfig",
+    "pk": 100,
+    "fields": {
+      "company": 100,
+      "labour_transfer_allowed": true,
+      "updated_at": "2026-08-10T00:00:00Z"
+    }
+  },
+  {
+    "model": "subscription.subscription",
+    "pk": 100,
+    "fields": {
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "company": 100,
+      "open_site_limit": 20,
+      "active_user_limit": 50,
+      "active_labour_limit": 200,
+      "paid_until": "2027-12-31"
+    }
+  },
+  {
+    "model": "accounts.user",
+    "pk": 101,
+    "fields": {
+      "password": "pbkdf2_sha256$870000$VtIbEpbwCAOb5eMggzDiUx$skDCwyrs0yLc+4R+nDBWaZU1vrY+6WuLSWx4f1/woMQ=",
+      "last_login": null,
+      "is_superuser": false,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "company": 100,
+      "name": "কাশেম মিয়া",
+      "phone_number": "+8801999999901",
+      "email": null,
+      "is_active": true,
+      "is_staff": false,
+      "is_companyadmin": true,
+      "groups": [
+        [
+          "Company Admin"
+        ]
+      ],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "accounts.user",
+    "pk": 102,
+    "fields": {
+      "password": "pbkdf2_sha256$870000$VtIbEpbwCAOb5eMggzDiUx$skDCwyrs0yLc+4R+nDBWaZU1vrY+6WuLSWx4f1/woMQ=",
+      "last_login": null,
+      "is_superuser": false,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "company": 100,
+      "name": "রফিকুল ইসলাম",
+      "phone_number": "+8801999999902",
+      "email": null,
+      "is_active": true,
+      "is_staff": false,
+      "is_companyadmin": false,
+      "groups": [
+        [
+          "Site Manager"
+        ]
+      ],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "accounts.user",
+    "pk": 103,
+    "fields": {
+      "password": "pbkdf2_sha256$870000$VtIbEpbwCAOb5eMggzDiUx$skDCwyrs0yLc+4R+nDBWaZU1vrY+6WuLSWx4f1/woMQ=",
+      "last_login": null,
+      "is_superuser": false,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "company": 100,
+      "name": "শাহজাহান আলী",
+      "phone_number": "+8801999999903",
+      "email": null,
+      "is_active": true,
+      "is_staff": false,
+      "is_companyadmin": false,
+      "groups": [
+        [
+          "Site Manager"
+        ]
+      ],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "accounts.user",
+    "pk": 104,
+    "fields": {
+      "password": "pbkdf2_sha256$870000$VtIbEpbwCAOb5eMggzDiUx$skDCwyrs0yLc+4R+nDBWaZU1vrY+6WuLSWx4f1/woMQ=",
+      "last_login": null,
+      "is_superuser": false,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "company": 100,
+      "name": "নজরুল ইসলাম",
+      "phone_number": "+8801999999904",
+      "email": null,
+      "is_active": true,
+      "is_staff": false,
+      "is_companyadmin": false,
+      "groups": [
+        [
+          "Site Manager"
+        ]
+      ],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "accounts.user",
+    "pk": 105,
+    "fields": {
+      "password": "pbkdf2_sha256$870000$VtIbEpbwCAOb5eMggzDiUx$skDCwyrs0yLc+4R+nDBWaZU1vrY+6WuLSWx4f1/woMQ=",
+      "last_login": null,
+      "is_superuser": false,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "company": 100,
+      "name": "আবুল কালাম",
+      "phone_number": "+8801999999905",
+      "email": null,
+      "is_active": true,
+      "is_staff": false,
+      "is_companyadmin": false,
+      "groups": [
+        [
+          "Site Manager"
+        ]
+      ],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "accounts.user",
+    "pk": 106,
+    "fields": {
+      "password": "pbkdf2_sha256$870000$VtIbEpbwCAOb5eMggzDiUx$skDCwyrs0yLc+4R+nDBWaZU1vrY+6WuLSWx4f1/woMQ=",
+      "last_login": null,
+      "is_superuser": false,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "company": 100,
+      "name": "মোস্তাফিজুর রহমান",
+      "phone_number": "+8801999999906",
+      "email": null,
+      "is_active": true,
+      "is_staff": false,
+      "is_companyadmin": false,
+      "groups": [
+        [
+          "Site Manager"
+        ]
+      ],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "accounts.user",
+    "pk": 107,
+    "fields": {
+      "password": "pbkdf2_sha256$870000$VtIbEpbwCAOb5eMggzDiUx$skDCwyrs0yLc+4R+nDBWaZU1vrY+6WuLSWx4f1/woMQ=",
+      "last_login": null,
+      "is_superuser": false,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "company": 100,
+      "name": "সালমা বেগম",
+      "phone_number": "+8801999999907",
+      "email": null,
+      "is_active": true,
+      "is_staff": false,
+      "is_companyadmin": false,
+      "groups": [
+        [
+          "Site Auditor"
+        ]
+      ],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "accounts.user",
+    "pk": 108,
+    "fields": {
+      "password": "pbkdf2_sha256$870000$VtIbEpbwCAOb5eMggzDiUx$skDCwyrs0yLc+4R+nDBWaZU1vrY+6WuLSWx4f1/woMQ=",
+      "last_login": null,
+      "is_superuser": false,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "company": 100,
+      "name": "জাহিদ হাসান",
+      "phone_number": "+8801999999908",
+      "email": null,
+      "is_active": true,
+      "is_staff": false,
+      "is_companyadmin": false,
+      "groups": [
+        [
+          "Site Manager"
+        ]
+      ],
+      "user_permissions": []
+    }
+  },
+  {
+    "model": "sites.site",
+    "pk": 201,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "name": "গুলশান আবাসিক প্রকল্প",
+      "is_active": true,
+      "is_closed": false,
+      "closed_at": null
+    }
+  },
+  {
+    "model": "sites.site",
+    "pk": 202,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "name": "মিরপুর বহুতল ভবন",
+      "is_active": true,
+      "is_closed": false,
+      "closed_at": null
+    }
+  },
+  {
+    "model": "sites.site",
+    "pk": 203,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "name": "ধানমন্ডি অফিস কমপ্লেক্স",
+      "is_active": true,
+      "is_closed": false,
+      "closed_at": null
+    }
+  },
+  {
+    "model": "sites.site",
+    "pk": 204,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "name": "উত্তরা গার্ডেন সিটি",
+      "is_active": true,
+      "is_closed": false,
+      "closed_at": null
+    }
+  },
+  {
+    "model": "sites.site",
+    "pk": 205,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "name": "সাভার শিল্প প্রকল্প",
+      "is_active": true,
+      "is_closed": false,
+      "closed_at": null
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 501,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 102,
+      "site": 201
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 502,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 103,
+      "site": 202
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 503,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 104,
+      "site": 203
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 504,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 105,
+      "site": 204
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 505,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 106,
+      "site": 205
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 506,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 107,
+      "site": 201
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 507,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 107,
+      "site": 202
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 508,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 107,
+      "site": 203
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 509,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 107,
+      "site": 204
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 510,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 107,
+      "site": 205
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 511,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 108,
+      "site": 201
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 512,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 108,
+      "site": 202
+    }
+  },
+  {
+    "model": "accounts.usersite",
+    "pk": 513,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "user": 108,
+      "site": 203
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 301,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 201,
+      "name": "বেসমেন্ট",
+      "display_order": 0,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 302,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 201,
+      "name": "গ্রাউন্ড ফ্লোর",
+      "display_order": 1,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 303,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 201,
+      "name": "প্রথম তলা",
+      "display_order": 2,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 304,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 201,
+      "name": "দ্বিতীয় তলা",
+      "display_order": 3,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 305,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 201,
+      "name": "তৃতীয় তলা",
+      "display_order": 4,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 306,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 201,
+      "name": "ছাদ কাজ",
+      "display_order": 5,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 307,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 201,
+      "name": "প্লাস্টার ও রং",
+      "display_order": 6,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 308,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 202,
+      "name": "ভিত্তি কাজ",
+      "display_order": 0,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 309,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 202,
+      "name": "কাঠামো নির্মাণ",
+      "display_order": 1,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 310,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 202,
+      "name": "গ্রাউন্ড ফ্লোর",
+      "display_order": 2,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 311,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 202,
+      "name": "প্রথম থেকে পঞ্চম তলা",
+      "display_order": 3,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 312,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 202,
+      "name": "ষষ্ঠ থেকে দশম তলা",
+      "display_order": 4,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 313,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 202,
+      "name": "ইলেকট্রিক্যাল",
+      "display_order": 5,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 314,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 202,
+      "name": "প্লাম্বিং",
+      "display_order": 6,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 315,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 203,
+      "name": "ভূমি উন্নয়ন",
+      "display_order": 0,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 316,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 203,
+      "name": "ফাউন্ডেশন",
+      "display_order": 1,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 317,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 203,
+      "name": "অফিস ফ্লোর এ",
+      "display_order": 2,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 318,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 203,
+      "name": "অফিস ফ্লোর বি",
+      "display_order": 3,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 319,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 203,
+      "name": "পার্কিং লেভেল",
+      "display_order": 4,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 320,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 203,
+      "name": "ফিনিশিং কাজ",
+      "display_order": 5,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 321,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 204,
+      "name": "সাইট প্রস্তুতি",
+      "display_order": 0,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 322,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 204,
+      "name": "রোড ও ড্রেনেজ",
+      "display_order": 1,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 323,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 204,
+      "name": "প্লট উন্নয়ন",
+      "display_order": 2,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 324,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 204,
+      "name": "মডেল বাড়ি নির্মাণ",
+      "display_order": 3,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 325,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 204,
+      "name": "ল্যান্ডস্কেপিং",
+      "display_order": 4,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 326,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 205,
+      "name": "ফ্যাক্টরি শেড",
+      "display_order": 0,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 327,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 205,
+      "name": "মেশিন ফাউন্ডেশন",
+      "display_order": 1,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 328,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 205,
+      "name": "গোডাউন নির্মাণ",
+      "display_order": 2,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 329,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 205,
+      "name": "অফিস ব্লক",
+      "display_order": 3,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 330,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 205,
+      "name": "ইলেকট্রিক্যাল সাবস্টেশন",
+      "display_order": 4,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "sites.billingcategory",
+    "pk": 331,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "site": 205,
+      "name": "সীমানা দেয়াল",
+      "display_order": 5,
+      "is_active": true,
+      "is_done": false
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1001,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "রহিম মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1002,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "করিম উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1003,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "জসিম হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1004,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "সেলিম রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1005,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "হাবিব ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1006,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "আলমগীর আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1007,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "মোস্তফা খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1008,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "জাহাঙ্গীর শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1009,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "ইমরান আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1010,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "সোহেল চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1011,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "রফিক মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1012,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "কামরুল উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1013,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "নাসির হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1014,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "শামীম রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1015,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "ফারুক ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1016,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "জাবেদ আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1017,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "মাসুদ খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1018,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 201,
+      "name": "তানভীর শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1019,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "রাশেদ আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1020,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "সাজ্জাদ চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1021,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "বিপ্লব মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1022,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "আরিফ উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1023,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "সাগর হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1024,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "রিয়াদ রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1025,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "মেহেদী ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1026,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "শাহীন আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1027,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "আতিক খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1028,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "রবিন শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1029,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "সাব্বির আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1030,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "রকিব চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1031,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "হৃদয় মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1032,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "সুমন উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1033,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "বাবু হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1034,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "মিন্টু রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1035,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "পলাশ ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1036,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 202,
+      "name": "কবির আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1037,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "আনোয়ার খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1038,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "হেলাল শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1039,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "মজনু আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1040,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "শফিক চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1041,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "আব্দুল্লাহ মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1042,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "ইউসুফ উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1043,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "ইব্রাহিম হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1044,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "হাসান রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1045,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "মাহমুদ ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1046,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "আতিকুর আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1047,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "জাসিম খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1048,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "করিমুল শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1049,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "নূর আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1050,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "ফজল চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1051,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "সিরাজ মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1052,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "ওমর উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1053,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "আজাদ হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1054,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 203,
+      "name": "লিটন রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1055,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "রুবেল ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1056,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "মনি আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1057,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "বকুল খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1058,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "জসিমুল শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1059,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "কামাল আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1060,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "পরেশ চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1061,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "সঞ্জয় মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1062,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "প্রদীপ উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1063,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "মিলন হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1064,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "বাদল রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1065,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "রঞ্জন ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1066,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "অমল আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1067,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "দীপক খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1068,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "গৌতম শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1069,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "স্বপন আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1070,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "মন্টু চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1071,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "খোকন মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1072,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 204,
+      "name": "টুটুল উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1073,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "রাজু হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1074,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "পিন্টু রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1075,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "শুভ ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1076,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "অনিক আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1077,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "রাহুল খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1078,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "সাজিদ শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1079,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "নাহিদ আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1080,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "ফাহিম চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1081,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "আদিল মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1082,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "নাঈম উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1083,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "জয় হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1084,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "রাফি রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1085,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "সামি ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1086,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "ওয়াসিম আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1087,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "ইয়াসির খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1088,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "তামিম শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1089,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "জায়েদ আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1090,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": 205,
+      "name": "রায়হান চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1091,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "নাজমুল মিয়া",
+      "default_attendance": "1.00",
+      "default_salary": 500,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1092,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "শাকিল উদ্দিন",
+      "default_attendance": "1.00",
+      "default_salary": 550,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1093,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "আশিষ হোসেন",
+      "default_attendance": "1.00",
+      "default_salary": 600,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1094,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "প্রিয় রহমান",
+      "default_attendance": "1.00",
+      "default_salary": 650,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1095,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "মোশাররফ ইসলাম",
+      "default_attendance": "1.00",
+      "default_salary": 700,
+      "default_fooding": 180,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1096,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "আলম আলী",
+      "default_attendance": "1.00",
+      "default_salary": 750,
+      "default_fooding": 200,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1097,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "পরভেজ খান",
+      "default_attendance": "1.00",
+      "default_salary": 800,
+      "default_fooding": 80,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1098,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "রওশন শেখ",
+      "default_attendance": "1.00",
+      "default_salary": 850,
+      "default_fooding": 100,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1099,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "শফিকুল আহমেদ",
+      "default_attendance": "1.00",
+      "default_salary": 900,
+      "default_fooding": 120,
+      "last_session_date": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "labours.labour",
+    "pk": 1100,
+    "fields": {
+      "company": 100,
+      "created_at": "2026-08-10T00:00:00Z",
+      "updated_at": "2026-08-10T00:00:00Z",
+      "current_site": null,
+      "name": "ইকবাল চৌধুরী",
+      "default_attendance": "1.00",
+      "default_salary": 950,
+      "default_fooding": 150,
+      "last_session_date": null,
+      "is_active": true
+    }
+  }
+]
