@@ -1,5 +1,3 @@
-import secrets
-
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -198,13 +196,22 @@ class UserListSerializer(serializers.ModelSerializer):
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
+    """Create a company user with an initial password set by the admin.
+
+    Password is write-only and create-only. Updates go through
+    ``UserUpdateSerializer``, which does not accept password — users change
+    their own password via ``/auth/password/change`` or reset.
+    """
+
+    password = serializers.CharField(write_only=True, style={"input_type": "password"})
+
     class Meta:
         model = User
         fields = [
             "id",
             "name",
             "phone_number",
-            "email",
+            "password",
             "is_active",
             "is_companyadmin",
             "company",
@@ -220,11 +227,6 @@ class UserCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             # Own uniqueness check → ALREADY_REGISTERED (after normalize).
             "phone_number": {"validators": []},
-            "email": {
-                "required": True,
-                "allow_blank": False,
-                "allow_null": False,
-            },
         }
 
     def __init__(self, *args, **kwargs):
@@ -260,9 +262,12 @@ class UserCreateSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate_password(self, value):
+        validate_password(value)
+        return value
+
     def create(self, validated_data):
-        # Unknown to the creator; first login uses forgot-password reset.
-        password = secrets.token_urlsafe(32)
+        password = validated_data.pop("password")
         return User.objects.create_user(password=password, **validated_data)
 
 

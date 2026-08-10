@@ -831,38 +831,45 @@ class UserCRUDTests(UserAPITestCase):
             {
                 "name": "Site Manager",
                 "phone_number": "01711112222",
-                "email": "manager@example.com",
+                "password": "initial-pass-123",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["name"], "Site Manager")
         self.assertEqual(response.data["phone_number"], "+8801711112222")
-        self.assertEqual(response.data["email"], "manager@example.com")
         self.assertEqual(response.data["company"], self.company.pk)
         self.assertTrue(response.data["is_active"])
         self.assertFalse(response.data["is_companyadmin"])
         self.assertNotIn("password", response.data)
+        self.assertNotIn("email", response.data)
 
         created = User.objects.get(pk=response.data["id"])
-        # System-generated password — not the (ignored) client-supplied value.
-        self.assertFalse(created.check_password("strong-pass-123"))
+        self.assertTrue(created.check_password("initial-pass-123"))
         self.assertTrue(created.has_usable_password())
+        self.assertIn(created.email, (None, ""))
         self.assertFalse(created.is_staff)
         self.assertFalse(created.is_superuser)
 
-    def test_create_ignores_client_password(self):
+    def test_create_requires_password(self):
         response = self.client.post(
             self.list_url,
             {
-                "name": "No Client Pass",
+                "name": "No Pass",
                 "phone_number": "+8801711112211",
-                "email": "no-pass@example.com",
-                "password": "client-supplied-pass-123",
             },
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        created = User.objects.get(pk=response.data["id"])
-        self.assertFalse(created.check_password("client-supplied-pass-123"))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_rejects_weak_password(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Weak Pass",
+                "phone_number": "+8801711112212",
+                "password": "123",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_create_forces_non_admin_flags(self):
         response = self.client.post(
@@ -870,7 +877,7 @@ class UserCRUDTests(UserAPITestCase):
             {
                 "name": "Forced",
                 "phone_number": "+8801711113333",
-                "email": "forced@example.com",
+                "password": "strong-pass-123",
                 "is_companyadmin": True,
                 "is_active": False,
             },
@@ -1127,15 +1134,20 @@ class UserCRUDTests(UserAPITestCase):
 
 
 class UserValidationTests(UserAPITestCase):
-    def test_create_requires_email(self):
+    def test_create_ignores_client_email(self):
         response = self.client.post(
             self.list_url,
             {
                 "name": "No Email",
                 "phone_number": "+8801711118787",
+                "email": "ignored@example.com",
+                "password": "strong-pass-123",
             },
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertNotIn("email", response.data)
+        created = User.objects.get(pk=response.data["id"])
+        self.assertIn(created.email, (None, ""))
 
     def test_duplicate_phone_rejected(self):
         self._create_company_user(phone="+8801711118888")
@@ -1144,7 +1156,7 @@ class UserValidationTests(UserAPITestCase):
             {
                 "name": "Another",
                 "phone_number": "+8801711118888",
-                "email": "another@example.com",
+                "password": "strong-pass-123",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1160,7 +1172,7 @@ class UserValidationTests(UserAPITestCase):
             {
                 "name": "Karim",
                 "phone_number": "+8801711120000",
-                "email": "karim@example.com",
+                "password": "strong-pass-123",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1216,7 +1228,7 @@ class UserSubscriptionTests(UserAPITestCase):
             {
                 "name": "Overflow",
                 "phone_number": "+8801711126666",
-                "email": "overflow@example.com",
+                "password": "strong-pass-123",
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
