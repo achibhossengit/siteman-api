@@ -2,6 +2,7 @@ from datetime import timedelta
 from pathlib import Path
 import dj_database_url
 from decouple import Csv, config
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -11,6 +12,12 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=Csv())
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 CORS_ALLOW_CREDENTIALS = config('CORS_ALLOW_CREDENTIALS', default=True, cast=bool)
+
+# Django admin path (env-driven). Prefer a non-default slug in production.
+_ADMIN_URL = config('ADMIN_URL', default='backoffice').strip().strip('/')
+if not _ADMIN_URL:
+    raise ImproperlyConfigured("ADMIN_URL must be a non-empty URL path segment.")
+ADMIN_URL = f'{_ADMIN_URL}/'
 
 
 # Application definition
