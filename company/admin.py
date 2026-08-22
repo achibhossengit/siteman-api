@@ -5,6 +5,9 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 
+from django.urls import reverse
+from django.utils.html import format_html
+
 from accounts.models import User
 from accounts.views import COMPANY_ADMIN_GROUP
 from core.phone import normalize_bd_phone
@@ -43,23 +46,93 @@ class CompanyAddForm(forms.ModelForm):
 
 class CompanyConfigInline(admin.StackedInline):
     model = CompanyConfig
+    template = "admin/edit_inline/stacked_plain.html"
     can_delete = False
     extra = 0
-    readonly_fields = ("updated_at",)
+    min_num = 1
+    max_num = 1
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 class SubscriptionInline(admin.TabularInline):
     model = Subscription
+    template = "admin/edit_inline/tabular_plain.html"
     extra = 0
-    show_change_link = True
+    min_num = 1
+    max_num = 1
     can_delete = False
+    show_change_link = False
+    fields = (
+        "open_site_limit",
+        "active_user_limit",
+        "active_labour_limit",
+        "paid_until",
+    )
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class CompanyUserInline(admin.TabularInline):
+    model = User
+    fk_name = "company"
+    template = "admin/edit_inline/tabular_plain.html"
+    extra = 0
+    max_num = 0
+    can_delete = False
+    fields = ("name_link", "phone_number", "is_active", "is_companyadmin")
+    readonly_fields = fields
+    ordering = ("name", "id")
+    verbose_name = "user"
+    verbose_name_plural = "users"
+
+    @admin.display(description="name")
+    def name_link(self, obj):
+        if not obj.pk:
+            return "—"
+        url = reverse("admin:accounts_user_change", args=[obj.pk])
+        return format_html('<a href="{}">{}</a>', url, obj.name)
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 class PaymentInline(admin.TabularInline):
     model = Payment
+    template = "admin/edit_inline/tabular_plain.html"
     extra = 0
-    show_change_link = True
-    can_delete = True
+    max_num = 0
+    can_delete = False
+    fields = ("transaction_id_link", "method", "amount", "status")
+    readonly_fields = fields
+    ordering = ("-created_at", "-id")
+    verbose_name = "payment"
+    verbose_name_plural = "payments"
+
+    @admin.display(description="transaction id")
+    def transaction_id_link(self, obj):
+        if not obj.pk:
+            return "—"
+        url = reverse("admin:subscription_payment_change", args=[obj.pk])
+        label = obj.transaction_id or f"#{obj.pk}"
+        return format_html('<a href="{}">{}</a>', url, label)
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Company)
@@ -99,7 +172,7 @@ class CompanyAdmin(admin.ModelAdmin):
 
     def get_inlines(self, request, obj=None):
         if obj:
-            return [CompanyConfigInline, SubscriptionInline, PaymentInline]
+            return [CompanyConfigInline, SubscriptionInline, CompanyUserInline, PaymentInline]
         return []
 
     def save_model(self, request, obj, form, change):
