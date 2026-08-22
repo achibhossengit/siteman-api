@@ -1,74 +1,67 @@
-from django import forms
 from django.contrib import admin
-from django.db import transaction
 
-from core.exceptions import SubscriptionError
-from core.services import SubscriptionService
+from core.admin import (
+    CompanyListFilter,
+    CurrentSiteListFilter,
+    DateRangeFilter,
+    ReadOnlyModelAdmin,
+    SiteListFilter,
+)
 from .models import DailyRecord, Labour, LabourSession
 
 
-class LabourAdminForm(forms.ModelForm):
-    class Meta:
-        model = Labour
-        fields = "__all__"
-
-    def clean(self):
-        cleaned = super().clean()
-
-        company = cleaned.get("company") or self.instance.company
-        if company is None:
-            return cleaned
-
-        self._validate_current_site(cleaned, company)
-        self._validate_labour_limit(cleaned, company)
-
-        return cleaned
-
-    def _validate_current_site(self, cleaned, company):
-        site = cleaned.get("current_site")
-        if site is None:
-            return
-        if site.company_id != company.id:
-            self.add_error("current_site", "Site does not belong to this company.")
-        elif site.is_closed:
-            self.add_error("current_site", "Cannot assign labour to a closed site.")
-
-    def _validate_labour_limit(self, cleaned, company):
-        is_active = cleaned.get("is_active", self.instance.is_active)
-        is_add = self.instance.pk is None
-        # Only a newly active labour consumes a slot: on add, or when reactivating.
-        becomes_active = (is_add and is_active) or (
-            self.instance.pk and not self.instance.is_active and is_active
-        )
-        if not becomes_active:
-            return
-        try:
-            with transaction.atomic():
-                SubscriptionService.validate_active_labour_limit(company)
-        except SubscriptionError as e:
-            raise forms.ValidationError(e)
-
-
 @admin.register(Labour)
-class LabourAdmin(admin.ModelAdmin):
-    form = LabourAdminForm
+class LabourAdmin(ReadOnlyModelAdmin):
     list_display = (
-        "id",
         "name",
-        "company",
-        "current_site",
-        "default_attendance",
-        "default_salary",
-        "default_fooding",
-        "last_session_date",
         "is_active",
+        "created_at",
     )
     list_display_links = ("name",)
-    list_filter = ("is_active", "company", "current_site")
+    list_filter = (
+        ("company", CompanyListFilter),
+        CurrentSiteListFilter,
+        "is_active",
+        ("created_at", DateRangeFilter),
+    )
     search_fields = ("name",)
-    autocomplete_fields = ("company", "current_site")
-    readonly_fields = ("last_session_date", "created_at", "updated_at")
 
 
-admin.site.register(DailyRecord)
-admin.site.register(LabourSession)
+@admin.register(DailyRecord)
+class DailyRecordAdmin(ReadOnlyModelAdmin):
+    list_display = (
+        "date",
+        "labour",
+        "present",
+        "wage",
+        "is_sealed",
+    )
+    list_display_links = ("date",)
+    list_filter = (
+        ("company", CompanyListFilter),
+        SiteListFilter,
+        "is_sealed",
+        ("date", DateRangeFilter),
+    )
+    search_fields = ("labour__name", "site__name", "note", "company__name")
+    list_select_related = ("labour",)
+
+
+@admin.register(LabourSession)
+class LabourSessionAdmin(ReadOnlyModelAdmin):
+    list_display = (
+        "labour",
+        "start_date",
+        "end_date",
+        "present_days",
+        "salary_earnings",
+        "affected_rows",
+    )
+    list_display_links = ("labour",)
+    list_filter = (
+        ("company", CompanyListFilter),
+        ("start_date", DateRangeFilter),
+        ("end_date", DateRangeFilter),
+    )
+    search_fields = ("labour__name", "company__name")
+    list_select_related = ("labour",)

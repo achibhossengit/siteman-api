@@ -1,0 +1,27 @@
+{% load i18n %}
+{% with choice=choices.0 %}
+<details data-filter-title="{{ title }}" open>
+  <summary>
+    {% blocktranslate with filter_title=title %} By {{ filter_title }} {% endblocktranslate %}
+  </summary>
+  <form method="get" style="padding: 8px 0 4px;">
+    {% for k, v in choice.hidden %}
+      <input type="hidden" name="{{ k }}" value="{{ v }}">
+    {% endfor %}
+    <p style="margin: 0 0 8px;">
+      <label for="id_{{ spec.lookup_kwarg_gte }}">{% translate "From" %}</label>
+      <input type="date" id="id_{{ spec.lookup_kwarg_gte }}" name="{{ spec.lookup_kwarg_gte }}" value="{{ spec.value_gte }}" style="width: 100%; box-sizing: border-box;">
+    </p>
+    <p style="margin: 0 0 8px;">
+      <label for="id_{{ spec.lookup_kwarg_lte }}">{% translate "To" %}</label>
+      <input type="date" id="id_{{ spec.lookup_kwarg_lte }}" name="{{ spec.lookup_kwarg_lte }}" value="{{ spec.value_lte }}" style="width: 100%; box-sizing: border-box;">
+    </p>
+    <p style="margin: 0;">
+      <input type="submit" value="{% translate 'Filter' %}">
+      {% if spec.value_gte or spec.value_lte %}
+        <a href="{{ choice.clear_query }}">{% translate "Clear" %}</a>
+      {% endif %}
+    </p>
+  </form>
+</details>
+{% endwith %}
