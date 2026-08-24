@@ -1327,25 +1327,27 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
             {"id": self.company.pk, "name": "Achib Builders"},
         )
 
-    def test_get_returns_groups(self):
+    def test_get_returns_allowed_groups(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn(
             {"id": self.site_manager.pk, "name": "Site Manager"},
-            response.data["groups"],
+            response.data["allowed_groups"],
         )
+        self.assertNotIn("groups", response.data)
 
-    def test_get_returns_permissions(self):
+    def test_get_returns_allowed_permissions(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("accounts.view_user", response.data["permissions"])
+        self.assertIn("accounts.view_user", response.data["allowed_permissions"])
+        self.assertNotIn("permissions", response.data)
 
-    def test_get_returns_assigned_sites(self):
+    def test_get_returns_assigned_sites_as_allowed_sites(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["sites"], [self.site.pk])
+        self.assertEqual(response.data["allowed_sites"], [self.site.pk])
 
-    def test_companyadmin_gets_all_company_sites(self):
+    def test_companyadmin_allowed_sites_are_all_company_site_ids(self):
         other_site = Site.objects.create(
             name="Jamuna Bridge",
             company=self.company,
@@ -1353,12 +1355,34 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertCountEqual(
-            response.data["sites"],
+            response.data["allowed_sites"],
             [self.site.pk, other_site.pk],
         )
 
-    def test_non_admin_gets_only_assigned_sites(self):
-        Site.objects.create(
+    def test_sites_is_company_catalog_with_fields(self):
+        other_site = Site.objects.create(
+            name="Jamuna Bridge",
+            company=self.company,
+        )
+        foreign_company = Company.objects.create(name="Other Co")
+        Site.objects.create(name="Foreign Site", company=foreign_company)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = {row["id"]: row for row in response.data["sites"]}
+        self.assertCountEqual(rows, [self.site.pk, other_site.pk])
+        self.assertEqual(
+            rows[self.site.pk],
+            {
+                "id": self.site.pk,
+                "name": "Padma Bridge",
+                "is_active": True,
+                "is_closed": False,
+            },
+        )
+        self.assertEqual(rows[other_site.pk]["name"], "Jamuna Bridge")
+
+    def test_non_admin_allowed_sites_are_only_assigned(self):
+        unassigned = Site.objects.create(
             name="Unassigned Site",
             company=self.company,
         )
@@ -1377,7 +1401,11 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         self.client.force_authenticate(user=worker)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["sites"], [self.site.pk])
+        self.assertEqual(response.data["allowed_sites"], [self.site.pk])
+        self.assertCountEqual(
+            [row["id"] for row in response.data["sites"]],
+            [self.site.pk, unassigned.pk],
+        )
 
     def test_get_is_only_request_user(self):
         other = User.objects.create_user(

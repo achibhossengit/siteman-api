@@ -9,6 +9,7 @@ from rest_framework_simplejwt.serializers import TokenBlacklistSerializer, Token
 from core import status_codes
 from core.phone import format_bd_phone_local, normalize_bd_phone
 from sites.models import Site
+from sites.serializers import SiteListSerializer
 from .models import UserSite
 
 User = get_user_model()
@@ -100,11 +101,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     Writable: name and phone_number. Email changes require a verification flow.
     Password changes go through ``/auth/password/change`` or reset.
+
+    ``allowed_*`` is this user's access. ``sites`` is the company site catalog
+    (id → name and related fields), not the access list.
     """
 
     company = serializers.SerializerMethodField()
-    groups = serializers.SerializerMethodField()
-    permissions = serializers.SerializerMethodField()
+    allowed_groups = serializers.SerializerMethodField()
+    allowed_permissions = serializers.SerializerMethodField()
+    allowed_sites = serializers.SerializerMethodField()
     sites = serializers.SerializerMethodField()
     phone_number = BDPhoneNumberField()
 
@@ -119,8 +124,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "is_active",
             "is_staff",
             "is_companyadmin",
-            "groups",
-            "permissions",
+            "allowed_groups",
+            "allowed_permissions",
+            "allowed_sites",
             "sites",
         )
         read_only_fields = (
@@ -129,8 +135,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "is_active",
             "is_staff",
             "is_companyadmin",
-            "groups",
-            "permissions",
+            "allowed_groups",
+            "allowed_permissions",
+            "allowed_sites",
             "sites",
         )
         extra_kwargs = {
@@ -142,16 +149,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return None
         return {"id": obj.company_id, "name": obj.company.name}
 
-    def get_groups(self, obj):
+    def get_allowed_groups(self, obj):
         return [
             {"id": group.pk, "name": group.name}
             for group in obj.groups.all().order_by("name")
         ]
 
-    def get_permissions(self, obj):
+    def get_allowed_permissions(self, obj):
         return sorted(obj.get_all_permissions())
 
-    def get_sites(self, obj):
+    def get_allowed_sites(self, obj):
         if obj.is_companyadmin and obj.company_id is not None:
             return list(
                 Site.objects.filter(company_id=obj.company_id).values_list(
@@ -159,6 +166,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 )
             )
         return list(obj.sites.values_list("site_id", flat=True))
+
+    def get_sites(self, obj):
+        if obj.company_id is None:
+            return []
+        qs = Site.objects.filter(company_id=obj.company_id).order_by("name", "id")
+        return SiteListSerializer(qs, many=True).data
 
     def validate_phone_number(self, value):
         try:

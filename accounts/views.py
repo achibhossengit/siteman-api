@@ -323,8 +323,10 @@ class UserProfileViewSet(
 ):
     """Current authenticated user's profile.
 
-    ``GET /profile`` — basic info, groups, permissions, and site ids
-    (all company sites for company admins; otherwise assigned sites only).
+    ``GET /profile`` — basic info, allowed groups/permissions/site ids,
+    and the company site catalog (``sites``).
+    Allowed site ids are all company sites for company admins; otherwise
+    assigned sites only. ``sites`` is every site in the company.
     ``PATCH /profile`` — update name, email, phone.
     Password changes use ``/auth/password/change`` or reset.
     No Django model-permission gate (any authenticated user).
