@@ -6,6 +6,7 @@ from rest_framework.exceptions import ErrorDetail
 from rest_framework.validators import UniqueTogetherValidator
 
 from core import status_codes
+from core.images import ProfilePhotoField
 from .models import DailyRecord, Labour, LabourSession
 from .services import affected_rows_match, is_latest_labour_session
 
@@ -116,6 +117,8 @@ class LabourListSerializer(serializers.ModelSerializer):
 
 
 class LabourSerializer(serializers.ModelSerializer):
+    photo = ProfilePhotoField(required=False, allow_null=True)
+
     class Meta:
         model = Labour
         fields = [
@@ -138,9 +141,6 @@ class LabourSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        extra_kwargs = {
-            "photo": {"required": False, "allow_null": True},
-        }
 
     def _company(self):
         return self.context["request"].user.company

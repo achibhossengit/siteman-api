@@ -1500,6 +1500,60 @@ class UserProfileUpdateTests(UserProfileAPITestCase):
                 self.assertTrue(
                     self.user.photo.name.startswith(f"users/{self.user.company_id}/")
                 )
+                self.assertTrue(self.user.photo.name.endswith(".jpg"))
+                with self.user.photo.open("rb") as handle:
+                    with Image.open(handle) as saved:
+                        self.assertEqual(saved.size, (1, 1))
+
+    def test_patch_photo_resizes_longest_edge(self):
+        import tempfile
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        from core.images import MAX_EDGE
+
+        buf = BytesIO()
+        Image.new("RGB", (800, 600), "navy").save(buf, format="JPEG")
+        upload = SimpleUploadedFile(
+            "wide.jpg",
+            buf.getvalue(),
+            content_type="image/jpeg",
+        )
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                response = self.client.patch(
+                    self.url,
+                    {"photo": upload},
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.user.refresh_from_db()
+                with self.user.photo.open("rb") as handle:
+                    with Image.open(handle) as saved:
+                        self.assertEqual(max(saved.size), MAX_EDGE)
+
+    def test_patch_photo_rejects_over_5mb(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from core import status_codes
+
+        upload = SimpleUploadedFile(
+            "huge.jpg",
+            b"x" * (5 * 1024 * 1024 + 1),
+            content_type="image/jpeg",
+        )
+        response = self.client.patch(
+            self.url,
+            {"photo": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.PHOTO_TOO_LARGE,
+        )
 
     def test_patch_photo_null_clears(self):
         import tempfile

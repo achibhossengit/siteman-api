@@ -219,6 +219,29 @@ class LabourCRUDTests(LabourAPITestCase):
                 self.assertTrue(
                     labour.photo.name.startswith(f"labours/{labour.company_id}/")
                 )
+                self.assertTrue(labour.photo.name.endswith(".jpg"))
+
+    def test_patch_photo_rejects_over_5mb(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from core import status_codes
+
+        labour = self._create_labour(name="Huge Photo Labour")
+        upload = SimpleUploadedFile(
+            "huge.jpg",
+            b"x" * (5 * 1024 * 1024 + 1),
+            content_type="image/jpeg",
+        )
+        response = self.client.patch(
+            self._detail_url(labour.pk),
+            {"photo": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.PHOTO_TOO_LARGE,
+        )
 
     def test_put_not_allowed(self):
         labour = self._create_labour()

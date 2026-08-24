@@ -3,6 +3,7 @@
 # Generic validation
 INVALID = "invalid"
 EXPIRED = "expired"
+PHOTO_TOO_LARGE = "photo_too_large"
 
 # OTP / verification
 ALREADY_REGISTERED = "already_registered"

@@ -7,6 +7,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.serializers import TokenBlacklistSerializer, TokenObtainPairSerializer, TokenRefreshSerializer
 from core import status_codes
+from core.images import ProfilePhotoField
 from core.phone import format_bd_phone_local, normalize_bd_phone
 from sites.models import Site
 from sites.serializers import SiteListSerializer
@@ -112,6 +113,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     allowed_sites = serializers.SerializerMethodField()
     sites = serializers.SerializerMethodField()
     phone_number = BDPhoneNumberField()
+    photo = ProfilePhotoField(required=False, allow_null=True)
 
     class Meta:
         model = User
@@ -143,7 +145,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
         )
         extra_kwargs = {
             "phone_number": {"validators": []},
-            "photo": {"required": False, "allow_null": True},
         }
 
     def get_company(self, obj):

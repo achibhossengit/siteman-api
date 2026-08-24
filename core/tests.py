@@ -52,3 +52,41 @@ class AdminUrlTests(TestCase):
         response = self.client.get(f"/{settings.ADMIN_URL}")
         self.assertEqual(response.status_code, 302)
         self.assertIn(f"/{settings.ADMIN_URL}login/", response["Location"])
+
+
+class ProfilePhotoPrepareTests(SimpleTestCase):
+    def test_resize_caps_longest_edge(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        from core.images import MAX_EDGE, resize_profile_photo
+
+        buf = BytesIO()
+        Image.new("RGB", (800, 600), "navy").save(buf, format="JPEG")
+        upload = SimpleUploadedFile(
+            "wide.jpg", buf.getvalue(), content_type="image/jpeg"
+        )
+        result = resize_profile_photo(upload)
+        with Image.open(result) as image:
+            self.assertEqual(max(image.size), MAX_EDGE)
+            self.assertEqual(image.size, (447, 335))
+            self.assertEqual(image.format, "JPEG")
+
+    def test_small_image_is_not_upscaled(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        from core.images import resize_profile_photo
+
+        buf = BytesIO()
+        Image.new("RGB", (40, 40), "red").save(buf, format="PNG")
+        upload = SimpleUploadedFile(
+            "tiny.png", buf.getvalue(), content_type="image/png"
+        )
+        result = resize_profile_photo(upload)
+        with Image.open(result) as image:
+            self.assertEqual(image.size, (40, 40))
