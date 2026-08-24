@@ -1,9 +1,20 @@
+import uuid
 from decimal import Decimal
+from pathlib import Path
+
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
 from core.models import CompanyOwnedMixin, TimeStampedMixin
+
+
+def labour_photo_upload_to(instance, filename):
+    ext = Path(filename).suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg"
+    company_id = instance.company_id or "none"
+    return f"labours/{company_id}/{uuid.uuid4().hex}{ext}"
 
 
 class Labour(TimeStampedMixin, CompanyOwnedMixin):
@@ -16,6 +27,11 @@ class Labour(TimeStampedMixin, CompanyOwnedMixin):
         help_text="One site at a time; reassign = move. NULL = unassigned.",
     )
     name = models.CharField(max_length=255)
+    photo = models.ImageField(
+        upload_to=labour_photo_upload_to,
+        null=True,
+        blank=True,
+    )
     default_attendance = models.DecimalField(
         max_digits=12,
         decimal_places=2,

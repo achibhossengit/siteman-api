@@ -1,3 +1,6 @@
+import uuid
+from pathlib import Path
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
@@ -5,6 +8,14 @@ from django.core.exceptions import ValidationError
 from core.models import CompanyOwnedMixin, TimeStampedMixin
 from core.phone import normalize_bd_phone
 from .managers import UserManager
+
+
+def user_photo_upload_to(instance, filename):
+    ext = Path(filename).suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg"
+    company_id = instance.company_id or "none"
+    return f"users/{company_id}/{uuid.uuid4().hex}{ext}"
 
 
 class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
@@ -17,6 +28,11 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
         help_text="Null for system-scope users.",
     )
     name = models.CharField(max_length=255)
+    photo = models.ImageField(
+        upload_to=user_photo_upload_to,
+        null=True,
+        blank=True,
+    )
     phone_number = models.CharField(
         max_length=14,
         unique=True,
