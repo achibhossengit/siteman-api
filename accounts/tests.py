@@ -896,6 +896,7 @@ class UserCRUDTests(UserAPITestCase):
             [
                 "id",
                 "name",
+                "photo",
                 "phone_number",
                 "email",
                 "is_active",
@@ -1321,6 +1322,7 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         self.assertEqual(response.data["name"], "Achib Hossen")
         self.assertEqual(response.data["phone_number"], "01712345678")
         self.assertEqual(response.data["email"], "achib@example.com")
+        self.assertIsNone(response.data["photo"])
         self.assertTrue(response.data["is_companyadmin"])
         self.assertEqual(
             response.data["company"],
@@ -1469,6 +1471,63 @@ class UserProfileUpdateTests(UserProfileAPITestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("strong-pass-123"))
         self.assertEqual(self.user.name, "Still Achib")
+
+    def test_patch_photo(self):
+        import tempfile
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new("RGB", (1, 1), "red").save(buf, format="PNG")
+        upload = SimpleUploadedFile(
+            "avatar.png",
+            buf.getvalue(),
+            content_type="image/png",
+        )
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                response = self.client.patch(
+                    self.url,
+                    {"photo": upload},
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertIsNotNone(response.data["photo"])
+                self.assertIn("/media/users/", response.data["photo"])
+                self.user.refresh_from_db()
+                self.assertTrue(
+                    self.user.photo.name.startswith(f"users/{self.user.company_id}/")
+                )
+
+    def test_patch_photo_null_clears(self):
+        import tempfile
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new("RGB", (1, 1), "red").save(buf, format="PNG")
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                self.user.photo.save(
+                    "avatar.png",
+                    SimpleUploadedFile(
+                        "avatar.png", buf.getvalue(), content_type="image/png"
+                    ),
+                    save=True,
+                )
+                response = self.client.patch(
+                    self.url,
+                    {"photo": None},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertIsNone(response.data["photo"])
+                self.user.refresh_from_db()
+                self.assertFalse(self.user.photo)
 
 
 class OutstandingTokenAdminFilterTests(APITestCase):

@@ -250,7 +250,7 @@ class UserAdmin(BaseUserAdmin):
 
     fieldsets = (
         (None, {"fields": ("phone_number", "password")}),
-        ("Profile", {"fields": ("name", "email", "company")}),
+        ("Profile", {"fields": ("name", "photo", "email", "company")}),
         (
             "Permissions",
             {

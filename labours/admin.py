@@ -14,6 +14,7 @@ from .models import DailyRecord, Labour, LabourSession
 class LabourAdmin(ReadOnlyModelAdmin):
     list_display = (
         "name",
+        "photo",
         "is_active",
         "created_at",
     )

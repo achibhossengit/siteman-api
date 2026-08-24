@@ -152,6 +152,7 @@ class LabourCRUDTests(LabourAPITestCase):
             [
                 "id",
                 "name",
+                "photo",
                 "current_site",
                 "default_attendance",
                 "default_salary",
@@ -187,6 +188,37 @@ class LabourCRUDTests(LabourAPITestCase):
         labour.refresh_from_db()
         self.assertEqual(labour.name, "New Name")
         self.assertFalse(labour.is_active)
+
+    def test_patch_photo(self):
+        import tempfile
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from PIL import Image
+
+        labour = self._create_labour(name="Photo Labour")
+        buf = BytesIO()
+        Image.new("RGB", (1, 1), "blue").save(buf, format="PNG")
+        upload = SimpleUploadedFile(
+            "labour.png",
+            buf.getvalue(),
+            content_type="image/png",
+        )
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                response = self.client.patch(
+                    self._detail_url(labour.pk),
+                    {"photo": upload},
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertIsNotNone(response.data["photo"])
+                self.assertIn("/media/labours/", response.data["photo"])
+                labour.refresh_from_db()
+                self.assertTrue(
+                    labour.photo.name.startswith(f"labours/{labour.company_id}/")
+                )
 
     def test_put_not_allowed(self):
         labour = self._create_labour()

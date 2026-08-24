@@ -11,6 +11,7 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
+    from django.conf.urls.static import static
     from drf_spectacular.views import (
         SpectacularAPIView,
         SpectacularRedocView,
@@ -22,3 +23,4 @@ if settings.DEBUG:
         path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
         path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
     ]
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

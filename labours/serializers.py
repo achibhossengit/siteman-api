@@ -105,6 +105,7 @@ class LabourListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "photo",
             "current_site",
             "default_attendance",
             "default_salary",
@@ -120,6 +121,7 @@ class LabourSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "photo",
             "current_site",
             "default_attendance",
             "default_salary",
@@ -136,6 +138,9 @@ class LabourSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        extra_kwargs = {
+            "photo": {"required": False, "allow_null": True},
+        }
 
     def _company(self):
         return self.context["request"].user.company

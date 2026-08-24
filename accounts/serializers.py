@@ -118,6 +118,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "name",
+            "photo",
             "phone_number",
             "email",
             "company",
@@ -142,6 +143,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         )
         extra_kwargs = {
             "phone_number": {"validators": []},
+            "photo": {"required": False, "allow_null": True},
         }
 
     def get_company(self, obj):
@@ -211,6 +213,7 @@ class UserListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "photo",
             "phone_number",
             "email",
             "is_active",
