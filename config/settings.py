@@ -1,5 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
+import sys
 import dj_database_url
 from decouple import Csv, config
 from django.core.exceptions import ImproperlyConfigured
@@ -125,14 +126,74 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# User/labour photos: local disk in DEBUG; Cloudflare R2 when DEBUG is False.
+# Tests always use the local backend so they never hit the bucket.
+TESTING = len(sys.argv) > 1 and sys.argv[1] == 'test'
+R2_ACCESS_KEY_ID = config('R2_ACCESS_KEY_ID', default='')
+R2_SECRET_ACCESS_KEY = config('R2_SECRET_ACCESS_KEY', default='')
+R2_BUCKET_NAME = config('R2_BUCKET_NAME', default='')
+R2_ENDPOINT_URL = config('R2_ENDPOINT_URL', default='')
+R2_CUSTOM_DOMAIN = (
+    config('R2_CUSTOM_DOMAIN', default='')
+    .strip()
+    .removeprefix('https://')
+    .removeprefix('http://')
+    .strip('/')
+)
+
+def _r2_configured():
+    return all(
+        [
+            R2_ACCESS_KEY_ID,
+            R2_SECRET_ACCESS_KEY,
+            R2_BUCKET_NAME,
+            R2_ENDPOINT_URL,
+            R2_CUSTOM_DOMAIN,
+        ]
+    )
+
+
+# Default: R2 in production (DEBUG=False). Set USE_R2_STORAGE=True to try R2 locally.
+_use_r2_override = config('USE_R2_STORAGE', default='')
+if _use_r2_override != '':
+    USE_R2_STORAGE = (not TESTING) and config('USE_R2_STORAGE', cast=bool)
+else:
+    USE_R2_STORAGE = (not TESTING) and (not DEBUG)
+
+if USE_R2_STORAGE and not _r2_configured():
+    raise ImproperlyConfigured(
+        'Production media uses Cloudflare R2. Set R2_ACCESS_KEY_ID, '
+        'R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_ENDPOINT_URL, and '
+        'R2_CUSTOM_DOMAIN (public hostname, e.g. pub-xxx.r2.dev).'
+    )
+
 STORAGES = {
-    'default': {
-        'BACKEND': 'django.core.files.storage.FileSystemStorage',
-    },
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
     },
 }
+if USE_R2_STORAGE:
+    STORAGES['default'] = {
+        'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+        'OPTIONS': {
+            'access_key': R2_ACCESS_KEY_ID,
+            'secret_key': R2_SECRET_ACCESS_KEY,
+            'bucket_name': R2_BUCKET_NAME,
+            'endpoint_url': R2_ENDPOINT_URL,
+            'region_name': 'auto',
+            'custom_domain': R2_CUSTOM_DOMAIN,
+            'default_acl': None,
+            'querystring_auth': False,
+            'file_overwrite': False,
+            'addressing_style': 'path',
+            'signature_version': 's3v4',
+        },
+    }
+else:
+    STORAGES['default'] = {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    }
 
 
 # Default primary key field type
