@@ -1,9 +1,11 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.db.models import Exists, OuterRef
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import format_html
 from rest_framework_simplejwt.token_blacklist.admin import (
     OutstandingTokenAdmin as BaseOutstandingTokenAdmin,
 )
@@ -66,12 +68,11 @@ class ExpiredOutstandingTokenFilter(admin.SimpleListFilter):
 class OutstandingTokenAdmin(BaseOutstandingTokenAdmin):
     list_display = (
         "jti",
-        "user",
+        "user_link",
         "created_at",
         "expires_at",
         "is_active",
     )
-
     list_filter = (
         ActiveOutstandingTokenFilter,
         ExpiredOutstandingTokenFilter,
@@ -84,6 +85,7 @@ class OutstandingTokenAdmin(BaseOutstandingTokenAdmin):
         "user__name",
     )
     ordering = ("-created_at",)
+    actions = ("blacklist_selected_tokens", "delete_selected_tokens")
 
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("user")
@@ -92,6 +94,56 @@ class OutstandingTokenAdmin(BaseOutstandingTokenAdmin):
                 BlacklistedToken.objects.filter(token_id=OuterRef("pk"))
             )
         )
+
+    def has_change_permission(self, request, obj=None):
+        # Changelist POST is required for bulk actions; detail stays read-only.
+        if obj is None:
+            return admin.ModelAdmin.has_change_permission(self, request, obj)
+        return request.method in ("GET", "HEAD") and admin.ModelAdmin.has_change_permission(
+            self, request, obj
+        )
+
+    @admin.action(description="Blacklist selected tokens")
+    def blacklist_selected_tokens(self, request, queryset):
+        created = 0
+        already = 0
+        for token in queryset:
+            _, was_created = BlacklistedToken.objects.get_or_create(token=token)
+            if was_created:
+                created += 1
+            else:
+                already += 1
+        if created:
+            self.message_user(
+                request,
+                f"Blacklisted {created} token(s).",
+                messages.SUCCESS,
+            )
+        if already:
+            self.message_user(
+                request,
+                f"{already} selected token(s) were already blacklisted.",
+                messages.WARNING,
+            )
+
+    @admin.action(description="Delete selected outstanding tokens")
+    def delete_selected_tokens(self, request, queryset):
+        count = queryset.count()
+        queryset.delete()
+        self.message_user(
+            request,
+            f"Deleted {count} outstanding token(s). "
+            "Related blacklist rows were removed by cascade.",
+            messages.SUCCESS,
+        )
+
+    @admin.display(description="user", ordering="user")
+    def user_link(self, obj):
+        user = obj.user
+        if user is None:
+            return "—"
+        url = reverse("admin:accounts_user_change", args=[user.pk])
+        return format_html('<a href="{}">{}</a>', url, user)
 
     @admin.display(boolean=True, description="active")
     def is_active(self, obj):

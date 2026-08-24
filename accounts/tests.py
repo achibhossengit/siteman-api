@@ -1557,3 +1557,111 @@ class OutstandingTokenAdminFilterTests(APITestCase):
         self.assertNotIn(self.expired.pk, pks)
         self.assertIn(self.active.pk, pks)
         self.assertIn(self.blacklisted.pk, pks)
+
+
+class OutstandingTokenBlacklistAdminTests(APITestCase):
+    """Changelist bulk action: blacklist selected outstanding refresh tokens."""
+
+    def setUp(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from rest_framework_simplejwt.token_blacklist.models import (
+            BlacklistedToken,
+            OutstandingToken,
+        )
+
+        self.BlacklistedToken = BlacklistedToken
+        self.OutstandingToken = OutstandingToken
+
+        self.company = Company.objects.create(name="Blacklist Admin Co")
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self.other = User.objects.create_user(
+            phone_number="+8801712345679",
+            name="Other User",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        self.admin = User.objects.create_superuser(
+            phone_number="+8801700000001",
+            name="Staff",
+            password="pass-12345",
+        )
+        RefreshToken.for_user(self.user)
+        RefreshToken.for_user(self.other)
+        self.token_a = OutstandingToken.objects.get(user=self.user)
+        self.token_b = OutstandingToken.objects.get(user=self.other)
+        self.client.force_login(self.admin)
+        self.changelist_url = reverse(
+            "admin:token_blacklist_outstandingtoken_changelist"
+        )
+
+    def _run_action(self, action, *tokens):
+        return self.client.post(
+            self.changelist_url,
+            {
+                "action": action,
+                "_selected_action": [str(t.pk) for t in tokens],
+            },
+        )
+
+    def test_changelist_links_user_to_user_change_page(self):
+        user_change_url = reverse("admin:accounts_user_change", args=[self.user.pk])
+        response = self.client.get(self.changelist_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, user_change_url)
+        self.assertContains(response, self.user.name)
+        self.assertContains(response, "Blacklist selected tokens")
+        self.assertContains(response, "Delete selected outstanding tokens")
+
+    def test_bulk_blacklist_selected_tokens(self):
+        response = self._run_action(
+            "blacklist_selected_tokens", self.token_a, self.token_b
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            self.BlacklistedToken.objects.filter(token=self.token_a).exists()
+        )
+        self.assertTrue(
+            self.BlacklistedToken.objects.filter(token=self.token_b).exists()
+        )
+
+    def test_bulk_blacklist_skips_already_blacklisted(self):
+        self.BlacklistedToken.objects.get_or_create(token=self.token_a)
+        response = self._run_action(
+            "blacklist_selected_tokens", self.token_a, self.token_b
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            self.BlacklistedToken.objects.filter(token=self.token_a).count(), 1
+        )
+        self.assertTrue(
+            self.BlacklistedToken.objects.filter(token=self.token_b).exists()
+        )
+
+    def test_bulk_delete_selected_tokens(self):
+        self.BlacklistedToken.objects.get_or_create(token=self.token_a)
+        token_a_id = self.token_a.pk
+        token_b_id = self.token_b.pk
+        response = self._run_action(
+            "delete_selected_tokens", self.token_a, self.token_b
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            self.OutstandingToken.objects.filter(pk__in=[token_a_id, token_b_id]).exists()
+        )
+        self.assertFalse(
+            self.BlacklistedToken.objects.filter(token_id=token_a_id).exists()
+        )
+
+    def test_change_page_has_no_detail_blacklist_action(self):
+        change_url = reverse(
+            "admin:token_blacklist_outstandingtoken_change",
+            args=[self.token_a.pk],
+        )
+        response = self.client.get(change_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Blacklist token")
