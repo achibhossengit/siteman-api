@@ -2,10 +2,112 @@ from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
+from django.db.models import Exists, OuterRef
+from django.utils import timezone
+from rest_framework_simplejwt.token_blacklist.admin import (
+    OutstandingTokenAdmin as BaseOutstandingTokenAdmin,
+)
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
 
 from sites.models import Site
 
 from .models import User, UserSite
+
+
+class ActiveOutstandingTokenFilter(admin.SimpleListFilter):
+    """Active = not blacklisted and not past expires_at."""
+
+    title = "active"
+    parameter_name = "active"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("1", "Yes"),
+            ("0", "No"),
+        )
+
+    def queryset(self, request, queryset):
+        now = timezone.now()
+        active_q = {
+            "blacklistedtoken__isnull": True,
+            "expires_at__gt": now,
+        }
+        if self.value() == "1":
+            return queryset.filter(**active_q)
+        if self.value() == "0":
+            return queryset.exclude(**active_q)
+        return queryset
+
+
+class ExpiredOutstandingTokenFilter(admin.SimpleListFilter):
+    """Expired = expires_at is in the past (blacklist status ignored)."""
+
+    title = "expired"
+    parameter_name = "expired"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("1", "Yes"),
+            ("0", "No"),
+        )
+
+    def queryset(self, request, queryset):
+        now = timezone.now()
+        if self.value() == "1":
+            return queryset.filter(expires_at__lte=now)
+        if self.value() == "0":
+            return queryset.filter(expires_at__gt=now)
+        return queryset
+
+
+class OutstandingTokenAdmin(BaseOutstandingTokenAdmin):
+    list_display = (
+        "jti",
+        "user",
+        "created_at",
+        "expires_at",
+        "is_active",
+    )
+
+    list_filter = (
+        ActiveOutstandingTokenFilter,
+        ExpiredOutstandingTokenFilter,
+        "user",
+    )
+    search_fields = (
+        "jti",
+        "user__id",
+        "user__phone_number",
+        "user__name",
+    )
+    ordering = ("-created_at",)
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request).select_related("user")
+        return qs.annotate(
+            _is_blacklisted=Exists(
+                BlacklistedToken.objects.filter(token_id=OuterRef("pk"))
+            )
+        )
+
+    @admin.display(boolean=True, description="active")
+    def is_active(self, obj):
+        if obj.expires_at <= timezone.now():
+            return False
+        return not bool(getattr(obj, "_is_blacklisted", False))
+
+    @admin.display(boolean=True, description="expired")
+    def is_expired(self, obj):
+        return obj.expires_at <= timezone.now()
+
+
+# Replace SimpleJWT's read-only admin with filters for ops monitoring.
+if admin.site.is_registered(OutstandingToken):
+    admin.site.unregister(OutstandingToken)
+admin.site.register(OutstandingToken, OutstandingTokenAdmin)
 
 
 class UserCreationForm(forms.ModelForm):

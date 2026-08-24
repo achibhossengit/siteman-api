@@ -1469,3 +1469,91 @@ class UserProfileUpdateTests(UserProfileAPITestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("strong-pass-123"))
         self.assertEqual(self.user.name, "Still Achib")
+
+
+class OutstandingTokenAdminFilterTests(APITestCase):
+    """Admin filters for outstanding refresh tokens."""
+
+    def setUp(self):
+        from datetime import timedelta
+
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from rest_framework_simplejwt.token_blacklist.models import (
+            BlacklistedToken,
+            OutstandingToken,
+        )
+
+        from accounts.admin import (
+            ActiveOutstandingTokenFilter,
+            ExpiredOutstandingTokenFilter,
+        )
+
+        self.OutstandingToken = OutstandingToken
+        self.ActiveOutstandingTokenFilter = ActiveOutstandingTokenFilter
+        self.ExpiredOutstandingTokenFilter = ExpiredOutstandingTokenFilter
+
+        self.company = Company.objects.create(name="Token Filter Co")
+        self.user = User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib Hossen",
+            password="strong-pass-123",
+            company=self.company,
+        )
+        other = User.objects.create_user(
+            phone_number="+8801712345679",
+            name="Other User",
+            password="strong-pass-123",
+            company=self.company,
+        )
+
+        RefreshToken.for_user(self.user)
+        RefreshToken.for_user(other)
+
+        self.active = OutstandingToken.objects.get(user=self.user)
+        RefreshToken.for_user(self.user)
+        self.blacklisted = (
+            OutstandingToken.objects.filter(user=self.user)
+            .exclude(pk=self.active.pk)
+            .get()
+        )
+        BlacklistedToken.objects.get_or_create(token=self.blacklisted)
+
+        self.expired = OutstandingToken.objects.create(
+            user=self.user,
+            jti="expired-jti-for-filter-test",
+            token="unused",
+            created_at=timezone.now() - timedelta(days=8),
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+
+    def _filtered(self, filter_cls, param, value):
+        filt = filter_cls(None, {param: value}, self.OutstandingToken, None)
+        return list(
+            filt.queryset(None, self.OutstandingToken.objects.all()).values_list(
+                "pk", flat=True
+            )
+        )
+
+    def test_active_yes_excludes_blacklisted_and_expired(self):
+        pks = self._filtered(self.ActiveOutstandingTokenFilter, "active", "1")
+        self.assertIn(self.active.pk, pks)
+        self.assertNotIn(self.blacklisted.pk, pks)
+        self.assertNotIn(self.expired.pk, pks)
+
+    def test_active_no_includes_blacklisted_and_expired(self):
+        pks = self._filtered(self.ActiveOutstandingTokenFilter, "active", "0")
+        self.assertNotIn(self.active.pk, pks)
+        self.assertIn(self.blacklisted.pk, pks)
+        self.assertIn(self.expired.pk, pks)
+
+    def test_expired_yes_only_past_expires_at(self):
+        pks = self._filtered(self.ExpiredOutstandingTokenFilter, "expired", "1")
+        self.assertIn(self.expired.pk, pks)
+        self.assertNotIn(self.active.pk, pks)
+        self.assertNotIn(self.blacklisted.pk, pks)
+
+    def test_expired_no_excludes_past_expires_at(self):
+        pks = self._filtered(self.ExpiredOutstandingTokenFilter, "expired", "0")
+        self.assertNotIn(self.expired.pk, pks)
+        self.assertIn(self.active.pk, pks)
+        self.assertIn(self.blacklisted.pk, pks)
