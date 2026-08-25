@@ -912,6 +912,8 @@ class UserCRUDTests(UserAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Detail User")
         self.assertIn("company", response.data)
+        self.assertIn("allowed_sites", response.data)
+        self.assertNotIn("sites", response.data)
         self.assertNotIn("password", response.data)
 
     def test_patch_is_active(self):

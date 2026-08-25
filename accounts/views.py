@@ -31,6 +31,7 @@ from .serializers import (
     RegisterSerializer,
     ResendOtpSerializer,
     UserCreateSerializer,
+    UserDetailSerializer,
     UserProfileSerializer,
 
     # password reset serializers
@@ -375,7 +376,7 @@ class UserViewSet(viewsets.ModelViewSet):
     DELETE hard-deletes the user (``UserSite`` cascades; activity actor FKs null).
     """
 
-    serializer_class = UserProfileSerializer
+    serializer_class = UserDetailSerializer
     queryset = User.objects.none()
     pagination_class = StandardPagination
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
@@ -390,7 +391,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return UserCreateSerializer
         if self.action == "partial_update":
             return UserUpdateSerializer
-        return UserProfileSerializer
+        return UserDetailSerializer
 
     def get_queryset(self):
         user = self.request.user

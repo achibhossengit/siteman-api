@@ -97,21 +97,21 @@ class PasswordChangeSerializer(serializers.Serializer):
         return value
     
 
-class UserProfileSerializer(serializers.ModelSerializer):
-    """Own profile: GET returns full snapshot; PATCH updates basic fields.
+class UserDetailSerializer(serializers.ModelSerializer):
+    """Company user detail: same snapshot as profile, without the site catalog.
 
-    Writable: name and phone_number. Email changes require a verification flow.
-    Password changes go through ``/auth/password/change`` or reset.
+    Writable on profile PATCH: name and phone_number. Email changes require a
+    verification flow. Password changes go through ``/auth/password/change``
+    or reset.
 
-    ``allowed_*`` is this user's access. ``sites`` is the company site catalog
-    (id → name and related fields), not the access list.
+    ``allowed_*`` is this user's access. The company site catalog (``sites``)
+    is only on ``UserProfileSerializer``.
     """
 
     company = serializers.SerializerMethodField()
     allowed_groups = serializers.SerializerMethodField()
     allowed_permissions = serializers.SerializerMethodField()
     allowed_sites = serializers.SerializerMethodField()
-    sites = serializers.SerializerMethodField()
     phone_number = BDPhoneNumberField()
     photo = ProfilePhotoField(required=False, allow_null=True)
 
@@ -130,7 +130,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "allowed_groups",
             "allowed_permissions",
             "allowed_sites",
-            "sites",
         )
         read_only_fields = (
             "id",
@@ -141,7 +140,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "allowed_groups",
             "allowed_permissions",
             "allowed_sites",
-            "sites",
         )
         extra_kwargs = {
             "phone_number": {"validators": []},
@@ -169,12 +167,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 )
             )
         return list(obj.sites.values_list("site_id", flat=True))
-
-    def get_sites(self, obj):
-        if obj.company_id is None:
-            return []
-        qs = Site.objects.filter(company_id=obj.company_id).order_by("name", "id")
-        return SiteListSerializer(qs, many=True).data
 
     def validate_phone_number(self, value):
         try:
@@ -204,6 +196,26 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 code=status_codes.USER_NAME_EXISTS,
             )
         return value
+
+
+class UserProfileSerializer(UserDetailSerializer):
+    """Own profile: GET returns full snapshot; PATCH updates basic fields.
+
+    ``sites`` is the company site catalog (id → name and related fields),
+    not the access list.
+    """
+
+    sites = serializers.SerializerMethodField()
+
+    class Meta(UserDetailSerializer.Meta):
+        fields = UserDetailSerializer.Meta.fields + ("sites",)
+        read_only_fields = UserDetailSerializer.Meta.read_only_fields + ("sites",)
+
+    def get_sites(self, obj):
+        if obj.company_id is None:
+            return []
+        qs = Site.objects.filter(company_id=obj.company_id).order_by("name", "id")
+        return SiteListSerializer(qs, many=True).data
 
 
 class UserListSerializer(serializers.ModelSerializer):
