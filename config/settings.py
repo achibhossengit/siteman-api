@@ -313,6 +313,12 @@ ACTIVITY_LOG_RETENTION_DAYS = config(
     "ACTIVITY_LOG_RETENTION_DAYS", default=180, cast=int
 )
 
+# Orphan media photos under users/ and labours/ (``purge_orphan_photos`` cron).
+# Objects newer than this are kept so support can recover a mistaken replace.
+PHOTO_ORPHAN_MIN_AGE_HOURS = config(
+    "PHOTO_ORPHAN_MIN_AGE_HOURS", default=168, cast=int
+)
+
 
 LOGGING = {
     'version': 1,

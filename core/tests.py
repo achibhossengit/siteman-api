@@ -90,3 +90,156 @@ class ProfilePhotoPrepareTests(SimpleTestCase):
         result = resize_profile_photo(upload)
         with Image.open(result) as image:
             self.assertEqual(image.size, (40, 40))
+
+
+class OrphanPhotoPurgeTests(TestCase):
+    def setUp(self):
+        import tempfile
+        from datetime import timedelta
+        from pathlib import Path
+
+        from django.contrib.auth import get_user_model
+        from django.core.files.storage import FileSystemStorage
+        from django.utils import timezone
+
+        from company.models import Company
+        from core.orphan_photos import (
+            StoredObject,
+            find_orphan_keys,
+            purge_orphan_photos,
+        )
+        from labours.models import Labour
+
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.media_root = Path(self.temp_dir.name)
+        self.storage = FileSystemStorage(location=str(self.media_root))
+        self.Company = Company
+        self.User = get_user_model()
+        self.Labour = Labour
+        self.find_orphan_keys = find_orphan_keys
+        self.purge_orphan_photos = purge_orphan_photos
+        self.StoredObject = StoredObject
+        self.timezone = timezone
+        self.timedelta = timedelta
+
+        self.company = Company.objects.create(name="Purge Co")
+        self.user = self.User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Achib",
+            password="strong-pass-123",
+            company=self.company,
+        )
+
+    def _write(self, key: str, age_hours: int = 200):
+        path = self.media_root / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"fake-image")
+        mtime = (
+            self.timezone.now() - self.timedelta(hours=age_hours)
+        ).timestamp()
+        import os
+
+        os.utime(path, (mtime, mtime))
+
+    def test_find_orphans_skips_referenced_and_new(self):
+        now = self.timezone.now()
+        stored = [
+            self.StoredObject("users/1/live.jpg", now - self.timedelta(days=10)),
+            self.StoredObject("users/1/old.jpg", now - self.timedelta(days=10)),
+            self.StoredObject("users/1/fresh.jpg", now - self.timedelta(hours=1)),
+        ]
+        orphans, skipped = self.find_orphan_keys(
+            stored,
+            {"users/1/live.jpg"},
+            min_age=self.timedelta(hours=24),
+            now=now,
+        )
+        self.assertEqual(orphans, ["users/1/old.jpg"])
+        self.assertEqual(skipped, 1)
+
+    def test_purge_deletes_old_orphans_only(self):
+        live_key = f"users/{self.company.pk}/live.jpg"
+        orphan_key = f"users/{self.company.pk}/orphan.jpg"
+        fresh_key = f"users/{self.company.pk}/fresh.jpg"
+        self._write(live_key, age_hours=200)
+        self._write(orphan_key, age_hours=200)
+        self._write(fresh_key, age_hours=1)
+
+        self.user.photo.name = live_key
+        self.user.save(update_fields=["photo"])
+
+        result = self.purge_orphan_photos(
+            min_age_hours=24,
+            dry_run=False,
+            storage=self.storage,
+        )
+        self.assertEqual(result.referenced_count, 1)
+        self.assertEqual(result.orphan_count, 1)
+        self.assertEqual(result.deleted_count, 1)
+        self.assertEqual(result.orphans, (orphan_key,))
+        self.assertTrue((self.media_root / live_key).exists())
+        self.assertFalse((self.media_root / orphan_key).exists())
+        self.assertTrue((self.media_root / fresh_key).exists())
+
+    def test_purge_dry_run_does_not_delete(self):
+        orphan_key = f"users/{self.company.pk}/orphan.jpg"
+        self._write(orphan_key, age_hours=200)
+        self.user.photo.name = f"users/{self.company.pk}/missing-live.jpg"
+        self.user.save(update_fields=["photo"])
+
+        result = self.purge_orphan_photos(
+            min_age_hours=24,
+            dry_run=True,
+            force=True,
+            storage=self.storage,
+        )
+        self.assertEqual(result.orphan_count, 1)
+        self.assertEqual(result.deleted_count, 0)
+        self.assertTrue((self.media_root / orphan_key).exists())
+
+    def test_purge_refuses_empty_db_without_force(self):
+        orphan_key = f"users/{self.company.pk}/orphan.jpg"
+        self._write(orphan_key, age_hours=200)
+        with self.assertRaises(RuntimeError):
+            self.purge_orphan_photos(
+                min_age_hours=24,
+                dry_run=False,
+                force=False,
+                storage=self.storage,
+            )
+        self.assertTrue((self.media_root / orphan_key).exists())
+
+    def test_command_dry_run(self):
+        from django.core.management import call_command
+        from io import StringIO
+
+        orphan_key = f"labours/{self.company.pk}/old.jpg"
+        self._write(orphan_key, age_hours=200)
+        labour = self.Labour.objects.create(
+            name="Karim",
+            company=self.company,
+        )
+        labour.photo.name = f"labours/{self.company.pk}/live.jpg"
+        labour.save(update_fields=["photo"])
+
+        out = StringIO()
+        with self.settings(MEDIA_ROOT=str(self.media_root)):
+            from django.core.files.storage import FileSystemStorage
+            from unittest.mock import patch
+
+            storage = FileSystemStorage(location=str(self.media_root))
+            with patch(
+                "core.management.commands.purge_orphan_photos.default_storage",
+                storage,
+            ):
+                call_command(
+                    "purge_orphan_photos",
+                    "--dry-run",
+                    "--min-age-hours=24",
+                    stdout=out,
+                )
+        output = out.getvalue()
+        self.assertIn("would delete:", output)
+        self.assertIn(orphan_key, output)
+        self.assertTrue((self.media_root / orphan_key).exists())
