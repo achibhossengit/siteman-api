@@ -900,6 +900,47 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
         self.assertEqual(len(_list_results(response)), 1)
         self.assertEqual(_list_results(response)[0]["type"], SiteCashType.COST)
 
+    def test_filter_by_exact_date(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._create_cash(date=today, amount=100)
+        self._create_cash(date=yesterday, amount=200)
+        response = self.client.get(self.list_url, {"date": str(today)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["amount"], 100)
+
+    def test_filter_by_date_range(self):
+        today = timezone.localdate()
+        self._create_cash(date=today - timedelta(days=3), amount=10)
+        mid = self._create_cash(date=today - timedelta(days=1), amount=20)
+        self._create_cash(date=today, amount=30)
+        response = self.client.get(
+            self.list_url,
+            {
+                "date__gte": str(today - timedelta(days=2)),
+                "date__lte": str(today - timedelta(days=1)),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], mid.pk)
+
+    def test_filter_by_date_gte_only(self):
+        today = timezone.localdate()
+        self._create_cash(date=today - timedelta(days=2), amount=10)
+        newer = self._create_cash(date=today, amount=20)
+        response = self.client.get(
+            self.list_url,
+            {"date__gte": str(today - timedelta(days=1))},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = _list_results(response)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], newer.pk)
+
     def test_filter_by_billing(self):
         cat_b = self._create_billing(name="Floor-1")
         self._create_cash(date=timezone.localdate(), billing=self.billing)

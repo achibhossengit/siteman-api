@@ -28,6 +28,7 @@ from core.exceptions import (
     SubscriptionExpired,
     SubscriptionLimitExceeded,
 )
+from .filters import PrivateSiteCashFilter, SiteCashFilter
 from .models import BillingCategory, PrivateSiteCash, Site, SiteCash
 from .permissions import HasSitePermissions
 from .serializers import (
@@ -229,7 +230,7 @@ class SiteCashViewSet(viewsets.ModelViewSet):
         HasSitePermissions,
     ]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
-    filterset_fields = ["type", "date", "billing"]
+    filterset_class = SiteCashFilter
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -301,7 +302,7 @@ class PrivateSiteCashViewSet(viewsets.ModelViewSet):
         HasSitePermissions,
     ]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
-    filterset_fields = ["type", "date", "billing"]
+    filterset_class = PrivateSiteCashFilter
 
     def get_serializer_class(self):
         if self.action == "list":
