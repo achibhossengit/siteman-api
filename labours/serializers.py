@@ -5,6 +5,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
 from rest_framework.validators import UniqueTogetherValidator
 
+from activity.serializers import PendingActivitySerializer
 from core import status_codes
 from core.images import ProfilePhotoField
 from .models import DailyRecord, Labour, LabourSession
@@ -310,6 +311,7 @@ class SiteDailyRecordListSerializer(serializers.ModelSerializer):
     labour_current_site = serializers.IntegerField(
         source="labour.current_site_id", read_only=True, allow_null=True
     )
+    pending_activities = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyRecord
@@ -330,7 +332,12 @@ class SiteDailyRecordListSerializer(serializers.ModelSerializer):
             "is_sealed",
             "created_at",
             "updated_at",
+            "pending_activities",
         ]
+
+    def get_pending_activities(self, obj):
+        items = self.context.get("pending_activities_map", {}).get(obj.pk, [])
+        return PendingActivitySerializer(items, many=True).data
 
 
 class SiteDailyRecordSerializer(

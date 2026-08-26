@@ -1571,10 +1571,112 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
                 "is_sealed",
                 "created_at",
                 "updated_at",
+                "pending_activities",
             ],
         )
         self.assertEqual(results[0]["billing"], self.billing.pk)
         self.assertEqual(results[0]["labour_current_site"], self.site.pk)
+        self.assertEqual(results[0]["pending_activities"], [])
+
+
+class SiteDailyRecordPendingActivitiesTests(SiteDailyRecordAPITestCase):
+    def _log(self, record, *, action, reviewed=False, **kwargs):
+        defaults = {
+            "company": record.company,
+            "site": record.site,
+            "labour": record.labour,
+            "labour_name": record.labour.name,
+            "actor": self.user,
+            "actor_name": self.user.name,
+            "action": action,
+            "entity_type": ActivityEntityType.DAILY_RECORD,
+            "entity_id": record.pk,
+            "business_date": record.date,
+            "changes": {"present": str(record.present)},
+        }
+        if reviewed:
+            defaults["reviewed_at"] = timezone.now()
+            defaults["reviewed_by"] = self.user
+        defaults.update(kwargs)
+        return ActivityLog.objects.create(**defaults)
+
+    def test_empty_pending_when_no_logs(self):
+        self._create_daily_record()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(_list_results(response)[0]["pending_activities"], [])
+
+    def test_unreviewed_created_and_updated_newest_first(self):
+        record = self._create_daily_record()
+        created = self._log(record, action=ActivityAction.CREATED)
+        updated = self._log(record, action=ActivityAction.UPDATED)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pending = _list_results(response)[0]["pending_activities"]
+        self.assertEqual(
+            pending,
+            [
+                {"id": updated.pk, "action": ActivityAction.UPDATED},
+                {"id": created.pk, "action": ActivityAction.CREATED},
+            ],
+        )
+        self.assertEqual(set(pending[0].keys()), {"id", "action"})
+
+    def test_reviewed_logs_are_excluded(self):
+        record = self._create_daily_record()
+        self._log(record, action=ActivityAction.CREATED, reviewed=True)
+        pending_log = self._log(record, action=ActivityAction.UPDATED)
+        response = self.client.get(self.list_url)
+        self.assertEqual(
+            _list_results(response)[0]["pending_activities"],
+            [{"id": pending_log.pk, "action": ActivityAction.UPDATED}],
+        )
+
+    def test_logs_for_other_record_row_are_not_attached(self):
+        record_a = self._create_daily_record(labour=self.labour)
+        record_b = self._create_daily_record(labour=self.labour_b)
+        self._log(record_b, action=ActivityAction.CREATED)
+        response = self.client.get(self.list_url)
+        by_id = {row["id"]: row["pending_activities"] for row in _list_results(response)}
+        self.assertEqual(by_id[record_a.pk], [])
+        self.assertEqual(len(by_id[record_b.pk]), 1)
+
+    def test_pending_is_scoped_to_current_page(self):
+        older = self._create_daily_record(labour=self.labour)
+        newer = self._create_daily_record(labour=self.labour_b)
+        older_log = self._log(older, action=ActivityAction.CREATED)
+        self._log(newer, action=ActivityAction.UPDATED)
+
+        page1 = self.client.get(self.list_url, {"page": 1, "page_size": 1})
+        self.assertEqual(page1.status_code, status.HTTP_200_OK)
+        page1_rows = _list_results(page1)
+        self.assertEqual(page1_rows[0]["id"], newer.pk)
+        self.assertEqual(len(page1_rows[0]["pending_activities"]), 1)
+        self.assertNotEqual(page1_rows[0]["pending_activities"][0]["id"], older_log.pk)
+
+        page2 = self.client.get(self.list_url, {"page": 2, "page_size": 1})
+        self.assertEqual(page2.status_code, status.HTTP_200_OK)
+        page2_rows = _list_results(page2)
+        self.assertEqual(page2_rows[0]["id"], older.pk)
+        self.assertEqual(
+            page2_rows[0]["pending_activities"],
+            [{"id": older_log.pk, "action": ActivityAction.CREATED}],
+        )
+
+    def test_view_dailyrecord_alone_includes_pending_activities(self):
+        record = self._create_daily_record()
+        log = self._log(record, action=ActivityAction.CREATED)
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_daily_record_permissions(self.user, ["view_dailyrecord"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            _list_results(response)[0]["pending_activities"],
+            [{"id": log.pk, "action": ActivityAction.CREATED}],
+        )
 
 
 class SiteDailyRecordValidationTests(SiteDailyRecordAPITestCase):
