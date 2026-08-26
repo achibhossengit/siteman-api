@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.utils import timezone
 
+from activity.serializers import PendingActivitySerializer
 from core import status_codes
 from .models import BillingCategory, PrivateSiteCash, Site, SiteCash
 
@@ -121,6 +122,8 @@ class SiteLedgerValidationMixin:
 
 
 class SiteCashListSerializer(serializers.ModelSerializer):
+    pending_activities = serializers.SerializerMethodField()
+
     class Meta:
         model = SiteCash
         fields = [
@@ -132,7 +135,12 @@ class SiteCashListSerializer(serializers.ModelSerializer):
             "billing",
             "created_at",
             "updated_at",
+            "pending_activities",
         ]
+
+    def get_pending_activities(self, obj):
+        items = self.context.get("pending_activities_map", {}).get(obj.pk, [])
+        return PendingActivitySerializer(items, many=True).data
 
 
 class SiteCashSerializer(SiteLedgerValidationMixin, serializers.ModelSerializer):

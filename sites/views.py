@@ -16,6 +16,8 @@ from activity.hooks import (
     activity_before_destroy,
     snapshot_for,
 )
+from activity.models import ActivityEntityType
+from activity.services import pending_activities_by_entity
 from core import status_codes
 from core.pagination import StandardPagination
 from core.permissions import ActiveSubscriptionOrReadOnly
@@ -233,6 +235,27 @@ class SiteCashViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             return SiteCashListSerializer
         return SiteCashSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["pending_activities_map"] = getattr(
+            self, "_pending_activities_map", {}
+        )
+        return context
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        objects = page if page is not None else list(queryset)
+        self._pending_activities_map = pending_activities_by_entity(
+            company_id=request.user.company_id,
+            entity_type=ActivityEntityType.SITE_CASH,
+            entity_ids=[obj.pk for obj in objects],
+        )
+        serializer = self.get_serializer(objects, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     def get_queryset(self):
         user = self.request.user

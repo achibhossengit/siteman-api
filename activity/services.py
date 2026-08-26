@@ -1,7 +1,8 @@
-"""Activity log write helpers: snapshot, diff, and append-only log rows."""
+"""Activity log helpers: snapshot, diff, append-only writes, pending-log reads."""
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -318,3 +319,33 @@ def log_deleted(actor, instance, *, snapshot: dict | None = None) -> ActivityLog
 
 def log_created_many(actor, instances) -> list[ActivityLog]:
     return [log_created(actor, instance) for instance in instances]
+
+
+def pending_activities_by_entity(
+    *,
+    company_id: int,
+    entity_type: str,
+    entity_ids: list[int],
+) -> dict[int, list[dict[str, Any]]]:
+    """Unreviewed logs for the given entities, newest first per entity.
+
+    Returns ``{entity_id: [{"id": ..., "action": ...}, ...]}``.
+    """
+    if not entity_ids:
+        return {}
+    rows = (
+        ActivityLog.objects.filter(
+            company_id=company_id,
+            entity_type=entity_type,
+            entity_id__in=entity_ids,
+            reviewed_at__isnull=True,
+        )
+        .order_by("-created_at", "-id")
+        .values("id", "entity_id", "action")
+    )
+    grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[row["entity_id"]].append(
+            {"id": row["id"], "action": row["action"]}
+        )
+    return grouped

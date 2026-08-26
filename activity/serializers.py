@@ -3,6 +3,13 @@ from rest_framework import serializers
 from .models import ActivityLog
 
 
+class PendingActivitySerializer(serializers.Serializer):
+    """Slim unreviewed log attached to a business-entity list row."""
+
+    id = serializers.IntegerField()
+    action = serializers.CharField()
+
+
 class ActivityLogSerializer(serializers.ModelSerializer):
     reviewed_by_name = serializers.CharField(
         source="reviewed_by.name",

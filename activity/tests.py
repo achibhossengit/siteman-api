@@ -16,6 +16,7 @@ from activity.services import (
     log_created,
     log_deleted,
     log_updated,
+    pending_activities_by_entity,
     snapshot_instance,
 )
 from company.models import Company
@@ -152,6 +153,65 @@ class ActivityServiceTests(APITestCase):
                 actor=self.user,
             ).exists()
         )
+
+    def test_pending_activities_by_entity_newest_unreviewed_only(self):
+        cash = SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            date=timezone.localdate(),
+            type=SiteCashType.DEPOSIT,
+            amount=7000,
+        )
+        created = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site,
+            actor=self.user,
+            actor_name=self.user.name,
+            action=ActivityAction.CREATED,
+            entity_type=ActivityEntityType.SITE_CASH,
+            entity_id=cash.pk,
+            business_date=cash.date,
+        )
+        reviewed = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site,
+            actor=self.user,
+            actor_name=self.user.name,
+            action=ActivityAction.UPDATED,
+            entity_type=ActivityEntityType.SITE_CASH,
+            entity_id=cash.pk,
+            business_date=cash.date,
+            reviewed_at=timezone.now(),
+            reviewed_by=self.user,
+        )
+        updated = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site,
+            actor=self.user,
+            actor_name=self.user.name,
+            action=ActivityAction.UPDATED,
+            entity_type=ActivityEntityType.SITE_CASH,
+            entity_id=cash.pk,
+            business_date=cash.date,
+        )
+        grouped = pending_activities_by_entity(
+            company_id=self.company.pk,
+            entity_type=ActivityEntityType.SITE_CASH,
+            entity_ids=[cash.pk],
+        )
+        self.assertEqual(
+            grouped[cash.pk],
+            [
+                {"id": updated.pk, "action": ActivityAction.UPDATED},
+                {"id": created.pk, "action": ActivityAction.CREATED},
+            ],
+        )
+        self.assertNotIn(reviewed.pk, [item["id"] for item in grouped[cash.pk]])
+        self.assertEqual(pending_activities_by_entity(
+            company_id=self.company.pk,
+            entity_type=ActivityEntityType.SITE_CASH,
+            entity_ids=[],
+        ), {})
 
 
 class PurgeActivityLogsTests(APITestCase):
