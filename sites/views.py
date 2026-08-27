@@ -42,7 +42,7 @@ from .serializers import (
     SiteListSerializer,
     SiteSerializer,
 )
-from .services import build_site_daily_report
+from .services import aggregate_site_cash_totals, build_site_daily_report
 
 
 class SiteViewSet(viewsets.ModelViewSet):
@@ -246,6 +246,7 @@ class SiteCashViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
+        totals = aggregate_site_cash_totals(queryset)
         page = self.paginate_queryset(queryset)
         objects = page if page is not None else list(queryset)
         self._pending_activities_map = pending_activities_by_entity(
@@ -255,8 +256,10 @@ class SiteCashViewSet(viewsets.ModelViewSet):
         )
         serializer = self.get_serializer(objects, many=True)
         if page is not None:
-            return self.get_paginated_response(serializer.data)
-        return Response(serializer.data)
+            response = self.get_paginated_response(serializer.data)
+            response.data.update(totals)
+            return response
+        return Response({**totals, "results": serializer.data})
 
     def get_queryset(self):
         user = self.request.user

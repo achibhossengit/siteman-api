@@ -607,6 +607,9 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(_list_results(response), [])
+        self.assertEqual(response.data["total_deposit"], 0)
+        self.assertEqual(response.data["total_withdrawal"], 0)
+        self.assertEqual(response.data["total_cost"], 0)
 
     def test_create_deposit_success(self):
         today = timezone.localdate()
@@ -723,6 +726,42 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
             },
         )
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+class SiteCashListTotalsTests(SiteCashAPITestCase):
+    def test_totals_sum_filtered_queryset_not_just_page(self):
+        self._create_cash(type=SiteCashType.DEPOSIT, amount=7000)
+        self._create_cash(type=SiteCashType.DEPOSIT, amount=200)
+        self._create_cash(type=SiteCashType.WITHDRAWAL, amount=300)
+        self._create_cash(type=SiteCashType.COST, amount=400)
+        self._create_cash(type=SiteCashType.COST, amount=100)
+
+        page1 = self.client.get(self.list_url, {"page": 1, "page_size": 2})
+        self.assertEqual(page1.status_code, status.HTTP_200_OK)
+        self.assertEqual(page1.data["count"], 5)
+        self.assertEqual(page1.data["total_deposit"], 7200)
+        self.assertEqual(page1.data["total_withdrawal"], 300)
+        self.assertEqual(page1.data["total_cost"], 500)
+        self.assertEqual(len(_list_results(page1)), 2)
+
+        page2 = self.client.get(self.list_url, {"page": 2, "page_size": 2})
+        self.assertEqual(page2.status_code, status.HTTP_200_OK)
+        self.assertEqual(page2.data["total_deposit"], 7200)
+        self.assertEqual(page2.data["total_withdrawal"], 300)
+        self.assertEqual(page2.data["total_cost"], 500)
+
+    def test_totals_respect_date_filter(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._create_cash(date=today, type=SiteCashType.DEPOSIT, amount=1000)
+        self._create_cash(date=today, type=SiteCashType.COST, amount=250)
+        self._create_cash(date=yesterday, type=SiteCashType.DEPOSIT, amount=9999)
+
+        response = self.client.get(self.list_url, {"date": str(today)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total_deposit"], 1000)
+        self.assertEqual(response.data["total_withdrawal"], 0)
+        self.assertEqual(response.data["total_cost"], 250)
 
 
 class SiteCashPendingActivitiesTests(SiteCashAPITestCase):

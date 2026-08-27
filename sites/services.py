@@ -53,6 +53,26 @@ def _site_cash_balance_through(site, *, through_date):
     return int(balance)
 
 
+def aggregate_site_cash_totals(queryset):
+    """Sum deposit / withdrawal / cost over a (possibly filtered) SiteCash qs."""
+    agg = queryset.aggregate(
+        total_deposit=Coalesce(
+            Sum("amount", filter=Q(type=SiteCashType.DEPOSIT)), _ZERO
+        ),
+        total_withdrawal=Coalesce(
+            Sum("amount", filter=Q(type=SiteCashType.WITHDRAWAL)), _ZERO
+        ),
+        total_cost=Coalesce(
+            Sum("amount", filter=Q(type=SiteCashType.COST)), _ZERO
+        ),
+    )
+    return {
+        "total_deposit": int(agg["total_deposit"] or 0),
+        "total_withdrawal": int(agg["total_withdrawal"] or 0),
+        "total_cost": int(agg["total_cost"] or 0),
+    }
+
+
 def build_site_daily_report(site, report_date, *, include_private=False):
     """Aggregate one site's day summary for ``report_date``."""
     records = DailyRecord.objects.filter(site=site, date=report_date)
