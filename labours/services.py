@@ -16,11 +16,46 @@ from rest_framework.exceptions import ValidationError
 
 from core import status_codes
 from activity.services import log_created, log_deleted
-from .models import DailyRecord, LabourSession
+from .models import DailyRecord, Labour, LabourSession
 
 _ZERO = Value(0)
 _ZERO_DEC = Value(Decimal("0"))
 _DECIMAL = DecimalField(max_digits=20, decimal_places=2)
+
+
+def build_site_daily_record_list(*, company_id: int, site_id: int, record_date):
+    """Merge this site's labours with that day's daily records.
+
+    Includes labours whose ``current_site`` is this site, plus anyone who
+    already has a daily record here on ``record_date`` (e.g. transferred).
+    """
+    records = list(
+        DailyRecord.objects.filter(
+            company_id=company_id,
+            site_id=site_id,
+            date=record_date,
+        ).select_related("labour")
+    )
+    records_by_labour_id = {record.labour_id: record for record in records}
+
+    roster = Labour.objects.filter(
+        company_id=company_id,
+        current_site_id=site_id,
+    )
+    labours_by_id = {labour.pk: labour for labour in roster}
+    for record in records:
+        labours_by_id.setdefault(record.labour_id, record.labour)
+
+    return [
+        {
+            "labour": labour,
+            "record": records_by_labour_id.get(labour.pk),
+        }
+        for labour in sorted(
+            labours_by_id.values(),
+            key=lambda item: (item.name.lower(), item.pk),
+        )
+    ]
 
 
 def get_running_session(labour):
