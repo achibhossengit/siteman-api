@@ -26,8 +26,8 @@ _DECIMAL = DecimalField(max_digits=20, decimal_places=2)
 def build_site_daily_record_list(*, company_id: int, site_id: int, record_date):
     """Merge this site's labours with that day's daily records.
 
-    Includes labours whose ``current_site`` is this site, plus anyone who
-    already has a daily record here on ``record_date`` (e.g. transferred).
+    Empty rows are only for *active* labours on this site. Inactive or
+    transferred labours appear only when they already have a record that day.
     """
     records = list(
         DailyRecord.objects.filter(
@@ -41,6 +41,7 @@ def build_site_daily_record_list(*, company_id: int, site_id: int, record_date):
     roster = Labour.objects.filter(
         company_id=company_id,
         current_site_id=site_id,
+        is_active=True,
     )
     labours_by_id = {labour.pk: labour for labour in roster}
     for record in records:

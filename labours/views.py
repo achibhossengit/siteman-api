@@ -184,7 +184,7 @@ class SiteDailyRecordViewSet(
     """Nested under ``/sites/<site_pk>/daily-records``.
 
     GET returns an unpaginated hajira roster for ``date`` (defaults to
-    today): every labour currently on this site, plus anyone with a
+    today): active labours currently on this site, plus anyone with a
     record here that day. POST is still bulk create.
     """
 

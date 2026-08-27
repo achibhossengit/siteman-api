@@ -1722,14 +1722,13 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
         self.assertEqual(by_id[self.labour.pk]["record"]["billing"], self.billing.pk)
         self.assertIsNone(by_id[self.labour_b.pk]["record"])
 
-    def test_inactive_site_labour_without_record_included(self):
+    def test_inactive_site_labour_without_record_excluded(self):
         self.labour.is_active = False
         self.labour.save(update_fields=["is_active"])
         response = self.client.get(self.list_url, {"date": self.today})
-        by_id = _by_labour_id(response)
-        self.assertIn(self.labour.pk, by_id)
-        self.assertFalse(by_id[self.labour.pk]["labour"]["is_active"])
-        self.assertIsNone(by_id[self.labour.pk]["record"])
+        labour_ids = [row["labour"]["id"] for row in _list_results(response)]
+        self.assertNotIn(self.labour.pk, labour_ids)
+        self.assertIn(self.labour_b.pk, labour_ids)
 
     def test_inactive_site_labour_with_record_included(self):
         record = self._create_daily_record(labour=self.labour)
