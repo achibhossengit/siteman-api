@@ -1,5 +1,7 @@
 from django.db import transaction
-from rest_framework import mixins, status, viewsets
+from django.utils import timezone
+from django.utils.dateparse import parse_date
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.filters import SearchFilter
@@ -44,6 +46,7 @@ from .serializers import (
     SiteDailyRecordSerializer,
 )
 from .services import (
+    build_site_daily_record_list,
     create_labour_session,
     delete_labour_session,
     get_running_session,
@@ -180,18 +183,19 @@ class SiteDailyRecordViewSet(
 ):
     """Nested under ``/sites/<site_pk>/daily-records``.
 
-    Only list and bulk create; the create payload is a list of records,
-    each carrying its own ``labour``.
+    GET returns an unpaginated hajira roster for ``date`` (defaults to
+    today): active labours currently on this site, plus anyone with a
+    record here that day. POST is still bulk create.
     """
 
     serializer_class = SiteDailyRecordSerializer
     queryset = DailyRecord.objects.none()
-    pagination_class = StandardPagination
+    pagination_class = None
+    filter_backends = []
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
         HasSitePermissions,
     ]
-    filterset_fields = ["date", "billing", "is_sealed", "labour"]
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -206,17 +210,31 @@ class SiteDailyRecordViewSet(
         return context
 
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        objects = page if page is not None else list(queryset)
+        date_raw = request.query_params.get("date")
+        if date_raw:
+            record_date = parse_date(date_raw)
+            if record_date is None:
+                raise serializers.ValidationError(
+                    {"date": "Enter a valid date (YYYY-MM-DD)."},
+                    code=status_codes.INVALID,
+                )
+        else:
+            record_date = timezone.localdate()
+
+        site_id = int(self.kwargs["site_pk"])
+        rows = build_site_daily_record_list(
+            company_id=request.user.company_id,
+            site_id=site_id,
+            record_date=record_date,
+        )
         self._pending_activities_map = pending_activities_by_entity(
             company_id=request.user.company_id,
             entity_type=ActivityEntityType.DAILY_RECORD,
-            entity_ids=[obj.pk for obj in objects],
+            entity_ids=[
+                row["record"].pk for row in rows if row["record"] is not None
+            ],
         )
-        serializer = self.get_serializer(objects, many=True)
-        if page is not None:
-            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(rows, many=True)
         return Response(serializer.data)
 
     def get_serializer(self, *args, **kwargs):
@@ -246,7 +264,6 @@ class SiteDailyRecordViewSet(
             is_sealed=False,
         )
         activity_after_create(self, serializer.instance)
-
 
 
 class LabourSessionViewSet(

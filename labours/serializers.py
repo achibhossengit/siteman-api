@@ -306,20 +306,15 @@ class DailyRecordSerializer(
         return super().create(validated_data)
 
 
-class SiteDailyRecordListSerializer(serializers.ModelSerializer):
-    labour_name = serializers.CharField(source="labour.name", read_only=True)
-    labour_current_site = serializers.IntegerField(
-        source="labour.current_site_id", read_only=True, allow_null=True
-    )
+class SiteDailyRecordNestedSerializer(serializers.ModelSerializer):
+    """Record slice nested on ``GET /sites/<site_pk>/daily-records``."""
+
     pending_activities = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyRecord
         fields = [
             "id",
-            "labour_id",
-            "labour_name",
-            "labour_current_site",
             "date",
             "present",
             "wage",
@@ -338,6 +333,13 @@ class SiteDailyRecordListSerializer(serializers.ModelSerializer):
     def get_pending_activities(self, obj):
         items = self.context.get("pending_activities_map", {}).get(obj.pk, [])
         return PendingActivitySerializer(items, many=True).data
+
+
+class SiteDailyRecordListSerializer(serializers.Serializer):
+    """One hajira-screen row: site labour (or transferred) plus that day's record."""
+
+    labour = LabourListSerializer()
+    record = SiteDailyRecordNestedSerializer(allow_null=True)
 
 
 class SiteDailyRecordSerializer(
