@@ -1515,14 +1515,13 @@ class SiteDailyRecordAuthPermissionTests(SiteDailyRecordAPITestCase):
 
 
 class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
-    def test_list_empty_returns_site_labours_with_null_records(self):
+    def test_list_empty_returns_site_labours_with_empty_records(self):
         response = self.client.get(self.list_url, {"date": self.today})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
         by_id = _by_labour_id(response)
         self.assertEqual(len(by_id), 2)
-        self.assertIsNone(by_id[self.labour.pk]["record"])
-        self.assertIsNone(by_id[self.labour_b.pk]["record"])
+        self.assertEqual(by_id[self.labour.pk]["records"], [])
+        self.assertEqual(by_id[self.labour_b.pk]["records"], [])
 
     def test_bulk_create_success(self):
         response = self.client.post(
@@ -1560,7 +1559,7 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         by_id = _by_labour_id(response)
         row = by_id[self.labour.pk]
-        self.assertCountEqual(row.keys(), ["labour", "record"])
+        self.assertCountEqual(row.keys(), ["labour", "records", "totals"])
         self.assertCountEqual(
             row["labour"].keys(),
             [
@@ -1575,8 +1574,9 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
                 "is_active",
             ],
         )
+        self.assertEqual(len(row["records"]), 1)
         self.assertCountEqual(
-            row["record"].keys(),
+            row["records"][0].keys(),
             [
                 "id",
                 "date",
@@ -1594,11 +1594,22 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
                 "pending_activities",
             ],
         )
-        self.assertEqual(row["record"]["id"], record.pk)
-        self.assertEqual(row["record"]["billing"], self.billing.pk)
+        self.assertEqual(row["records"][0]["id"], record.pk)
+        self.assertEqual(row["records"][0]["billing"], self.billing.pk)
         self.assertEqual(row["labour"]["current_site"], self.site.pk)
-        self.assertEqual(row["record"]["pending_activities"], [])
-        self.assertIsNone(by_id[self.labour_b.pk]["record"])
+        self.assertEqual(row["records"][0]["pending_activities"], [])
+        self.assertEqual(
+            row["totals"],
+            {
+                "present": "1.00",
+                "extra_earn": 0,
+                "fooding_pay": 0,
+                "advance_pay": 0,
+                "return_amount": 0,
+            },
+        )
+        self.assertEqual(by_id[self.labour_b.pk]["records"], [])
+        self.assertEqual(by_id[self.labour_b.pk]["totals"]["present"], "0.00")
 
 
 class SiteDailyRecordPendingActivitiesTests(SiteDailyRecordAPITestCase):
@@ -1627,7 +1638,7 @@ class SiteDailyRecordPendingActivitiesTests(SiteDailyRecordAPITestCase):
         response = self.client.get(self.list_url, {"date": self.today})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            _by_labour_id(response)[self.labour.pk]["record"]["pending_activities"],
+            _by_labour_id(response)[self.labour.pk]["records"][0]["pending_activities"],
             [],
         )
 
@@ -1637,7 +1648,7 @@ class SiteDailyRecordPendingActivitiesTests(SiteDailyRecordAPITestCase):
         updated = self._log(record, action=ActivityAction.UPDATED)
         response = self.client.get(self.list_url, {"date": self.today})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        pending = _by_labour_id(response)[self.labour.pk]["record"]["pending_activities"]
+        pending = _by_labour_id(response)[self.labour.pk]["records"][0]["pending_activities"]
         self.assertEqual(
             pending,
             [
@@ -1653,7 +1664,7 @@ class SiteDailyRecordPendingActivitiesTests(SiteDailyRecordAPITestCase):
         pending_log = self._log(record, action=ActivityAction.UPDATED)
         response = self.client.get(self.list_url, {"date": self.today})
         self.assertEqual(
-            _by_labour_id(response)[self.labour.pk]["record"]["pending_activities"],
+            _by_labour_id(response)[self.labour.pk]["records"][0]["pending_activities"],
             [{"id": pending_log.pk, "action": ActivityAction.UPDATED}],
         )
 
@@ -1663,18 +1674,28 @@ class SiteDailyRecordPendingActivitiesTests(SiteDailyRecordAPITestCase):
         self._log(record_b, action=ActivityAction.CREATED)
         response = self.client.get(self.list_url, {"date": self.today})
         by_id = _by_labour_id(response)
-        self.assertEqual(by_id[record_a.labour_id]["record"]["pending_activities"], [])
-        self.assertEqual(len(by_id[record_b.labour_id]["record"]["pending_activities"]), 1)
+        self.assertEqual(by_id[record_a.labour_id]["records"][0]["pending_activities"], [])
+        self.assertEqual(len(by_id[record_b.labour_id]["records"][0]["pending_activities"]), 1)
 
-    def test_list_is_not_paginated(self):
-        self._create_daily_record(labour=self.labour)
-        self._create_daily_record(labour=self.labour_b)
-        response = self.client.get(
+    def test_records_are_paginated(self):
+        first = self._create_daily_record(labour=self.labour)
+        second = self._create_daily_record(labour=self.labour_b)
+        page1 = self.client.get(
             self.list_url, {"date": self.today, "page": 1, "page_size": 1}
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(page1.status_code, status.HTTP_200_OK)
+        self.assertEqual(page1.data["count"], 2)
+        page1_rows = _list_results(page1)
+        self.assertEqual(len(page1_rows), 1)
+        self.assertEqual(page1_rows[0]["records"][0]["id"], first.pk)
+
+        page2 = self.client.get(
+            self.list_url, {"date": self.today, "page": 2, "page_size": 1}
+        )
+        self.assertEqual(page2.status_code, status.HTTP_200_OK)
+        page2_rows = _list_results(page2)
+        self.assertEqual(len(page2_rows), 1)
+        self.assertEqual(page2_rows[0]["records"][0]["id"], second.pk)
 
     def test_view_dailyrecord_alone_includes_pending_activities(self):
         record = self._create_daily_record()
@@ -1687,7 +1708,7 @@ class SiteDailyRecordPendingActivitiesTests(SiteDailyRecordAPITestCase):
         response = self.client.get(self.list_url, {"date": self.today})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            _by_labour_id(response)[self.labour.pk]["record"]["pending_activities"],
+            _by_labour_id(response)[self.labour.pk]["records"][0]["pending_activities"],
             [{"id": log.pk, "action": ActivityAction.CREATED}],
         )
 
@@ -1704,7 +1725,7 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         by_id = _by_labour_id(response)
-        self.assertIsNone(by_id[self.labour.pk]["record"])
+        self.assertEqual(by_id[self.labour.pk]["records"], [])
 
     def test_record_attached_and_empty_row_kept(self):
         record = self._create_daily_record(
@@ -1716,11 +1737,15 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
         response = self.client.get(self.list_url, {"date": self.today})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         by_id = _by_labour_id(response)
-        self.assertEqual(by_id[self.labour.pk]["record"]["id"], record.pk)
-        self.assertEqual(by_id[self.labour.pk]["record"]["present"], Decimal("2.00"))
-        self.assertEqual(by_id[self.labour.pk]["record"]["extra_earn"], 50)
-        self.assertEqual(by_id[self.labour.pk]["record"]["billing"], self.billing.pk)
-        self.assertIsNone(by_id[self.labour_b.pk]["record"])
+        attached = by_id[self.labour.pk]["records"]
+        self.assertEqual(len(attached), 1)
+        self.assertEqual(attached[0]["id"], record.pk)
+        self.assertEqual(attached[0]["present"], Decimal("2.00"))
+        self.assertEqual(attached[0]["extra_earn"], 50)
+        self.assertEqual(attached[0]["billing"], self.billing.pk)
+        self.assertEqual(by_id[self.labour_b.pk]["records"], [])
+        self.assertEqual(by_id[self.labour.pk]["totals"]["extra_earn"], 50)
+        self.assertEqual(by_id[self.labour.pk]["totals"]["present"], "2.00")
 
     def test_inactive_site_labour_without_record_excluded(self):
         self.labour.is_active = False
@@ -1736,7 +1761,7 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
         self.labour.save(update_fields=["is_active"])
         response = self.client.get(self.list_url, {"date": self.today})
         by_id = _by_labour_id(response)
-        self.assertEqual(by_id[self.labour.pk]["record"]["id"], record.pk)
+        self.assertEqual(by_id[self.labour.pk]["records"][0]["id"], record.pk)
         self.assertFalse(by_id[self.labour.pk]["labour"]["is_active"])
 
     def test_transferred_labour_with_record_included(self):
@@ -1750,10 +1775,10 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
 
         response = self.client.get(self.list_url, {"date": self.today})
         by_id = _by_labour_id(response)
-        self.assertEqual(by_id[self.labour.pk]["record"]["id"], record.pk)
+        self.assertEqual(by_id[self.labour.pk]["records"][0]["id"], record.pk)
         self.assertEqual(by_id[self.labour.pk]["labour"]["name"], "Karim")
         self.assertEqual(by_id[self.labour.pk]["labour"]["current_site"], other_site.pk)
-        self.assertIsNone(by_id[self.labour_b.pk]["record"])
+        self.assertEqual(by_id[self.labour_b.pk]["records"], [])
 
     def test_transferred_labour_without_record_excluded(self):
         other_site = Site.objects.create(
@@ -1772,12 +1797,151 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
         self._create_daily_record(labour=self.labour, date=yesterday)
         response = self.client.get(self.list_url, {"date": self.today})
         by_id = _by_labour_id(response)
-        self.assertIsNone(by_id[self.labour.pk]["record"])
+        self.assertEqual(by_id[self.labour.pk]["records"], [])
 
     def test_rows_ordered_by_labour_name(self):
         response = self.client.get(self.list_url, {"date": self.today})
         names = [row["labour"]["name"] for row in _list_results(response)]
         self.assertEqual(names, ["Karim", "Rahim"])
+
+    def test_date_range_collects_records_per_labour(self):
+        today = timezone.localdate()
+        older = self._create_daily_record(
+            labour=self.labour, date=today - timedelta(days=3)
+        )
+        in_range = self._create_daily_record(
+            labour=self.labour, date=today - timedelta(days=1)
+        )
+        self._create_daily_record(labour=self.labour_b, date=today)
+        response = self.client.get(
+            self.list_url,
+            {
+                "date__gte": str(today - timedelta(days=2)),
+                "date__lte": str(today - timedelta(days=1)),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_id = _by_labour_id(response)
+        self.assertEqual(
+            [row["id"] for row in by_id[self.labour.pk]["records"]],
+            [in_range.pk],
+        )
+        self.assertNotIn(older.pk, [row["id"] for row in by_id[self.labour.pk]["records"]])
+        self.assertEqual(by_id[self.labour_b.pk]["records"], [])
+
+    def test_date_range_multiple_days_ordered_by_date(self):
+        today = timezone.localdate()
+        first = self._create_daily_record(
+            labour=self.labour, date=today - timedelta(days=2)
+        )
+        second = self._create_daily_record(
+            labour=self.labour, date=today - timedelta(days=1)
+        )
+        response = self.client.get(
+            self.list_url,
+            {
+                "date__gte": str(today - timedelta(days=2)),
+                "date__lte": str(today),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [
+            row["id"]
+            for row in _by_labour_id(response)[self.labour.pk]["records"]
+        ]
+        self.assertEqual(ids, [first.pk, second.pk])
+
+    def test_date_gte_only(self):
+        today = timezone.localdate()
+        self._create_daily_record(
+            labour=self.labour, date=today - timedelta(days=2)
+        )
+        newer = self._create_daily_record(labour=self.labour_b, date=today)
+        response = self.client.get(
+            self.list_url,
+            {"date__gte": str(today - timedelta(days=1))},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_id = _by_labour_id(response)
+        self.assertEqual(by_id[self.labour.pk]["records"], [])
+        self.assertEqual(
+            [row["id"] for row in by_id[self.labour_b.pk]["records"]],
+            [newer.pk],
+        )
+
+    def test_cannot_combine_date_with_range(self):
+        response = self.client.get(
+            self.list_url,
+            {"date": self.today, "date__gte": self.today},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date")
+
+    def test_date_gte_after_date_lte_rejected(self):
+        today = timezone.localdate()
+        response = self.client.get(
+            self.list_url,
+            {
+                "date__gte": str(today),
+                "date__lte": str(today - timedelta(days=1)),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date__gte")
+
+    def test_invalid_date_gte_returns_400(self):
+        response = self.client.get(self.list_url, {"date__gte": "not-a-date"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date__gte")
+
+    def test_range_over_one_month_returns_totals_without_records(self):
+        today = timezone.localdate()
+        start = today - timedelta(days=31)
+        self._create_daily_record(
+            labour=self.labour,
+            date=start,
+            present=Decimal("2"),
+            extra_earn=40,
+            fooding_pay=10,
+            advance_pay=5,
+            return_amount=3,
+        )
+        response = self.client.get(
+            self.list_url,
+            {"date__gte": str(start), "date__lte": str(today)},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertIsNone(response.data["next"])
+        by_id = _by_labour_id(response)
+        self.assertEqual(by_id[self.labour.pk]["records"], [])
+        self.assertEqual(
+            by_id[self.labour.pk]["totals"],
+            {
+                "present": "2.00",
+                "extra_earn": 40,
+                "fooding_pay": 10,
+                "advance_pay": 5,
+                "return_amount": 3,
+            },
+        )
+        self.assertEqual(by_id[self.labour_b.pk]["records"], [])
+        self.assertEqual(by_id[self.labour_b.pk]["totals"]["extra_earn"], 0)
+
+    def test_range_of_one_month_still_returns_records(self):
+        today = timezone.localdate()
+        start = today - timedelta(days=30)
+        record = self._create_daily_record(labour=self.labour, date=start)
+        response = self.client.get(
+            self.list_url,
+            {"date__gte": str(start), "date__lte": str(today)},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_id = _by_labour_id(response)
+        self.assertEqual(
+            [row["id"] for row in by_id[self.labour.pk]["records"]],
+            [record.pk],
+        )
 
 
 class SiteDailyRecordValidationTests(SiteDailyRecordAPITestCase):
@@ -1865,8 +2029,8 @@ class SiteDailyRecordFilterIsolationTests(SiteDailyRecordAPITestCase):
         labour_ids = [row["labour"]["id"] for row in _list_results(response)]
         self.assertCountEqual(labour_ids, [self.labour.pk, self.labour_b.pk])
         by_id = _by_labour_id(response)
-        self.assertIsNotNone(by_id[self.labour.pk]["record"])
-        self.assertIsNone(by_id[self.labour_b.pk]["record"])
+        self.assertTrue(by_id[self.labour.pk]["records"])
+        self.assertEqual(by_id[self.labour_b.pk]["records"], [])
 
 
 class SiteDailyRecordSubscriptionTests(SiteDailyRecordAPITestCase):
@@ -1894,7 +2058,7 @@ class SiteDailyRecordSubscriptionTests(SiteDailyRecordAPITestCase):
         response = self.client.get(self.list_url, {"date": self.today})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         by_id = _by_labour_id(response)
-        self.assertIsNotNone(by_id[self.labour.pk]["record"])
+        self.assertTrue(by_id[self.labour.pk]["records"])
         self.assertEqual(len(by_id), 2)
 
 

@@ -46,10 +46,14 @@ from .serializers import (
     SiteDailyRecordSerializer,
 )
 from .services import (
+    MAX_SITE_DAILY_RECORD_LIST_DAYS,
+    build_record_totals_by_labour,
     build_site_daily_record_list,
     create_labour_session,
     delete_labour_session,
     get_running_session,
+    inclusive_date_span_days,
+    site_daily_records_queryset,
 )
 
 
@@ -183,14 +187,15 @@ class SiteDailyRecordViewSet(
 ):
     """Nested under ``/sites/<site_pk>/daily-records``.
 
-    GET returns an unpaginated hajira roster for ``date`` (defaults to
-    today): active labours currently on this site, plus anyone with a
-    record here that day. POST is still bulk create.
+    GET returns a hajira roster for ``date`` (defaults to today) or
+    ``date__gte`` / ``date__lte``. Windows longer than one month return
+    per-labour totals without individual records. Shorter windows paginate
+    records. POST is still bulk create.
     """
 
     serializer_class = SiteDailyRecordSerializer
     queryset = DailyRecord.objects.none()
-    pagination_class = None
+    pagination_class = StandardPagination
     filter_backends = []
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
@@ -210,32 +215,105 @@ class SiteDailyRecordViewSet(
         return context
 
     def list(self, request, *args, **kwargs):
-        date_raw = request.query_params.get("date")
-        if date_raw:
-            record_date = parse_date(date_raw)
-            if record_date is None:
-                raise serializers.ValidationError(
-                    {"date": "Enter a valid date (YYYY-MM-DD)."},
-                    code=status_codes.INVALID,
-                )
-        else:
-            record_date = timezone.localdate()
+        date_gte, date_lte = self._list_date_bounds(request)
+        if date_gte is not None and date_lte is None:
+            date_lte = timezone.localdate()
 
         site_id = int(self.kwargs["site_pk"])
+        qs = site_daily_records_queryset(
+            company_id=request.user.company_id,
+            site_id=site_id,
+            date_gte=date_gte,
+            date_lte=date_lte,
+        )
+        totals_by_labour = build_record_totals_by_labour(qs)
+        span_days = inclusive_date_span_days(date_gte, date_lte)
+        totals_only = (
+            span_days is None or span_days > MAX_SITE_DAILY_RECORD_LIST_DAYS
+        )
+
+        if totals_only:
+            rows = build_site_daily_record_list(
+                company_id=request.user.company_id,
+                site_id=site_id,
+                records=[],
+                totals_by_labour=totals_by_labour,
+                include_empty_roster=True,
+            )
+            serializer = self.get_serializer(rows, many=True)
+            return Response(
+                {
+                    "count": qs.count(),
+                    "next": None,
+                    "previous": None,
+                    "results": serializer.data,
+                }
+            )
+
+        qs = qs.select_related("labour").order_by("date", "id")
+        page = self.paginate_queryset(qs)
+        records = page if page is not None else list(qs)
+        include_empty_roster = (
+            page is None
+            or getattr(getattr(self, "paginator", None), "page", None) is None
+            or self.paginator.page.number == 1
+        )
         rows = build_site_daily_record_list(
             company_id=request.user.company_id,
             site_id=site_id,
-            record_date=record_date,
+            records=records,
+            totals_by_labour=totals_by_labour,
+            include_empty_roster=include_empty_roster,
         )
         self._pending_activities_map = pending_activities_by_entity(
             company_id=request.user.company_id,
             entity_type=ActivityEntityType.DAILY_RECORD,
-            entity_ids=[
-                row["record"].pk for row in rows if row["record"] is not None
-            ],
+            entity_ids=[record.pk for record in records],
         )
         serializer = self.get_serializer(rows, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
+
+    def _list_date_bounds(self, request):
+        params = request.query_params
+        exact = self._parse_date_query_param(params, "date")
+        date_gte = self._parse_date_query_param(params, "date__gte")
+        date_lte = self._parse_date_query_param(params, "date__lte")
+
+        if exact is not None and (date_gte is not None or date_lte is not None):
+            raise serializers.ValidationError(
+                {"date": "Do not combine date with date__gte or date__lte."},
+                code=status_codes.INVALID,
+            )
+        if exact is None and date_gte is None and date_lte is None:
+            today = timezone.localdate()
+            return today, today
+        if exact is not None:
+            return exact, exact
+        if (
+            date_gte is not None
+            and date_lte is not None
+            and date_gte > date_lte
+        ):
+            raise serializers.ValidationError(
+                {"date__gte": "Must be on or before date__lte."},
+                code=status_codes.INVALID,
+            )
+        return date_gte, date_lte
+
+    @staticmethod
+    def _parse_date_query_param(params, name):
+        raw = params.get(name)
+        if not raw:
+            return None
+        parsed = parse_date(raw)
+        if parsed is None:
+            raise serializers.ValidationError(
+                {name: "Enter a valid date (YYYY-MM-DD)."},
+                code=status_codes.INVALID,
+            )
+        return parsed
 
     def get_serializer(self, *args, **kwargs):
         if self.action == "create":

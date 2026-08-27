@@ -1,3 +1,4 @@
+from collections import defaultdict
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -22,35 +23,101 @@ _ZERO = Value(0)
 _ZERO_DEC = Value(Decimal("0"))
 _DECIMAL = DecimalField(max_digits=20, decimal_places=2)
 
+MAX_SITE_DAILY_RECORD_LIST_DAYS = 31
 
-def build_site_daily_record_list(*, company_id: int, site_id: int, record_date):
-    """Merge this site's labours with that day's daily records.
+_EMPTY_RECORD_TOTALS = {
+    "present": Decimal("0"),
+    "extra_earn": 0,
+    "fooding_pay": 0,
+    "advance_pay": 0,
+    "return_amount": 0,
+}
 
-    Empty rows are only for *active* labours on this site. Inactive or
-    transferred labours appear only when they already have a record that day.
-    """
-    records = list(
-        DailyRecord.objects.filter(
-            company_id=company_id,
-            site_id=site_id,
-            date=record_date,
-        ).select_related("labour")
-    )
-    records_by_labour_id = {record.labour_id: record for record in records}
 
-    roster = Labour.objects.filter(
+def inclusive_date_span_days(date_gte, date_lte):
+    if date_gte is None or date_lte is None:
+        return None
+    return (date_lte - date_gte).days + 1
+
+
+def site_daily_records_queryset(*, company_id, site_id, date_gte=None, date_lte=None):
+    qs = DailyRecord.objects.filter(
         company_id=company_id,
-        current_site_id=site_id,
-        is_active=True,
+        site_id=site_id,
     )
-    labours_by_id = {labour.pk: labour for labour in roster}
+    if date_gte is not None:
+        qs = qs.filter(date__gte=date_gte)
+    if date_lte is not None:
+        qs = qs.filter(date__lte=date_lte)
+    return qs
+
+
+def build_record_totals_by_labour(qs):
+    rows = (
+        qs.order_by()
+        .values("labour_id")
+        .annotate(
+            present=Coalesce(Sum(Coalesce(F("present"), _ZERO_DEC)), _ZERO_DEC),
+            extra_earn=Coalesce(Sum(Coalesce(F("extra_earn"), _ZERO)), _ZERO),
+            fooding_pay=Coalesce(Sum(Coalesce(F("fooding_pay"), _ZERO)), _ZERO),
+            advance_pay=Coalesce(Sum(Coalesce(F("advance_pay"), _ZERO)), _ZERO),
+            return_amount=Coalesce(Sum(Coalesce(F("return_amount"), _ZERO)), _ZERO),
+        )
+    )
+    return {
+        row["labour_id"]: {
+            "present": row["present"] or Decimal("0"),
+            "extra_earn": int(row["extra_earn"] or 0),
+            "fooding_pay": int(row["fooding_pay"] or 0),
+            "advance_pay": int(row["advance_pay"] or 0),
+            "return_amount": int(row["return_amount"] or 0),
+        }
+        for row in rows
+    }
+
+
+def build_site_daily_record_list(
+    *,
+    company_id: int,
+    site_id: int,
+    records,
+    totals_by_labour,
+    include_empty_roster=True,
+):
+    """Merge labours with a (possibly paginated) slice of daily records.
+
+    Empty rows (``records=[]``) are only for *active* labours on this site,
+    and only when ``include_empty_roster`` is true (first page). Inactive or
+    transferred labours appear when they have a record in ``records``.
+    ``totals_by_labour`` is the full-window sum per labour.
+    """
+    records_by_labour_id = defaultdict(list)
+    labours_by_id = {}
+    if include_empty_roster:
+        roster = Labour.objects.filter(
+            company_id=company_id,
+            current_site_id=site_id,
+            is_active=True,
+        )
+        if totals_by_labour:
+            roster = roster.exclude(pk__in=list(totals_by_labour))
+        labours_by_id = {labour.pk: labour for labour in roster}
+
     for record in records:
+        records_by_labour_id[record.labour_id].append(record)
         labours_by_id.setdefault(record.labour_id, record.labour)
+
+    extra_ids = set(totals_by_labour) - set(labours_by_id)
+    if extra_ids and not records:
+        # Totals-only window: include anyone who has records in the range.
+        for labour in Labour.objects.filter(pk__in=extra_ids):
+            labours_by_id[labour.pk] = labour
 
     return [
         {
             "labour": labour,
-            "record": records_by_labour_id.get(labour.pk),
+            "records": list(records_by_labour_id.get(labour.pk, [])),
+            "totals": totals_by_labour.get(labour.pk, dict(_EMPTY_RECORD_TOTALS)),
         }
         for labour in sorted(
             labours_by_id.values(),

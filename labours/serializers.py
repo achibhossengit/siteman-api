@@ -335,11 +335,20 @@ class SiteDailyRecordNestedSerializer(serializers.ModelSerializer):
         return PendingActivitySerializer(items, many=True).data
 
 
+class SiteDailyRecordTotalsSerializer(serializers.Serializer):
+    present = serializers.DecimalField(max_digits=20, decimal_places=2)
+    extra_earn = serializers.IntegerField()
+    fooding_pay = serializers.IntegerField()
+    advance_pay = serializers.IntegerField()
+    return_amount = serializers.IntegerField()
+
+
 class SiteDailyRecordListSerializer(serializers.Serializer):
-    """One hajira-screen row: site labour (or transferred) plus that day's record."""
+    """One hajira-screen row: site labour plus records in the requested window."""
 
     labour = LabourListSerializer()
-    record = SiteDailyRecordNestedSerializer(allow_null=True)
+    records = SiteDailyRecordNestedSerializer(many=True)
+    totals = SiteDailyRecordTotalsSerializer()
 
 
 class SiteDailyRecordSerializer(
