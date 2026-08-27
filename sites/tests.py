@@ -1613,10 +1613,10 @@ class SiteDailyReportAuthTests(SiteDailyReportAPITestCase):
         response = self.client.get(url, {"date": str(self.report_date)})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_date_query_param_defaults_to_today(self):
+    def test_missing_date_returns_400(self):
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["date"], str(self.report_date))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date")
 
     def test_invalid_date_returns_400(self):
         response = self.client.get(self.url, {"date": "not-a-date"})
@@ -1629,7 +1629,6 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
         response = self.client.get(self.url, {"date": str(self.report_date)})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["site"], self.site.pk)
-        self.assertEqual(response.data["date"], str(self.report_date))
         self.assertEqual(Decimal(response.data["present_count"]), Decimal("0"))
         self.assertEqual(response.data["labour_payment"], 0)
         self.assertEqual(response.data["labour_return"], 0)
@@ -1785,6 +1784,104 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["deposit"], 0)
         self.assertEqual(response.data["balance"], 0)
+
+    def test_range_summary_excludes_outside_and_uses_prior_balance(self):
+        start = self.report_date - timedelta(days=5)
+        end = self.report_date - timedelta(days=1)
+        before = start - timedelta(days=1)
+        after = self.report_date
+        labour = self._create_labour()
+
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.DEPOSIT,
+            date=before,
+            amount=1000,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.DEPOSIT,
+            date=start,
+            amount=500,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.COST,
+            date=end,
+            amount=100,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.DEPOSIT,
+            date=after,
+            amount=9999,
+        )
+        DailyRecord.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            date=start,
+            present=Decimal("1"),
+            wage=500,
+            advance_pay=200,
+        )
+        DailyRecord.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            date=before,
+            present=Decimal("2"),
+            wage=500,
+            advance_pay=800,
+        )
+
+        response = self.client.get(
+            self.url,
+            {"date__gte": str(start), "date__lte": str(end)},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Decimal(response.data["present_count"]), Decimal("1"))
+        self.assertEqual(response.data["labour_payment"], 200)
+        self.assertEqual(response.data["deposit"], 500)
+        self.assertEqual(response.data["site_cost"], 100)
+        self.assertEqual(response.data["total_cost"], 300)
+        self.assertEqual(response.data["remaining"], 200)
+        # Prior labour advance (800) is in previous_balance, not this window.
+        self.assertEqual(response.data["previous_balance"], 200)
+        self.assertEqual(response.data["balance"], 400)
+
+    def test_cannot_combine_date_with_range(self):
+        response = self.client.get(
+            self.url,
+            {
+                "date": str(self.report_date),
+                "date__gte": str(self.report_date),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date")
+
+    def test_date_gte_after_date_lte_rejected(self):
+        response = self.client.get(
+            self.url,
+            {
+                "date__gte": str(self.report_date),
+                "date__lte": str(self.report_date - timedelta(days=1)),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date__gte")
+
+    def test_date_gte_requires_date_lte(self):
+        response = self.client.get(
+            self.url, {"date__gte": str(self.report_date)}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["errors"][0]["attr"], "date__lte")
 
 
 class SiteBillingCategoryAPITestCase(APITestCase):

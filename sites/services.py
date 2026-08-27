@@ -73,10 +73,23 @@ def aggregate_site_cash_totals(queryset):
     }
 
 
-def build_site_daily_report(site, report_date, *, include_private=False):
-    """Aggregate one site's day summary for ``report_date``."""
-    records = DailyRecord.objects.filter(site=site, date=report_date)
-    cash_qs = SiteCash.objects.filter(site=site, date=report_date)
+def build_site_daily_report(
+    site, start_date, end_date=None, *, include_private=False
+):
+    """Aggregate a site's summary from ``start_date`` through ``end_date``.
+
+    ``end_date`` defaults to ``start_date`` (one day). ``previous_balance`` is
+    the running balance through the day before ``start_date``.
+    """
+    if end_date is None:
+        end_date = start_date
+
+    records = DailyRecord.objects.filter(
+        site=site, date__gte=start_date, date__lte=end_date
+    )
+    cash_qs = SiteCash.objects.filter(
+        site=site, date__gte=start_date, date__lte=end_date
+    )
 
     wage_expr = ExpressionWrapper(
         Coalesce(F("present"), _ZERO_DEC) * Coalesce(F("wage"), _ZERO),
@@ -112,13 +125,12 @@ def build_site_daily_report(site, report_date, *, include_private=False):
     cash_out = int((cash["withdrawal"] or 0) + total_cost)
     remaining = cash_in - cash_out
 
-    previous_date = report_date - timedelta(days=1)
+    previous_date = start_date - timedelta(days=1)
     previous_balance = _site_cash_balance_through(site, through_date=previous_date)
     balance = previous_balance + remaining
 
     report = {
         "site": site.pk,
-        "date": report_date,
         "present_count": labour["present_count"] or Decimal("0"),
         "labour_payment": labour_payment,
         "labour_return": labour_return,

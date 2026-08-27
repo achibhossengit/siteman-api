@@ -1,7 +1,6 @@
 from django.db import transaction
 from django.db.models import ProtectedError, RestrictedError
 from django.db.utils import IntegrityError
-from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
@@ -121,27 +120,69 @@ class SiteViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, ActiveSubscriptionOrReadOnly, HasSitePermissions],
     )
     def daily_reports(self, request, pk=None, **kwargs):
-        """Day summary for this site. Query param ``date`` (YYYY-MM-DD) is optional; defaults to today.
+        """Day or range summary. ``date`` (YYYY-MM-DD) is required for a
+        single day. ``date__gte`` + ``date__lte`` cover an inclusive window.
         """
-        date_raw = request.query_params.get("date")
-        if date_raw:
-            report_date = parse_date(date_raw)
-            if report_date is None:
-                raise serializers.ValidationError(
-                    {"date": "Enter a valid date (YYYY-MM-DD)."},
-                    code=status_codes.INVALID,
-                )
-        else:
-            report_date = timezone.localdate()
-
+        start_date, end_date = self._daily_report_date_bounds(request)
         site = self.get_object()
         include_private = request.user.has_perm("sites.view_privatesitecash")
         report = build_site_daily_report(
-            site, report_date, include_private=include_private
+            site,
+            start_date,
+            end_date,
+            include_private=include_private,
         )
         serializer = SiteDailyReportSerializer(data=report)
         serializer.is_valid(raise_exception=True)
         return Response(serializer.data)
+
+    def _daily_report_date_bounds(self, request):
+        params = request.query_params
+        exact = self._parse_daily_report_date(params, "date")
+        date_gte = self._parse_daily_report_date(params, "date__gte")
+        date_lte = self._parse_daily_report_date(params, "date__lte")
+
+        if exact is not None and (date_gte is not None or date_lte is not None):
+            raise serializers.ValidationError(
+                {"date": "Do not combine date with date__gte or date__lte."},
+                code=status_codes.INVALID,
+            )
+        if date_gte is not None or date_lte is not None:
+            if date_gte is None:
+                raise serializers.ValidationError(
+                    {"date__gte": "This field is required with date__lte."},
+                    code=status_codes.INVALID,
+                )
+            if date_lte is None:
+                raise serializers.ValidationError(
+                    {"date__lte": "This field is required with date__gte."},
+                    code=status_codes.INVALID,
+                )
+            if date_gte > date_lte:
+                raise serializers.ValidationError(
+                    {"date__gte": "Must be on or before date__lte."},
+                    code=status_codes.INVALID,
+                )
+            return date_gte, date_lte
+        if exact is None:
+            raise serializers.ValidationError(
+                {"date": "This field is required."},
+                code=status_codes.INVALID,
+            )
+        return exact, exact
+
+    @staticmethod
+    def _parse_daily_report_date(params, name):
+        raw = params.get(name)
+        if not raw:
+            return None
+        parsed = parse_date(raw)
+        if parsed is None:
+            raise serializers.ValidationError(
+                {name: "Enter a valid date (YYYY-MM-DD)."},
+                code=status_codes.INVALID,
+            )
+        return parsed
 
 
 class SiteBillingCategoryViewSet(viewsets.ModelViewSet):
