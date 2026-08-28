@@ -84,11 +84,11 @@ def build_site_daily_record_list(
     totals_by_labour,
     include_empty_roster=True,
 ):
-    """Merge labours with a (possibly paginated) slice of daily records.
+    """Merge labours with daily records for the requested window.
 
     Empty rows (``records=[]``) are only for *active* labours on this site,
-    and only when ``include_empty_roster`` is true (first page). Inactive or
-    transferred labours appear when they have a record in ``records``.
+    and only when ``include_empty_roster`` is true. Inactive or transferred
+    labours appear when they have a record in ``records``.
     ``totals_by_labour`` is the full-window sum per labour.
     """
     records_by_labour_id = defaultdict(list)

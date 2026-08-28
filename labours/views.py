@@ -189,13 +189,12 @@ class SiteDailyRecordViewSet(
 
     GET returns a hajira roster for ``date`` (defaults to today) or
     ``date__gte`` / ``date__lte``. Windows longer than one month return
-    per-labour totals without individual records. Shorter windows paginate
-    records. POST is still bulk create.
+    per-labour totals without individual records. POST is still bulk create.
     """
 
     serializer_class = SiteDailyRecordSerializer
     queryset = DailyRecord.objects.none()
-    pagination_class = StandardPagination
+    pagination_class = None
     filter_backends = []
     permission_classes = [
         *api_settings.DEFAULT_PERMISSION_CLASSES,
@@ -233,37 +232,16 @@ class SiteDailyRecordViewSet(
         )
 
         if totals_only:
-            rows = build_site_daily_record_list(
-                company_id=request.user.company_id,
-                site_id=site_id,
-                records=[],
-                totals_by_labour=totals_by_labour,
-                include_empty_roster=True,
-            )
-            serializer = self.get_serializer(rows, many=True)
-            return Response(
-                {
-                    "count": qs.count(),
-                    "next": None,
-                    "previous": None,
-                    "results": serializer.data,
-                }
-            )
+            records = []
+        else:
+            records = list(qs.select_related("labour").order_by("date", "id"))
 
-        qs = qs.select_related("labour").order_by("date", "id")
-        page = self.paginate_queryset(qs)
-        records = page if page is not None else list(qs)
-        include_empty_roster = (
-            page is None
-            or getattr(getattr(self, "paginator", None), "page", None) is None
-            or self.paginator.page.number == 1
-        )
         rows = build_site_daily_record_list(
             company_id=request.user.company_id,
             site_id=site_id,
             records=records,
             totals_by_labour=totals_by_labour,
-            include_empty_roster=include_empty_roster,
+            include_empty_roster=True,
         )
         self._pending_activities_map = pending_activities_by_entity(
             company_id=request.user.company_id,
@@ -271,8 +249,6 @@ class SiteDailyRecordViewSet(
             entity_ids=[record.pk for record in records],
         )
         serializer = self.get_serializer(rows, many=True)
-        if page is not None:
-            return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
     def _list_date_bounds(self, request):

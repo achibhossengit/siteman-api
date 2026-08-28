@@ -1677,25 +1677,17 @@ class SiteDailyRecordPendingActivitiesTests(SiteDailyRecordAPITestCase):
         self.assertEqual(by_id[record_a.labour_id]["records"][0]["pending_activities"], [])
         self.assertEqual(len(by_id[record_b.labour_id]["records"][0]["pending_activities"]), 1)
 
-    def test_records_are_paginated(self):
+    def test_all_records_returned_without_pagination(self):
         first = self._create_daily_record(labour=self.labour)
         second = self._create_daily_record(labour=self.labour_b)
-        page1 = self.client.get(
+        response = self.client.get(
             self.list_url, {"date": self.today, "page": 1, "page_size": 1}
         )
-        self.assertEqual(page1.status_code, status.HTTP_200_OK)
-        self.assertEqual(page1.data["count"], 2)
-        page1_rows = _list_results(page1)
-        self.assertEqual(len(page1_rows), 1)
-        self.assertEqual(page1_rows[0]["records"][0]["id"], first.pk)
-
-        page2 = self.client.get(
-            self.list_url, {"date": self.today, "page": 2, "page_size": 1}
-        )
-        self.assertEqual(page2.status_code, status.HTTP_200_OK)
-        page2_rows = _list_results(page2)
-        self.assertEqual(len(page2_rows), 1)
-        self.assertEqual(page2_rows[0]["records"][0]["id"], second.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        by_id = _by_labour_id(response)
+        self.assertEqual(by_id[first.labour_id]["records"][0]["id"], first.pk)
+        self.assertEqual(by_id[second.labour_id]["records"][0]["id"], second.pk)
 
     def test_view_dailyrecord_alone_includes_pending_activities(self):
         record = self._create_daily_record()
@@ -1911,8 +1903,7 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
             {"date__gte": str(start), "date__lte": str(today)},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 1)
-        self.assertIsNone(response.data["next"])
+        self.assertIsInstance(response.data, list)
         by_id = _by_labour_id(response)
         self.assertEqual(by_id[self.labour.pk]["records"], [])
         self.assertEqual(
