@@ -681,6 +681,7 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
                 "type",
                 "amount",
                 "note",
+                "file",
                 "billing",
                 "created_at",
                 "updated_at",
@@ -697,6 +698,8 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["note"], "detail")
         self.assertIn("company", response.data)
+        self.assertIsNone(response.data["file"])
+
     def test_patch_amount_and_note(self):
         cash = self._create_cash(amount=1000, note="old")
         response = self.client.patch(
@@ -708,6 +711,144 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         self.assertEqual(response.data["note"], "updated")
         cash.refresh_from_db()
         self.assertEqual(cash.amount, 1800)
+
+    def test_patch_file(self):
+        import tempfile
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from PIL import Image
+
+        cash = self._create_cash()
+        buf = BytesIO()
+        Image.new("RGB", (1, 1), "red").save(buf, format="PNG")
+        upload = SimpleUploadedFile(
+            "receipt.png",
+            buf.getvalue(),
+            content_type="image/png",
+        )
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                response = self.client.patch(
+                    self._detail_url(self.site.pk, cash.pk),
+                    {"file": upload},
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertIsNotNone(response.data["file"])
+                self.assertIn("/media/sitecash/", response.data["file"])
+                cash.refresh_from_db()
+                self.assertTrue(
+                    cash.file.name.startswith(f"sitecash/{cash.company_id}/")
+                )
+                self.assertTrue(cash.file.name.endswith(".png"))
+                log = ActivityLog.objects.get(
+                    entity_type=ActivityEntityType.SITE_CASH,
+                    entity_id=cash.pk,
+                    action=ActivityAction.UPDATED,
+                )
+                self.assertIsNone(log.changes["file"]["old"])
+                self.assertEqual(log.changes["file"]["new"], cash.file.name)
+
+    def test_patch_pdf_file(self):
+        import tempfile
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+
+        cash = self._create_cash()
+        upload = SimpleUploadedFile(
+            "receipt.pdf",
+            b"%PDF-1.4\n%",
+            content_type="application/pdf",
+        )
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                response = self.client.patch(
+                    self._detail_url(self.site.pk, cash.pk),
+                    {"file": upload},
+                    format="multipart",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                cash.refresh_from_db()
+                self.assertTrue(cash.file.name.endswith(".pdf"))
+
+    def test_patch_file_rejects_over_5mb(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        cash = self._create_cash()
+        upload = SimpleUploadedFile(
+            "huge.jpg",
+            b"x" * (5 * 1024 * 1024 + 1),
+            content_type="image/jpeg",
+        )
+        response = self.client.patch(
+            self._detail_url(self.site.pk, cash.pk),
+            {"file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.FILE_TOO_LARGE,
+        )
+
+    def test_patch_file_rejects_disallowed_type(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        cash = self._create_cash()
+        upload = SimpleUploadedFile(
+            "notes.txt",
+            b"not a receipt",
+            content_type="text/plain",
+        )
+        response = self.client.patch(
+            self._detail_url(self.site.pk, cash.pk),
+            {"file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+
+    def test_patch_file_null_clears(self):
+        import tempfile
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+
+        cash = self._create_cash()
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                cash.file.save(
+                    "receipt.pdf",
+                    SimpleUploadedFile(
+                        "receipt.pdf",
+                        b"%PDF-1.4\n",
+                        content_type="application/pdf",
+                    ),
+                    save=True,
+                )
+                old_name = cash.file.name
+                response = self.client.patch(
+                    self._detail_url(self.site.pk, cash.pk),
+                    {"file": None},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertIsNone(response.data["file"])
+                cash.refresh_from_db()
+                self.assertFalse(cash.file)
+                log = ActivityLog.objects.get(
+                    entity_type=ActivityEntityType.SITE_CASH,
+                    entity_id=cash.pk,
+                    action=ActivityAction.UPDATED,
+                )
+                self.assertEqual(log.changes["file"]["old"], old_name)
+                self.assertIsNone(log.changes["file"]["new"])
 
     def test_delete_cash(self):
         cash = self._create_cash()

@@ -126,6 +126,59 @@ class ActivityServiceTests(APITestCase):
         self.assertEqual(log.entity_id, pk)
         self.assertEqual(log.changes["amount"], 50)
 
+    def test_log_updated_file_change(self):
+        import tempfile
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+
+        cash = SiteCash.objects.create(
+            site=self.site,
+            company=self.company,
+            type=SiteCashType.DEPOSIT,
+            date=timezone.localdate(),
+            amount=1000,
+        )
+        old = snapshot_instance(cash)
+        self.assertIsNone(old["file"])
+        upload = SimpleUploadedFile(
+            "receipt.pdf",
+            b"%PDF-1.4\n",
+            content_type="application/pdf",
+        )
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                cash.file.save("receipt.pdf", upload, save=True)
+                log = log_updated(self.user, cash, old_snapshot=old)
+                file_name = cash.file.name
+        self.assertEqual(log.action, ActivityAction.UPDATED)
+        self.assertIsNone(log.changes["file"]["old"])
+        self.assertEqual(log.changes["file"]["new"], file_name)
+        self.assertTrue(file_name.startswith(f"sitecash/{self.company.pk}/"))
+        self.assertTrue(file_name.endswith(".pdf"))
+
+    def test_activity_serializer_expands_file_paths_to_urls(self):
+        from django.core.files.storage import default_storage
+
+        from activity.serializers import ActivityLogSerializer
+
+        path = f"sitecash/{self.company.pk}/abc.pdf"
+        log = ActivityLog.objects.create(
+            company=self.company,
+            site=self.site,
+            actor=self.user,
+            actor_name=self.user.name,
+            action=ActivityAction.UPDATED,
+            entity_type=ActivityEntityType.SITE_CASH,
+            entity_id=1,
+            changes={"file": {"old": None, "new": path}},
+        )
+        data = ActivityLogSerializer(log).data
+        self.assertEqual(data["changes"]["file"]["new"], default_storage.url(path))
+        self.assertIsNone(data["changes"]["file"]["old"])
+        log.refresh_from_db()
+        self.assertEqual(log.changes["file"]["new"], path)
+
     def test_diff_snapshots(self):
         changes = diff_snapshots({"a": 1, "b": 2}, {"a": 1, "b": 3, "c": 4})
         self.assertEqual(

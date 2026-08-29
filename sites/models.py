@@ -1,3 +1,6 @@
+import uuid
+from pathlib import Path
+
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
@@ -57,6 +60,14 @@ class SiteCashType(models.TextChoices):
     COST = "cost", "Cost"
 
 
+def sitecash_file_upload_to(instance, filename):
+    ext = Path(filename).suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp", ".pdf"}:
+        ext = ""
+    company_id = instance.company_id or "none"
+    return f"sitecash/{company_id}/{uuid.uuid4().hex}{ext}"
+
+
 class SiteCash(TimeStampedMixin, CompanyOwnedMixin):
     site = models.ForeignKey(
         Site,
@@ -75,6 +86,11 @@ class SiteCash(TimeStampedMixin, CompanyOwnedMixin):
     date = models.DateField(default=timezone.localdate)
     amount = models.IntegerField(validators=[MinValueValidator(0)])
     note = models.CharField(max_length=255, null=True, blank=True)
+    file = models.FileField(
+        upload_to=sitecash_file_upload_to,
+        null=True,
+        blank=True,
+    )
 
     def __str__(self):
         return f"{self.get_type_display()} {self.amount} @ {self.date}"

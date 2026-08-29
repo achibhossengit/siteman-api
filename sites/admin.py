@@ -118,6 +118,7 @@ class SiteCashAdmin(ReadOnlyModelAdmin):
         "type",
         "amount",
         "billing",
+        "file",
     )
     list_display_links = ("date",)
     list_filter = (

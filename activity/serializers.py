@@ -1,6 +1,7 @@
+from django.core.files.storage import default_storage
 from rest_framework import serializers
 
-from .models import ActivityLog
+from .models import ActivityEntityType, ActivityLog
 
 
 class PendingActivitySerializer(serializers.Serializer):
@@ -8,6 +9,33 @@ class PendingActivitySerializer(serializers.Serializer):
 
     id = serializers.IntegerField()
     action = serializers.CharField()
+
+
+def public_file_url(stored):
+    """Turn a stored media key into the same public URL SiteCash.file returns."""
+    if not stored:
+        return None
+    if isinstance(stored, str) and stored.startswith(("http://", "https://", "/")):
+        return stored
+    return default_storage.url(stored)
+
+
+def expand_file_urls_in_changes(entity_type, changes):
+    """Rewrite ``file`` paths to public URLs for API responses; leave DB as-is."""
+    if entity_type != ActivityEntityType.SITE_CASH or not changes:
+        return changes
+    if "file" not in changes:
+        return changes
+    value = changes["file"]
+    expanded = dict(changes)
+    if isinstance(value, dict) and ("old" in value or "new" in value):
+        expanded["file"] = {
+            "old": public_file_url(value.get("old")),
+            "new": public_file_url(value.get("new")),
+        }
+    else:
+        expanded["file"] = public_file_url(value)
+    return expanded
 
 
 class ActivityLogSerializer(serializers.ModelSerializer):
@@ -39,6 +67,13 @@ class ActivityLogSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["changes"] = expand_file_urls_in_changes(
+            instance.entity_type, instance.changes
+        )
+        return data
 
 
 class ActivityLogReviewSerializer(serializers.Serializer):

@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from activity.serializers import PendingActivitySerializer
 from core import status_codes
+from core.images import SiteCashFileField
 from .models import BillingCategory, PrivateSiteCash, Site, SiteCash
 
 
@@ -132,6 +133,7 @@ class SiteCashListSerializer(serializers.ModelSerializer):
             "type",
             "amount",
             "note",
+            "file",
             "billing",
             "created_at",
             "updated_at",
@@ -144,6 +146,8 @@ class SiteCashListSerializer(serializers.ModelSerializer):
 
 
 class SiteCashSerializer(SiteLedgerValidationMixin, serializers.ModelSerializer):
+    file = SiteCashFileField(required=False, allow_null=True)
+
     class Meta:
         model = SiteCash
         fields = [
@@ -154,6 +158,7 @@ class SiteCashSerializer(SiteLedgerValidationMixin, serializers.ModelSerializer)
             "date",
             "amount",
             "note",
+            "file",
             "company",
             "created_at",
             "updated_at",

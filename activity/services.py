@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
+from django.db.models.fields.files import FieldFile
 
 from .models import ActivityAction, ActivityEntityType, ActivityLog
 
@@ -37,6 +38,7 @@ TRACKED_FIELDS: dict[str, tuple[str, ...]] = {
         "date",
         "amount",
         "note",
+        "file",
     ),
     ActivityEntityType.PRIVATE_SITE_CASH: (
         "site_id",
@@ -115,6 +117,8 @@ def json_safe(value: Any) -> Any:
         return {str(k): json_safe(v) for k, v in value.items()}
     if isinstance(value, (str, int, float, bool)):
         return value
+    if isinstance(value, FieldFile):
+        return value.name or None
     return str(value)
 
 
