@@ -1,4 +1,4 @@
-"""Find and delete profile photo objects not referenced by User/Labour."""
+"""Find and delete media objects not referenced by User, Labour, or SiteCash."""
 
 from __future__ import annotations
 
@@ -11,8 +11,10 @@ from django.core.files.storage import Storage, default_storage
 from django.utils import timezone
 
 from labours.models import Labour
+from sites.models import SiteCash
 
-PHOTO_PREFIXES = ("users/", "labours/")
+PHOTO_PREFIXES = ("users/", "labours/", "sitecash/")
+PREFIX_LABEL = "users/, labours/, and sitecash/"
 DELETE_BATCH_SIZE = 1000
 
 
@@ -34,14 +36,15 @@ class PurgeResult:
 
 
 def get_referenced_photo_keys() -> set[str]:
-    """Keys currently stored on User.photo and Labour.photo."""
+    """Keys currently stored on User.photo, Labour.photo, and SiteCash.file."""
     User = get_user_model()
     keys: set[str] = set()
-    for qs in (
-        User.objects.exclude(photo="").exclude(photo__isnull=True),
-        Labour.objects.exclude(photo="").exclude(photo__isnull=True),
+    for qs, field in (
+        (User.objects.exclude(photo="").exclude(photo__isnull=True), "photo"),
+        (Labour.objects.exclude(photo="").exclude(photo__isnull=True), "photo"),
+        (SiteCash.objects.exclude(file="").exclude(file__isnull=True), "file"),
     ):
-        for name in qs.values_list("photo", flat=True):
+        for name in qs.values_list(field, flat=True):
             if name:
                 keys.add(name)
     return keys
@@ -52,7 +55,7 @@ def _is_s3_storage(storage: Storage) -> bool:
 
 
 def list_stored_photo_objects(storage: Storage | None = None) -> list[StoredObject]:
-    """List objects under users/ and labours/ on the default media storage."""
+    """List objects under users/, labours/, and sitecash/ on default media storage."""
     storage = storage or default_storage
     if _is_s3_storage(storage):
         return _list_s3_photo_objects(storage)
@@ -175,9 +178,9 @@ def purge_orphan_photos(
     storage: Storage | None = None,
 ) -> PurgeResult:
     """
-    Delete media keys under users/ and labours/ that no DB row references.
+    Delete media keys under users/, labours/, and sitecash/ that no DB row references.
 
-    When the DB has zero photo refs but storage still has objects, refuse unless
+    When the DB has zero file refs but storage still has objects, refuse unless
     ``force`` is True (guards against a wrong database).
     """
     if min_age_hours < 0:
@@ -194,8 +197,8 @@ def purge_orphan_photos(
 
     if not referenced and stored and not force:
         raise RuntimeError(
-            "No photo references in the database, but storage still has "
-            f"{len(stored)} object(s) under users/ and labours/. "
+            "No media references in the database, but storage still has "
+            f"{len(stored)} object(s) under {PREFIX_LABEL}. "
             "Refusing to purge (possible wrong DB). Pass --force to override."
         )
 

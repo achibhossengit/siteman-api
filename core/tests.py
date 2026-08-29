@@ -182,6 +182,39 @@ class OrphanPhotoPurgeTests(TestCase):
         self.assertFalse((self.media_root / orphan_key).exists())
         self.assertTrue((self.media_root / fresh_key).exists())
 
+    def test_purge_deletes_orphaned_sitecash_files(self):
+        from django.utils import timezone
+
+        from sites.models import Site, SiteCash, SiteCashType
+
+        site = Site.objects.create(name="Yard", company=self.company)
+        live_key = f"sitecash/{self.company.pk}/live.pdf"
+        orphan_key = f"sitecash/{self.company.pk}/orphan.pdf"
+        self._write(live_key, age_hours=200)
+        self._write(orphan_key, age_hours=200)
+
+        cash = SiteCash.objects.create(
+            company=self.company,
+            site=site,
+            type=SiteCashType.DEPOSIT,
+            date=timezone.localdate(),
+            amount=1000,
+        )
+        cash.file.name = live_key
+        cash.save(update_fields=["file"])
+
+        result = self.purge_orphan_photos(
+            min_age_hours=24,
+            dry_run=False,
+            storage=self.storage,
+        )
+        self.assertEqual(result.referenced_count, 1)
+        self.assertEqual(result.orphan_count, 1)
+        self.assertEqual(result.deleted_count, 1)
+        self.assertEqual(result.orphans, (orphan_key,))
+        self.assertTrue((self.media_root / live_key).exists())
+        self.assertFalse((self.media_root / orphan_key).exists())
+
     def test_purge_dry_run_does_not_delete(self):
         orphan_key = f"users/{self.company.pk}/orphan.jpg"
         self._write(orphan_key, age_hours=200)

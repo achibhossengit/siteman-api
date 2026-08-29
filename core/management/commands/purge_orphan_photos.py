@@ -5,6 +5,7 @@ from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand, CommandError
 
 from core.orphan_photos import (
+    PREFIX_LABEL,
     delete_storage_keys,
     find_orphan_keys,
     get_referenced_photo_keys,
@@ -14,7 +15,7 @@ from core.orphan_photos import (
 
 class Command(BaseCommand):
     help = (
-        "Delete orphaned user/labour photos under users/ and labours/ that are "
+        "Delete orphaned media under users/, labours/, and sitecash/ that are "
         "not referenced in the database. Intended for cron; default keeps "
         "recent objects for a support window."
     )
@@ -38,8 +39,8 @@ class Command(BaseCommand):
             "--force",
             action="store_true",
             help=(
-                "Allow purge when the DB has no photo references but storage "
-                "still has users/ or labours/ objects."
+                "Allow purge when the DB has no media references but storage "
+                "still has users/, labours/, or sitecash/ objects."
             ),
         )
         parser.add_argument(
@@ -64,8 +65,8 @@ class Command(BaseCommand):
 
         if not referenced and stored and not options["force"]:
             raise CommandError(
-                "No photo references in the database, but storage still has "
-                f"{len(stored)} object(s) under users/ and labours/. "
+                "No media references in the database, but storage still has "
+                f"{len(stored)} object(s) under {PREFIX_LABEL}. "
                 "Refusing to purge (possible wrong DB). Pass --force to override."
             )
 
@@ -79,7 +80,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             f"Referenced: {len(referenced)}; "
-            f"stored under users|labours: {len(stored)}; "
+            f"stored under users|labours|sitecash: {len(stored)}; "
             f"orphans (age>={min_age_hours}h): {len(orphans)}; "
             f"skipped: {skipped_new}."
         )
