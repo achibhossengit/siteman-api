@@ -751,11 +751,8 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
                 self.assertIsNone(log.changes["file"]["old"])
                 self.assertEqual(log.changes["file"]["new"], cash.file.name)
 
-    def test_patch_pdf_file(self):
-        import tempfile
-
+    def test_patch_file_rejects_pdf(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
-        from django.test import override_settings
 
         cash = self._create_cash()
         upload = SimpleUploadedFile(
@@ -763,16 +760,16 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
             b"%PDF-1.4\n%",
             content_type="application/pdf",
         )
-        with tempfile.TemporaryDirectory() as media:
-            with override_settings(MEDIA_ROOT=media):
-                response = self.client.patch(
-                    self._detail_url(self.site.pk, cash.pk),
-                    {"file": upload},
-                    format="multipart",
-                )
-                self.assertEqual(response.status_code, status.HTTP_200_OK)
-                cash.refresh_from_db()
-                self.assertTrue(cash.file.name.endswith(".pdf"))
+        response = self.client.patch(
+            self._detail_url(self.site.pk, cash.pk),
+            {"file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
 
     def test_patch_file_rejects_over_5mb(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -791,7 +788,7 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
             response.data["errors"][0]["code"],
-            status_codes.FILE_TOO_LARGE,
+            status_codes.PHOTO_TOO_LARGE,
         )
 
     def test_patch_file_rejects_disallowed_type(self):
@@ -816,19 +813,23 @@ class SiteCashCRUDTests(SiteCashAPITestCase):
 
     def test_patch_file_null_clears(self):
         import tempfile
+        from io import BytesIO
 
         from django.core.files.uploadedfile import SimpleUploadedFile
         from django.test import override_settings
+        from PIL import Image
 
         cash = self._create_cash()
+        buf = BytesIO()
+        Image.new("RGB", (1, 1), "red").save(buf, format="PNG")
         with tempfile.TemporaryDirectory() as media:
             with override_settings(MEDIA_ROOT=media):
                 cash.file.save(
-                    "receipt.pdf",
+                    "receipt.png",
                     SimpleUploadedFile(
-                        "receipt.pdf",
-                        b"%PDF-1.4\n",
-                        content_type="application/pdf",
+                        "receipt.png",
+                        buf.getvalue(),
+                        content_type="image/png",
                     ),
                     save=True,
                 )

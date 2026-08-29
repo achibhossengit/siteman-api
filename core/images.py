@@ -3,6 +3,7 @@
 from io import BytesIO
 from pathlib import Path
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from PIL import Image, ImageOps, UnidentifiedImageError
 from rest_framework import serializers
@@ -67,38 +68,20 @@ class ProfilePhotoField(serializers.ImageField):
         return resize_profile_photo(file)
 
 
-LEDGER_FILE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
-LEDGER_FILE_CONTENT_TYPES = {
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/webp",
-    "application/pdf",
-}
-
-
-class SiteCashFileField(serializers.FileField):
-    """JPEG/PNG/WebP/PDF, 5 MB cap. Images are not resized (receipts stay readable)."""
+class SiteCashImageField(serializers.ImageField):
+    """JPEG/PNG/WebP, 5 MB cap. Not resized so receipts stay readable."""
 
     def to_internal_value(self, data):
         size = getattr(data, "size", None)
         if size is not None and size > MAX_UPLOAD_BYTES:
             raise serializers.ValidationError(
-                "File must be 5 MB or smaller.",
-                code=status_codes.FILE_TOO_LARGE,
+                "Photo must be 5 MB or smaller.",
+                code=status_codes.PHOTO_TOO_LARGE,
             )
-        uploaded = super().to_internal_value(data)
-        name = getattr(uploaded, "name", "") or ""
-        ext = Path(name).suffix.lower()
-        content_type = (getattr(uploaded, "content_type", None) or "").lower()
-        if ext not in LEDGER_FILE_EXTS:
+        try:
+            return super().to_internal_value(data)
+        except (serializers.ValidationError, DjangoValidationError):
             raise serializers.ValidationError(
-                "Upload a JPEG, PNG, WebP, or PDF.",
+                "Upload a valid image (JPEG, PNG, or WebP).",
                 code=status_codes.INVALID,
             )
-        if content_type and content_type not in LEDGER_FILE_CONTENT_TYPES:
-            raise serializers.ValidationError(
-                "Upload a JPEG, PNG, WebP, or PDF.",
-                code=status_codes.INVALID,
-            )
-        return uploaded

@@ -128,9 +128,11 @@ class ActivityServiceTests(APITestCase):
 
     def test_log_updated_file_change(self):
         import tempfile
+        from io import BytesIO
 
         from django.core.files.uploadedfile import SimpleUploadedFile
         from django.test import override_settings
+        from PIL import Image
 
         cash = SiteCash.objects.create(
             site=self.site,
@@ -141,28 +143,30 @@ class ActivityServiceTests(APITestCase):
         )
         old = snapshot_instance(cash)
         self.assertIsNone(old["file"])
+        buf = BytesIO()
+        Image.new("RGB", (1, 1), "red").save(buf, format="PNG")
         upload = SimpleUploadedFile(
-            "receipt.pdf",
-            b"%PDF-1.4\n",
-            content_type="application/pdf",
+            "receipt.png",
+            buf.getvalue(),
+            content_type="image/png",
         )
         with tempfile.TemporaryDirectory() as media:
             with override_settings(MEDIA_ROOT=media):
-                cash.file.save("receipt.pdf", upload, save=True)
+                cash.file.save("receipt.png", upload, save=True)
                 log = log_updated(self.user, cash, old_snapshot=old)
                 file_name = cash.file.name
         self.assertEqual(log.action, ActivityAction.UPDATED)
         self.assertIsNone(log.changes["file"]["old"])
         self.assertEqual(log.changes["file"]["new"], file_name)
         self.assertTrue(file_name.startswith(f"sitecash/{self.company.pk}/"))
-        self.assertTrue(file_name.endswith(".pdf"))
+        self.assertTrue(file_name.endswith(".png"))
 
     def test_activity_serializer_expands_file_paths_to_urls(self):
         from django.core.files.storage import default_storage
 
         from activity.serializers import ActivityLogSerializer
 
-        path = f"sitecash/{self.company.pk}/abc.pdf"
+        path = f"sitecash/{self.company.pk}/abc.jpg"
         log = ActivityLog.objects.create(
             company=self.company,
             site=self.site,

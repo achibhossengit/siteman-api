@@ -188,8 +188,8 @@ class OrphanPhotoPurgeTests(TestCase):
         from sites.models import Site, SiteCash, SiteCashType
 
         site = Site.objects.create(name="Yard", company=self.company)
-        live_key = f"sitecash/{self.company.pk}/live.pdf"
-        orphan_key = f"sitecash/{self.company.pk}/orphan.pdf"
+        live_key = f"sitecash/{self.company.pk}/live.jpg"
+        orphan_key = f"sitecash/{self.company.pk}/orphan.jpg"
         self._write(live_key, age_hours=200)
         self._write(orphan_key, age_hours=200)
 

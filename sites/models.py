@@ -62,8 +62,8 @@ class SiteCashType(models.TextChoices):
 
 def sitecash_file_upload_to(instance, filename):
     ext = Path(filename).suffix.lower()
-    if ext not in {".jpg", ".jpeg", ".png", ".webp", ".pdf"}:
-        ext = ""
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg"
     company_id = instance.company_id or "none"
     return f"sitecash/{company_id}/{uuid.uuid4().hex}{ext}"
 
@@ -86,7 +86,7 @@ class SiteCash(TimeStampedMixin, CompanyOwnedMixin):
     date = models.DateField(default=timezone.localdate)
     amount = models.IntegerField(validators=[MinValueValidator(0)])
     note = models.CharField(max_length=255, null=True, blank=True)
-    file = models.FileField(
+    file = models.ImageField(
         upload_to=sitecash_file_upload_to,
         null=True,
         blank=True,
