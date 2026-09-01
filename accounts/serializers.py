@@ -239,12 +239,80 @@ class UserListSerializer(serializers.ModelSerializer):
         ]
 
 
-class UserCreateSerializer(serializers.ModelSerializer):
+class UserGroupRelatedField(serializers.SlugRelatedField):
+    def to_representation(self, instance):
+        return {"id": instance.pk, "name": instance.name}
+
+
+class UserSiteRelatedField(serializers.PrimaryKeyRelatedField):
+    def to_representation(self, value):
+        return value.site_id
+
+
+class UserAccessAssignmentMixin(serializers.Serializer):
+    """Writable group and allowed-site assignment for company users."""
+
+    groups = UserGroupRelatedField(
+        many=True,
+        slug_field="name",
+        queryset=Group.objects.filter(name__in=ROLE_GROUP_NAMES),
+        required=False,
+    )
+    allowed_sites = UserSiteRelatedField(
+        many=True,
+        queryset=Site.objects.none(),
+        required=False,
+        source="sites",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        company_id = getattr(getattr(request, "user", None), "company_id", None)
+        if company_id is not None:
+            self.fields["allowed_sites"].child_relation.queryset = Site.objects.filter(
+                company_id=company_id
+            )
+
+    def validate_groups(self, groups):
+        if len(groups) > 1:
+            raise serializers.ValidationError(
+                "A user can belong to only one group at a time.",
+                code=status_codes.INVALID,
+            )
+        return groups
+
+    def _assign_access(self, instance, groups, sites):
+        if groups is not None:
+            instance.groups.set(groups)
+
+        if sites is not None:
+            sites_by_id = {site.pk: site for site in sites}
+            instance.sites.exclude(site_id__in=sites_by_id).delete()
+            existing_site_ids = set(
+                instance.sites.values_list("site_id", flat=True)
+            )
+            request = self.context["request"]
+            for site_id, site in sites_by_id.items():
+                if site_id not in existing_site_ids:
+                    UserSite.objects.create(
+                        user=instance,
+                        site=site,
+                        company=request.user.company,
+                    )
+
+        return instance
+
+
+class UserCreateSerializer(UserAccessAssignmentMixin, serializers.ModelSerializer):
     """Create a company user with an initial password set by the admin.
 
     Password is write-only and create-only. Updates go through
     ``UserUpdateSerializer``, which does not accept password — users change
     their own password via ``/auth/password/change`` or reset.
+
+    Optional ``groups`` (role names) and ``allowed_sites`` (site ids) are
+    assigned in the same request.
     """
 
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
@@ -260,6 +328,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "is_active",
             "is_companyadmin",
             "company",
+            "groups",
+            "allowed_sites",
             "created_at",
             "updated_at",
         ]
@@ -313,78 +383,23 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        return User.objects.create_user(password=password, **validated_data)
+        groups = validated_data.pop("groups", None)
+        sites = validated_data.pop("sites", None)
+        user = User.objects.create_user(password=password, **validated_data)
+        return self._assign_access(user, groups, sites)
 
 
-class UserGroupRelatedField(serializers.SlugRelatedField):
-    def to_representation(self, instance):
-        return {"id": instance.pk, "name": instance.name}
-
-
-class UserSiteRelatedField(serializers.PrimaryKeyRelatedField):
-    def to_representation(self, value):
-        return value.site_id
-
-
-class UserUpdateSerializer(serializers.ModelSerializer):
-    groups = UserGroupRelatedField(
-        many=True,
-        slug_field="name",
-        queryset=Group.objects.filter(name__in=ROLE_GROUP_NAMES),
-        required=False,
-    )
-    sites = UserSiteRelatedField(
-        many=True,
-        queryset=Site.objects.none(),
-        required=False,
-    )
-
+class UserUpdateSerializer(UserAccessAssignmentMixin, serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "is_active", "groups", "sites"]
+        fields = ["id", "is_active", "groups", "allowed_sites"]
         read_only_fields = ["id"]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get("request")
-        company_id = getattr(getattr(request, "user", None), "company_id", None)
-        if company_id is not None:
-            self.fields["sites"].child_relation.queryset = Site.objects.filter(
-                company_id=company_id
-            )
-
-    def validate_groups(self, groups):
-        if len(groups) > 1:
-            raise serializers.ValidationError(
-                "A user can belong to only one group at a time.",
-                code=status_codes.INVALID,
-            )
-        return groups
 
     def update(self, instance, validated_data):
         groups = validated_data.pop("groups", None)
         sites = validated_data.pop("sites", None)
         instance = super().update(instance, validated_data)
-
-        if groups is not None:
-            instance.groups.set(groups)
-
-        if sites is not None:
-            sites_by_id = {site.pk: site for site in sites}
-            instance.sites.exclude(site_id__in=sites_by_id).delete()
-            existing_site_ids = set(
-                instance.sites.values_list("site_id", flat=True)
-            )
-            request = self.context["request"]
-            for site_id, site in sites_by_id.items():
-                if site_id not in existing_site_ids:
-                    UserSite.objects.create(
-                        user=instance,
-                        site=site,
-                        company=request.user.company,
-                    )
-
-        return instance
+        return self._assign_access(instance, groups, sites)
 
 
 class CookieTokenObtainPairSerializer(TokenObtainPairSerializer):

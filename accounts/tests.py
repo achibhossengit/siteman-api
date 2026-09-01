@@ -766,6 +766,95 @@ class UserCRUDTests(UserAPITestCase):
         self.assertIn(created.email, (None, ""))
         self.assertFalse(created.is_staff)
         self.assertFalse(created.is_superuser)
+        self.assertEqual(response.data["groups"], [])
+        self.assertEqual(response.data["allowed_sites"], [])
+        self.assertFalse(created.groups.exists())
+        self.assertFalse(created.sites.exists())
+
+    def test_create_assigns_group_and_allowed_sites(self):
+        site_manager = Group.objects.get(name="Site Manager")
+        site_a = Site.objects.create(name="Site A", company=self.company)
+        site_b = Site.objects.create(name="Site B", company=self.company)
+
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Assigned Manager",
+                "phone_number": "01711112223",
+                "password": "initial-pass-123",
+                "groups": ["Site Manager"],
+                "allowed_sites": [site_a.pk, site_b.pk],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            response.data["groups"],
+            [{"id": site_manager.pk, "name": "Site Manager"}],
+        )
+        self.assertCountEqual(response.data["allowed_sites"], [site_a.pk, site_b.pk])
+
+        created = User.objects.get(pk=response.data["id"])
+        self.assertCountEqual(
+            created.groups.values_list("id", flat=True),
+            [site_manager.pk],
+        )
+        self.assertCountEqual(
+            created.sites.values_list("site_id", flat=True),
+            [site_a.pk, site_b.pk],
+        )
+
+    def test_create_rejects_multiple_groups(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Two Groups",
+                "phone_number": "01711112224",
+                "password": "initial-pass-123",
+                "groups": ["Site Manager", "Site Auditor"],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.INVALID,
+        )
+        self.assertFalse(User.objects.filter(name="Two Groups").exists())
+
+    def test_create_rejects_company_admin_group(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Fake Admin",
+                "phone_number": "01711112225",
+                "password": "initial-pass-123",
+                "groups": ["Company Admin"],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(name="Fake Admin").exists())
+
+    def test_create_rejects_site_from_other_company(self):
+        other_company = Company.objects.create(name="Other Company")
+        foreign_site = Site.objects.create(
+            name="Foreign Site",
+            company=other_company,
+        )
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Foreign Site User",
+                "phone_number": "01711112226",
+                "password": "initial-pass-123",
+                "allowed_sites": [foreign_site.pk],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(name="Foreign Site User").exists())
 
     def test_create_requires_password(self):
         response = self.client.post(
@@ -930,12 +1019,12 @@ class UserCRUDTests(UserAPITestCase):
 
         response = self.client.patch(
             self._detail_url(other.pk),
-            {"sites": [site_a.pk, site_b.pk]},
+            {"allowed_sites": [site_a.pk, site_b.pk]},
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertCountEqual(response.data["sites"], [site_a.pk, site_b.pk])
+        self.assertCountEqual(response.data["allowed_sites"], [site_a.pk, site_b.pk])
         self.assertCountEqual(
             other.sites.values_list("site_id", flat=True),
             [site_a.pk, site_b.pk],
@@ -951,7 +1040,7 @@ class UserCRUDTests(UserAPITestCase):
 
         response = self.client.patch(
             self._detail_url(other.pk),
-            {"sites": [foreign_site.pk]},
+            {"allowed_sites": [foreign_site.pk]},
             format="json",
         )
 
@@ -972,15 +1061,15 @@ class UserCRUDTests(UserAPITestCase):
 
         response = self.client.patch(
             self._detail_url(other.pk),
-            {"sites": []},
+            {"allowed_sites": []},
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["sites"], [])
+        self.assertEqual(response.data["allowed_sites"], [])
         self.assertFalse(other.sites.exists())
 
-    def test_patch_ignores_fields_other_than_groups_sites_and_is_active(self):
+    def test_patch_ignores_fields_other_than_groups_allowed_sites_and_is_active(self):
         other = self._create_company_user(
             name="Original Name",
             phone="+8801711117777",

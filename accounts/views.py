@@ -319,8 +319,9 @@ class UserProfileViewSet(
 class UserViewSet(viewsets.ModelViewSet):
     """Company-scoped user management.
 
-    POST accepts an initial ``password`` so the admin can share credentials;
-    PATCH cannot change passwords (only ``is_active``, ``groups``, ``sites``).
+    POST accepts an initial ``password`` so the admin can share credentials,
+    plus optional ``groups`` and ``allowed_sites``. PATCH cannot change
+    passwords (only ``is_active``, ``groups``, ``allowed_sites``).
     DELETE requires the admin's own ``password`` and hard-deletes the user
     (``UserSite`` cascades; activity actor FKs null).
     """
