@@ -1026,9 +1026,15 @@ class UserCRUDTests(UserAPITestCase):
         from activity.models import ActivityAction, ActivityEntityType, ActivityLog
 
         other = self._create_company_user(phone="+8801711119999", name="To Delete")
-        response = self.client.delete(self._detail_url(other.pk))
+        site = Site.objects.create(name="Site A", company=self.company)
+        UserSite.objects.create(user=other, site=site, company=self.company)
+        response = self.client.delete(
+            self._detail_url(other.pk), {"password": "strong-pass-123"}
+        )
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(User.objects.filter(pk=other.pk).exists())
+        self.assertFalse(UserSite.objects.filter(user_id=other.pk).exists())
+        self.assertTrue(Site.objects.filter(pk=site.pk).exists())
         log = ActivityLog.objects.filter(
             entity_type=ActivityEntityType.USER,
             entity_id=other.pk,
@@ -1037,8 +1043,18 @@ class UserCRUDTests(UserAPITestCase):
         self.assertEqual(log.actor_id, self.user.pk)
         self.assertEqual(log.changes["name"], "To Delete")
 
+    def test_delete_rejects_wrong_password(self):
+        other = self._create_company_user(phone="+8801711100098")
+        response = self.client.delete(
+            self._detail_url(other.pk), {"password": "wrong-pass"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(User.objects.filter(pk=other.pk).exists())
+
     def test_cannot_delete_self(self):
-        response = self.client.delete(self._detail_url(self.user.pk))
+        response = self.client.delete(
+            self._detail_url(self.user.pk), {"password": "strong-pass-123"}
+        )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
 
@@ -1048,7 +1064,9 @@ class UserCRUDTests(UserAPITestCase):
         self.user = User.objects.get(pk=self.user.pk)
         self._grant_user_permissions(self.user, ["view_user", "change_user"])
         self.client.force_authenticate(user=self.user)
-        response = self.client.delete(self._detail_url(other.pk))
+        response = self.client.delete(
+            self._detail_url(other.pk), {"password": "strong-pass-123"}
+        )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertTrue(User.objects.filter(pk=other.pk).exists())
 

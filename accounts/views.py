@@ -44,6 +44,7 @@ from .serializers import (
     CookieTokenBlacklistSerializer,
 
     # company user management
+    UserDeleteSerializer,
     UserListSerializer,
     UserUpdateSerializer,
 )
@@ -320,7 +321,8 @@ class UserViewSet(viewsets.ModelViewSet):
 
     POST accepts an initial ``password`` so the admin can share credentials;
     PATCH cannot change passwords (only ``is_active``, ``groups``, ``sites``).
-    DELETE hard-deletes the user (``UserSite`` cascades; activity actor FKs null).
+    DELETE requires the admin's own ``password`` and hard-deletes the user
+    (``UserSite`` cascades; activity actor FKs null).
     """
 
     serializer_class = UserDetailSerializer
@@ -338,6 +340,8 @@ class UserViewSet(viewsets.ModelViewSet):
             return UserCreateSerializer
         if self.action == "partial_update":
             return UserUpdateSerializer
+        if self.action == "destroy":
+            return UserDeleteSerializer
         return UserDetailSerializer
 
     def get_queryset(self):
@@ -398,6 +402,13 @@ class UserViewSet(viewsets.ModelViewSet):
         old_snapshot = snapshot_user(instance)
         serializer.save()
         log_updated(self.request.user, serializer.instance, old_snapshot=old_snapshot)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
     def perform_destroy(self, instance):

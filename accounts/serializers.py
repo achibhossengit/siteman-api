@@ -89,6 +89,17 @@ class PasswordChangeSerializer(serializers.Serializer):
     def validate_new_password(self, value):
         validate_password(value, user=self.context["request"].user)
         return value
+
+
+class UserDeleteSerializer(serializers.Serializer):
+    """Confirm the acting admin's password before hard-deleting a user."""
+
+    password = serializers.CharField(write_only=True, style={"input_type": "password"})
+
+    def validate_password(self, value):
+        if not self.context["request"].user.check_password(value):
+            raise serializers.ValidationError("Password is incorrect.")
+        return value
     
 
 class UserDetailSerializer(serializers.ModelSerializer):
