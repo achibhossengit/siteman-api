@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -12,10 +13,11 @@ from rest_framework.test import APITestCase
 from rest_framework.throttling import SimpleRateThrottle, UserRateThrottle
 from core import status_codes, verifications
 from company.models import Company
+from company.signals import TRIAL_DURATION_DAYS
 from subscription.models import Subscription
 from sites.models import Site
 from .models import UserSite
-from .views import PASSWORD_RESET_PURPOSE, REGISTER_PURPOSE
+from .views import PASSWORD_RESET_PURPOSE
 
 User = get_user_model()
 
@@ -54,50 +56,45 @@ class RegistrationFlowTests(APITestCase):
         throttle_patcher.start()
         self.addCleanup(throttle_patcher.stop)
         self.register_url = reverse("register", kwargs={"version": "v1"})
-        self.resend_url = reverse("register-resend-otp", kwargs={"version": "v1"})
-        self.confirm_url = reverse("register-confirm", kwargs={"version": "v1"})
         self.valid_payload = {
             "name": "Achib Hossen",
             "phone_number": "+8801712345678",
-            "email": "achib@example.com",
             "company_name": "Achib Builders",
             "password": "strong-pass-123",
         }
 
     def register(self, payload=None):
-        """POST /register with delivery mocked. Returns (response, ticket, otp)."""
-        with patch("core.notifications.deliver_otp") as mocked:
-            response = self.client.post(self.register_url, payload or self.valid_payload)
-        ticket = response.data.get("ticket") if response.status_code == 201 else None
-        otp = mocked.call_args.kwargs.get("otp") if mocked.call_args else None
-        return response, ticket, otp
+        return self.client.post(self.register_url, payload or self.valid_payload)
 
-    # --- register ---
-
-    def test_register_success(self):
-        with patch("core.notifications.deliver_otp") as mocked:
-            response = self.client.post(self.register_url, self.valid_payload)
+    def test_register_creates_company_admin(self):
+        response = self.register()
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertCountEqual(response.data.keys(), ["ticket", "otp_expires_in", "resend_cooldown"])
-        mocked.assert_called_once()
-        self.assertEqual(mocked.call_args.kwargs["email"], "achib@example.com")
+        self.assertNotIn("access", response.data)
+        self.assertNotIn("refresh", response.data)
 
-    def test_register_requires_email(self):
-        payload = {**self.valid_payload}
-        payload.pop("email")
-        response, _, _ = self.register(payload)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        user = User.objects.get(phone_number="+8801712345678")
+        self.assertTrue(user.check_password("strong-pass-123"))
+        self.assertIsNone(user.email)
+        self.assertEqual(user.company.name, "Achib Builders")
+        self.assertTrue(user.is_companyadmin)
+        self.assertTrue(user.groups.filter(name="Company Admin").exists())
+        self.assertEqual(response.data["phone_number"], "01712345678")
+        self.assertEqual(response.data["company"]["name"], "Achib Builders")
 
-    def test_register_creates_no_user_until_confirm(self):
+    def test_register_applies_trial_subscription(self):
         self.register()
-        self.assertEqual(User.objects.count(), 0)
-        self.assertEqual(Company.objects.count(), 0)
+        company = Company.objects.get(name="Achib Builders")
+        subscription = Subscription.objects.get(company=company)
+        self.assertEqual(
+            subscription.paid_until,
+            timezone.localdate() + timedelta(days=TRIAL_DURATION_DAYS),
+        )
 
     def test_register_rejects_registered_phone(self):
         User.objects.create_user(
             phone_number="+8801712345678", name="Existing User", password="strong-pass-123"
         )
-        response, _, _ = self.register()
+        response = self.register()
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_register_rejects_weak_password(self):
@@ -111,7 +108,7 @@ class RegistrationFlowTests(APITestCase):
         for password in weak_passwords:
             with self.subTest(password=password):
                 payload = {**self.valid_payload, "password": password}
-                response, _, _ = self.register(payload)
+                response = self.register(payload)
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_register_rejects_invalid_phone(self):
@@ -126,58 +123,8 @@ class RegistrationFlowTests(APITestCase):
         for number in invalid_numbers:
             with self.subTest(phone=number):
                 payload = {**self.valid_payload, "phone_number": number}
-                response, _, _ = self.register(payload)
+                response = self.register(payload)
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    # --- resend OTP ---
-
-    def test_resend_within_cooldown_throttled(self):
-        _, ticket, _ = self.register()
-        with patch("core.notifications.deliver_otp"):
-            response = self.client.post(self.resend_url, {"ticket": ticket})
-        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
-        
-    def test_resend_success(self):
-        _, ticket, _ = self.register()
-        # disable the cooldown so the resend is allowed immediately
-        with patch.object(verifications, "RESEND_COOLDOWN", 0):
-            with patch("core.notifications.deliver_otp") as mocked:
-                response = self.client.post(self.resend_url, {"ticket": ticket})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["ticket"], ticket)
-        # the freshly generated OTP must work on confirm
-        new_otp = mocked.call_args.kwargs["otp"]
-        confirm = self.client.post(self.confirm_url, {"ticket": ticket, "otp": new_otp})
-        self.assertEqual(confirm.status_code, status.HTTP_201_CREATED)
-        
-
-    # --- confirm ---
-
-    def test_confirm_creates_company_admin(self):
-        _, ticket, otp = self.register()
-        response = self.client.post(self.confirm_url, {"ticket": ticket, "otp": otp})
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-        user = User.objects.get(phone_number="+8801712345678")
-        self.assertTrue(user.check_password("strong-pass-123"))
-        self.assertEqual(user.email, "achib@example.com")
-        self.assertEqual(user.company.name, "Achib Builders")
-        self.assertTrue(user.is_companyadmin)
-        self.assertTrue(user.groups.filter(name="Company Admin").exists())
-
-    def test_confirm_rejects_wrong_otp(self):
-        _, ticket, otp = self.register()
-        wrong = "000000" if otp != "000000" else "999999"
-        response = self.client.post(self.confirm_url, {"ticket": ticket, "otp": wrong})
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(User.objects.count(), 0)
-
-    def test_confirm_ticket_is_single_use(self):
-        _, ticket, otp = self.register()
-        first = self.client.post(self.confirm_url, {"ticket": ticket, "otp": otp})
-        second = self.client.post(self.confirm_url, {"ticket": ticket, "otp": otp})
-        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 @override_settings(CACHES=TEST_CACHES, REGISTRATION_ENABLED=False)
@@ -185,8 +132,6 @@ class RegistrationDisabledTests(APITestCase):
     def setUp(self):
         cache.clear()
         self.register_url = reverse("register", kwargs={"version": "v1"})
-        self.resend_url = reverse("register-resend-otp", kwargs={"version": "v1"})
-        self.confirm_url = reverse("register-confirm", kwargs={"version": "v1"})
 
     def test_register_blocked(self):
         response = self.client.post(
@@ -196,26 +141,7 @@ class RegistrationDisabledTests(APITestCase):
                 "phone_number": "+8801712345678",
                 "company_name": "Achib Builders",
                 "password": "strong-pass-123",
-                "email": "achib@example.com",
             },
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.REGISTRATION_DISABLED,
-        )
-
-    def test_resend_blocked(self):
-        response = self.client.post(self.resend_url, {"ticket": "unused"})
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.REGISTRATION_DISABLED,
-        )
-
-    def test_confirm_blocked(self):
-        response = self.client.post(
-            self.confirm_url, {"ticket": "unused", "otp": "123456"}
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(
@@ -326,8 +252,7 @@ class TokenFlowTests(APITestCase):
 class AuthenticationRateLimitTests(APITestCase):
     """Throttling for the auth endpoints.
 
-    The 'register' scope is shared by register/resend-otp/confirm,
-    so those three endpoints share one bucket per client IP.
+    The 'register' scope covers /auth/register only.
     The 'login' scope covers token/obtain only.
     The 'password_reset' scope is shared by reset/resend-otp/confirm.
     """
@@ -335,8 +260,6 @@ class AuthenticationRateLimitTests(APITestCase):
     def setUp(self):
         cache.clear()
         self.register_url = reverse("register", kwargs={"version": "v1"})
-        self.resend_url = reverse("register-resend-otp", kwargs={"version": "v1"})
-        self.confirm_url = reverse("register-confirm", kwargs={"version": "v1"})
         self.token_obtain_url = reverse("token-obtain", kwargs={"version": "v1"})
         self.reset_url = reverse("password-reset", kwargs={"version": "v1"})
         self.reset_resend_url = reverse("password-reset-resend-otp", kwargs={"version": "v1"})
@@ -354,7 +277,6 @@ class AuthenticationRateLimitTests(APITestCase):
         self.register_payload = {
             "name": "Achib Hossen",
             "phone_number": "+8801712345678",
-            "email": "achib@example.com",
             "company_name": "Achib Builders",
             "password": "strong-pass-123",
         }
@@ -362,10 +284,14 @@ class AuthenticationRateLimitTests(APITestCase):
 
     def exhaust_register_scope(self):
         """Use up the whole 'register' bucket (3/min)."""
-        with patch("core.notifications.deliver_otp"):
-            for _ in range(3):
-                response = self.client.post(self.register_url, self.register_payload)
-                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        for i in range(3):
+            payload = {
+                **self.register_payload,
+                "phone_number": f"+880171234567{i}",
+                "company_name": f"Company {i}",
+            }
+            response = self.client.post(self.register_url, payload)
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def exhaust_password_reset_scope(self):
         """Use up the whole 'password_reset' bucket (3/min)."""
@@ -376,17 +302,9 @@ class AuthenticationRateLimitTests(APITestCase):
 
     def test_register_rate_limited(self):
         self.exhaust_register_scope()
-        with patch("core.notifications.deliver_otp"):
-            blocked = self.client.post(self.register_url, self.register_payload)
+        blocked = self.client.post(self.register_url, self.register_payload)
         self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
         self.assertIn("Retry-After", blocked.headers)
-
-    def test_resend_and_confirm_share_register_scope(self):
-        self.exhaust_register_scope()
-        resend = self.client.post(self.resend_url, {"ticket": "any"})
-        confirm = self.client.post(self.confirm_url, {"ticket": "any", "otp": "123456"})
-        self.assertEqual(resend.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
-        self.assertEqual(confirm.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
     def test_login_rate_limited(self):
         credentials = {"phone_number": "+8801712345678", "password": "wrong-pass"}
@@ -424,8 +342,7 @@ class AuthenticationRateLimitTests(APITestCase):
     def test_password_reset_scope_is_independent(self):
         self.exhaust_password_reset_scope()
         # reset bucket is full, but register and login must still be allowed
-        with patch("core.notifications.deliver_otp"):
-            register = self.client.post(self.register_url, self.register_payload)
+        register = self.client.post(self.register_url, self.register_payload)
         credentials = {"phone_number": "+8801712345678", "password": "wrong-pass"}
         login = self.client.post(self.token_obtain_url, credentials)
         self.assertNotEqual(register.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
@@ -568,7 +485,7 @@ class PasswordResetFlowTests(APITestCase):
 
     def test_reset_resend_rejects_ticket_of_other_purpose(self):
         ticket, _ = verifications.create_ticket(
-            purpose=REGISTER_PURPOSE, email="achib@example.com", payload={},
+            purpose="other", email="achib@example.com", payload={},
         )
         response = self.client.post(self.resend_url, {"ticket": ticket})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1584,199 +1501,3 @@ class UserProfileUpdateTests(UserProfileAPITestCase):
                 self.assertIsNone(response.data["photo"])
                 self.user.refresh_from_db()
                 self.assertFalse(self.user.photo)
-
-
-class OutstandingTokenAdminFilterTests(APITestCase):
-    """Admin filters for outstanding refresh tokens."""
-
-    def setUp(self):
-        from datetime import timedelta
-
-        from rest_framework_simplejwt.tokens import RefreshToken
-        from rest_framework_simplejwt.token_blacklist.models import (
-            BlacklistedToken,
-            OutstandingToken,
-        )
-
-        from accounts.admin import (
-            ActiveOutstandingTokenFilter,
-            ExpiredOutstandingTokenFilter,
-        )
-
-        self.OutstandingToken = OutstandingToken
-        self.ActiveOutstandingTokenFilter = ActiveOutstandingTokenFilter
-        self.ExpiredOutstandingTokenFilter = ExpiredOutstandingTokenFilter
-
-        self.company = Company.objects.create(name="Token Filter Co")
-        self.user = User.objects.create_user(
-            phone_number="+8801712345678",
-            name="Achib Hossen",
-            password="strong-pass-123",
-            company=self.company,
-        )
-        other = User.objects.create_user(
-            phone_number="+8801712345679",
-            name="Other User",
-            password="strong-pass-123",
-            company=self.company,
-        )
-
-        RefreshToken.for_user(self.user)
-        RefreshToken.for_user(other)
-
-        self.active = OutstandingToken.objects.get(user=self.user)
-        RefreshToken.for_user(self.user)
-        self.blacklisted = (
-            OutstandingToken.objects.filter(user=self.user)
-            .exclude(pk=self.active.pk)
-            .get()
-        )
-        BlacklistedToken.objects.get_or_create(token=self.blacklisted)
-
-        self.expired = OutstandingToken.objects.create(
-            user=self.user,
-            jti="expired-jti-for-filter-test",
-            token="unused",
-            created_at=timezone.now() - timedelta(days=8),
-            expires_at=timezone.now() - timedelta(days=1),
-        )
-
-    def _filtered(self, filter_cls, param, value):
-        filt = filter_cls(None, {param: value}, self.OutstandingToken, None)
-        return list(
-            filt.queryset(None, self.OutstandingToken.objects.all()).values_list(
-                "pk", flat=True
-            )
-        )
-
-    def test_active_yes_excludes_blacklisted_and_expired(self):
-        pks = self._filtered(self.ActiveOutstandingTokenFilter, "active", "1")
-        self.assertIn(self.active.pk, pks)
-        self.assertNotIn(self.blacklisted.pk, pks)
-        self.assertNotIn(self.expired.pk, pks)
-
-    def test_active_no_includes_blacklisted_and_expired(self):
-        pks = self._filtered(self.ActiveOutstandingTokenFilter, "active", "0")
-        self.assertNotIn(self.active.pk, pks)
-        self.assertIn(self.blacklisted.pk, pks)
-        self.assertIn(self.expired.pk, pks)
-
-    def test_expired_yes_only_past_expires_at(self):
-        pks = self._filtered(self.ExpiredOutstandingTokenFilter, "expired", "1")
-        self.assertIn(self.expired.pk, pks)
-        self.assertNotIn(self.active.pk, pks)
-        self.assertNotIn(self.blacklisted.pk, pks)
-
-    def test_expired_no_excludes_past_expires_at(self):
-        pks = self._filtered(self.ExpiredOutstandingTokenFilter, "expired", "0")
-        self.assertNotIn(self.expired.pk, pks)
-        self.assertIn(self.active.pk, pks)
-        self.assertIn(self.blacklisted.pk, pks)
-
-
-class OutstandingTokenBlacklistAdminTests(APITestCase):
-    """Changelist bulk action: blacklist selected outstanding refresh tokens."""
-
-    def setUp(self):
-        from rest_framework_simplejwt.tokens import RefreshToken
-        from rest_framework_simplejwt.token_blacklist.models import (
-            BlacklistedToken,
-            OutstandingToken,
-        )
-
-        self.BlacklistedToken = BlacklistedToken
-        self.OutstandingToken = OutstandingToken
-
-        self.company = Company.objects.create(name="Blacklist Admin Co")
-        self.user = User.objects.create_user(
-            phone_number="+8801712345678",
-            name="Achib Hossen",
-            password="strong-pass-123",
-            company=self.company,
-        )
-        self.other = User.objects.create_user(
-            phone_number="+8801712345679",
-            name="Other User",
-            password="strong-pass-123",
-            company=self.company,
-        )
-        self.admin = User.objects.create_superuser(
-            phone_number="+8801700000001",
-            name="Staff",
-            password="pass-12345",
-        )
-        RefreshToken.for_user(self.user)
-        RefreshToken.for_user(self.other)
-        self.token_a = OutstandingToken.objects.get(user=self.user)
-        self.token_b = OutstandingToken.objects.get(user=self.other)
-        self.client.force_login(self.admin)
-        self.changelist_url = reverse(
-            "admin:token_blacklist_outstandingtoken_changelist"
-        )
-
-    def _run_action(self, action, *tokens):
-        return self.client.post(
-            self.changelist_url,
-            {
-                "action": action,
-                "_selected_action": [str(t.pk) for t in tokens],
-            },
-        )
-
-    def test_changelist_links_user_to_user_change_page(self):
-        user_change_url = reverse("admin:accounts_user_change", args=[self.user.pk])
-        response = self.client.get(self.changelist_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, user_change_url)
-        self.assertContains(response, self.user.name)
-        self.assertContains(response, "Blacklist selected tokens")
-        self.assertContains(response, "Delete selected outstanding tokens")
-
-    def test_bulk_blacklist_selected_tokens(self):
-        response = self._run_action(
-            "blacklist_selected_tokens", self.token_a, self.token_b
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(
-            self.BlacklistedToken.objects.filter(token=self.token_a).exists()
-        )
-        self.assertTrue(
-            self.BlacklistedToken.objects.filter(token=self.token_b).exists()
-        )
-
-    def test_bulk_blacklist_skips_already_blacklisted(self):
-        self.BlacklistedToken.objects.get_or_create(token=self.token_a)
-        response = self._run_action(
-            "blacklist_selected_tokens", self.token_a, self.token_b
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(
-            self.BlacklistedToken.objects.filter(token=self.token_a).count(), 1
-        )
-        self.assertTrue(
-            self.BlacklistedToken.objects.filter(token=self.token_b).exists()
-        )
-
-    def test_bulk_delete_selected_tokens(self):
-        self.BlacklistedToken.objects.get_or_create(token=self.token_a)
-        token_a_id = self.token_a.pk
-        token_b_id = self.token_b.pk
-        response = self._run_action(
-            "delete_selected_tokens", self.token_a, self.token_b
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertFalse(
-            self.OutstandingToken.objects.filter(pk__in=[token_a_id, token_b_id]).exists()
-        )
-        self.assertFalse(
-            self.BlacklistedToken.objects.filter(token_id=token_a_id).exists()
-        )
-
-    def test_change_page_has_no_detail_blacklist_action(self):
-        change_url = reverse(
-            "admin:token_blacklist_outstandingtoken_change",
-            args=[self.token_a.pk],
-        )
-        response = self.client.get(change_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "Blacklist token")

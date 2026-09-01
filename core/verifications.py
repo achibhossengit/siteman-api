@@ -17,9 +17,6 @@ RESEND_COOLDOWN = getattr(settings, "OTP_RESEND_COOLDOWN", 60)
 MAX_RESENDS = getattr(settings, "OTP_MAX_RESENDS", 5)
 MAX_ATTEMPTS = getattr(settings, "OTP_MAX_ATTEMPTS", 5)
 
-REGISTER_PURPOSE = "register"
-
-
 def _key(ticket):
     return f"otp:{ticket}"
 

@@ -3,8 +3,6 @@ from rest_framework_nested import routers
 
 from .views import (
     RegisterView,
-    RegisterResendOtpView,
-    RegisterConfirmView,
     PasswordResetView,
     PasswordResetResendOtpView,
     PasswordResetConfirmView,
@@ -21,8 +19,6 @@ router.register("users", UserViewSet, basename="user")
 
 urlpatterns = [
     path("auth/register", RegisterView.as_view(), name="register"),
-    path("auth/register/resend-otp", RegisterResendOtpView.as_view(), name="register-resend-otp"),
-    path("auth/register/confirm", RegisterConfirmView.as_view(), name="register-confirm"),
 
     path("auth/password/reset", PasswordResetView.as_view(), name="password-reset"),
     path(

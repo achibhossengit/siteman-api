@@ -27,7 +27,6 @@ from company.models import Company
 from .models import User
 from .serializers import (
     # registration serializers
-    RegisterConfirmSerializer,
     RegisterSerializer,
     ResendOtpSerializer,
     UserCreateSerializer,
@@ -49,7 +48,6 @@ from .serializers import (
     UserUpdateSerializer,
 )
 
-REGISTER_PURPOSE = "register"
 PASSWORD_RESET_PURPOSE = "password_reset"
 COMPANY_ADMIN_GROUP = "Company Admin"
 
@@ -104,79 +102,28 @@ class RegisterView(GenericAPIView):
         _ensure_registration_enabled()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        payload = {
-            "name": data["name"],
-            "phone_number": data["phone_number"],
-            "company_name": data["company_name"],
-            "password": make_password(data["password"]),
-            "email": data["email"],
-        }
-        
-        ticket, delivery_info = verifications.create_ticket(
-            purpose=REGISTER_PURPOSE,
-            email=payload["email"],
-            payload=payload,
-        )
-
-        notifications.deliver_otp(**delivery_info)
-        response = _ticket_response(ticket, status_code=status.HTTP_201_CREATED)
-        return response
-
-
-class RegisterResendOtpView(GenericAPIView):
-    authentication_classes = []
-    permission_classes = [AllowAny]
-    serializer_class = ResendOtpSerializer
-    throttle_scope = "register"
-
-    def post(self, request, *args, **kwargs):
-        _ensure_registration_enabled()
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ticket = serializer.validated_data["ticket"]
-        delivery_info = verifications.resend(ticket, purpose=REGISTER_PURPOSE)
-
-        notifications.deliver_otp(**delivery_info)
-        response = _ticket_response(ticket, status_code=status.HTTP_200_OK)        
-        return response
-
-
-class RegisterConfirmView(GenericAPIView):
-    authentication_classes = []
-    permission_classes = [AllowAny]
-    serializer_class = RegisterConfirmSerializer
-    throttle_scope = "register"
-
-    def post(self, request, *args, **kwargs):
-        _ensure_registration_enabled()
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        payload = verifications.verify(
-            serializer.validated_data["ticket"],
-            serializer.validated_data["otp"],
-            purpose=REGISTER_PURPOSE,
-        )
         try:
-            user = self._confirm_registration(payload)
+            user = self._create_account(serializer.validated_data)
         except IntegrityError:
-            raise ValidationError(code=status_codes.ALREADY_REGISTERED, detail={"phone_number": "This phone number is already registered."})
+            raise ValidationError(
+                code=status_codes.ALREADY_REGISTERED,
+                detail={"phone_number": "This phone number is already registered."},
+            )
         serialized_user = UserProfileSerializer(user)
         return Response(data=serialized_user.data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
-    def _confirm_registration(self, payload):
-        company = Company.objects.create(name=payload["company_name"])
+    def _create_account(self, data):
+        company = Company.objects.create(name=data["company_name"])
         user = User(
-            name=payload["name"],
-            phone_number=payload["phone_number"],
-            email=payload["email"],
+            name=data["name"],
+            phone_number=data["phone_number"],
             company=company,
             is_active=True,
             is_staff=False,
             is_companyadmin=True,
         )
-        user.password = payload["password"]
+        user.password = make_password(data["password"])
         user.save()
         admin_group, _ = Group.objects.get_or_create(name=COMPANY_ADMIN_GROUP)
         user.groups.add(admin_group)

@@ -34,7 +34,6 @@ class BDPhoneNumberField(serializers.CharField):
 class RegisterSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
     phone_number = serializers.CharField(max_length=20)
-    email = serializers.EmailField(required=True, allow_blank=False)
     company_name = serializers.CharField(max_length=255)
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
 
@@ -54,11 +53,6 @@ class RegisterSerializer(serializers.Serializer):
 
 class ResendOtpSerializer(serializers.Serializer):
     ticket = serializers.CharField(max_length=255)
-
-
-class RegisterConfirmSerializer(serializers.Serializer):
-    ticket = serializers.CharField(max_length=255)
-    otp = serializers.CharField(max_length=OTP_LENGTH, min_length=OTP_LENGTH)
 
 
 class PasswordResetSerializer(serializers.Serializer):

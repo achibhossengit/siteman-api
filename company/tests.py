@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 from django.contrib.auth.models import Group
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import User
 from accounts.views import COMPANY_ADMIN_GROUP
@@ -48,7 +51,11 @@ class CompanyAdminAddTests(TestCase):
         self.assertTrue(user.check_password("strong-pass-123"))
         self.assertTrue(user.groups.filter(name=COMPANY_ADMIN_GROUP).exists())
         self.assertTrue(CompanyConfig.objects.filter(company=company).exists())
-        self.assertTrue(Subscription.objects.filter(company=company).exists())
+        subscription = Subscription.objects.get(company=company)
+        self.assertEqual(
+            subscription.paid_until,
+            timezone.localdate() + timedelta(days=14),
+        )
 
     def test_duplicate_phone_does_not_create_company(self):
         User.objects.create_user(

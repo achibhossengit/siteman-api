@@ -9,9 +9,9 @@ from .models import Company, CompanyConfig
 
 # Trial snapshot until SystemConfig.trial_plan exists (feature-details F2.10 / F4).
 # Near paid_until — trial is a limited-time term, not the Free tier.
-TRIAL_OPEN_SITE_LIMIT = 10
-TRIAL_ACTIVE_USER_LIMIT = 30
-TRIAL_ACTIVE_LABOUR_LIMIT = 100
+TRIAL_OPEN_SITE_LIMIT = 2
+TRIAL_ACTIVE_USER_LIMIT = 4
+TRIAL_ACTIVE_LABOUR_LIMIT = 30
 TRIAL_DURATION_DAYS = 14
 
 
