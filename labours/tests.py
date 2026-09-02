@@ -15,7 +15,6 @@ from company.models import Company
 from core import status_codes
 from labours.models import DailyRecord, Labour, LabourSession
 from sites.models import BillingCategory, Site
-from subscription.models import Subscription
 
 User = get_user_model()
 
@@ -37,10 +36,9 @@ class LabourAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-        # Trial default is unlimited labour (-1); cap for most CRUD tests.
-        self.subscription.active_labour_limit = 10
-        self.subscription.save(update_fields=["active_labour_limit"])
+        # Default is 30 labour; cap for most CRUD tests.
+        self.company.active_labour_limit = 10
+        self.company.save(update_fields=["active_labour_limit"])
 
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
@@ -683,8 +681,8 @@ class LabourCurrentSiteAssignmentTests(LabourAPITestCase):
 
 class LabourSubscriptionTests(LabourAPITestCase):
     def test_create_blocked_when_active_labour_limit_exceeded(self):
-        self.subscription.active_labour_limit = 1
-        self.subscription.save(update_fields=["active_labour_limit"])
+        self.company.active_labour_limit = 1
+        self.company.save(update_fields=["active_labour_limit"])
         self._create_labour(name="Only Slot")
 
         response = self.client.post(
@@ -703,8 +701,8 @@ class LabourSubscriptionTests(LabourAPITestCase):
         )
 
     def test_inactive_labour_does_not_count_toward_limit(self):
-        self.subscription.active_labour_limit = 1
-        self.subscription.save(update_fields=["active_labour_limit"])
+        self.company.active_labour_limit = 1
+        self.company.save(update_fields=["active_labour_limit"])
         self._create_labour(name="Inactive Slot", is_active=False)
 
         response = self.client.post(
@@ -718,8 +716,8 @@ class LabourSubscriptionTests(LabourAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_create_blocked_when_subscription_expired(self):
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.post(
             self.list_url,
@@ -738,8 +736,8 @@ class LabourSubscriptionTests(LabourAPITestCase):
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_labour(name="Readable")
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -747,8 +745,8 @@ class LabourSubscriptionTests(LabourAPITestCase):
 
     def test_patch_blocked_when_subscription_expired(self):
         labour = self._create_labour(name="Editable")
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.patch(
             self._detail_url(labour.pk),
@@ -806,8 +804,6 @@ class DailyRecordAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
             name="Achib Hossen",
@@ -1379,8 +1375,8 @@ class DailyRecordFilterIsolationTests(DailyRecordAPITestCase):
 
 class DailyRecordSubscriptionTests(DailyRecordAPITestCase):
     def test_create_blocked_when_subscription_expired(self):
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.post(
             self.list_url,
@@ -1395,8 +1391,8 @@ class DailyRecordSubscriptionTests(DailyRecordAPITestCase):
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_daily_record()
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1404,8 +1400,8 @@ class DailyRecordSubscriptionTests(DailyRecordAPITestCase):
 
     def test_patch_blocked_when_subscription_expired(self):
         record = self._create_daily_record(present=Decimal("1"))
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.patch(
             self._detail_url(self.labour.pk, record.pk),
@@ -1425,8 +1421,6 @@ class SiteDailyRecordAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
             name="Achib Hossen",
@@ -2058,8 +2052,8 @@ class SiteDailyRecordFilterIsolationTests(SiteDailyRecordAPITestCase):
 
 class SiteDailyRecordSubscriptionTests(SiteDailyRecordAPITestCase):
     def test_create_blocked_when_subscription_expired(self):
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.post(
             self.list_url,
@@ -2075,8 +2069,8 @@ class SiteDailyRecordSubscriptionTests(SiteDailyRecordAPITestCase):
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_daily_record()
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.get(self.list_url, {"date": self.today})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -2090,8 +2084,6 @@ class LabourSessionAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
             name="Achib Hossen",
@@ -2637,8 +2629,8 @@ class LabourSessionDeleteTests(LabourSessionAPITestCase):
 class LabourSessionSubscriptionTests(LabourSessionAPITestCase):
     def test_create_blocked_when_subscription_expired(self):
         self._seed_open_period()
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.post(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -2650,8 +2642,8 @@ class LabourSessionSubscriptionTests(LabourSessionAPITestCase):
 
     def test_delete_blocked_when_subscription_expired(self):
         session = self._create_session_via_orm()
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.delete(
             self._detail_url(self.labour.pk, session.pk)
@@ -2664,8 +2656,8 @@ class LabourSessionSubscriptionTests(LabourSessionAPITestCase):
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_session_via_orm()
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)

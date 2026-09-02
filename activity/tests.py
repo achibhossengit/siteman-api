@@ -23,7 +23,6 @@ from company.models import Company
 from core import status_codes
 from labours.models import DailyRecord, Labour
 from sites.models import Site, SiteCash, SiteCashType
-from subscription.models import Subscription
 
 User = get_user_model()
 
@@ -190,7 +189,7 @@ class ActivityServiceTests(APITestCase):
         )
 
     def test_site_create_api_writes_activity(self):
-        Subscription.objects.filter(company=self.company).update(site_limit=5)
+        Company.objects.filter(pk=self.company.pk).update(site_limit=5)
         ct = ContentType.objects.get_for_model(Site)
         self.user.user_permissions.add(
             *Permission.objects.filter(
@@ -310,7 +309,7 @@ class PurgeActivityLogsTests(APITestCase):
 class UserActivityAPITests(APITestCase):
     def setUp(self):
         self.company = Company.objects.create(name="User Log Co")
-        Subscription.objects.filter(company=self.company).update(
+        Company.objects.filter(pk=self.company.pk).update(
             active_user_limit=10,
         )
         self.admin = User.objects.create_user(
@@ -369,11 +368,11 @@ class UserActivityAPITests(APITestCase):
 class ActivityLogAPITests(APITestCase):
     def setUp(self):
         self.company = Company.objects.create(name="API Log Co")
-        Subscription.objects.filter(company=self.company).update(
+        Company.objects.filter(pk=self.company.pk).update(
             paid_until=timezone.localdate() + timedelta(days=30),
         )
         self.other_company = Company.objects.create(name="Other Co")
-        Subscription.objects.filter(company=self.other_company).update(
+        Company.objects.filter(pk=self.other_company.pk).update(
             paid_until=timezone.localdate() + timedelta(days=30),
         )
 

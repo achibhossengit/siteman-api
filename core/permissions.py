@@ -4,7 +4,6 @@ from rest_framework.exceptions import PermissionDenied
 
 from core.exceptions import SubscriptionExpired
 from core import status_codes
-from subscription.models import Subscription
 
 
 class DjangoModelPermissionsWithView(DjangoModelPermissions):
@@ -26,29 +25,21 @@ class DjangoModelPermissionsWithView(DjangoModelPermissions):
     }
 
 
-def get_subscription(request):
-    """
-    Resolve and cache the tenant subscription on ``request.subscription``.
-
-    Unlocked read used by ActiveSubscriptionOrReadOnly. Later limit checks
-    call SubscriptionService.get_locked_subscription(request), which upgrades
-    this to a select_for_update row and sets request._subscription_locked.
-    """
-    if not hasattr(request, "subscription"):
+def get_company(request):
+    """Cache the tenant company on the request for entitlement checks."""
+    if not hasattr(request, "_entitlement_company"):
         user = request.user
         if not user.is_authenticated:
-            request.subscription = None
+            request._entitlement_company = None
         else:
-            request.subscription = Subscription.objects.filter(
-                company_id=user.company_id
-            ).first()
-    return request.subscription
+            request._entitlement_company = getattr(user, "company", None)
+    return request._entitlement_company
 
 
 class ActiveSubscriptionOrReadOnly(BasePermission):
     """
-    Reads always pass; writes require an active subscription.
-    Expired or missing subscription => tenant becomes read-only.
+    Reads always pass; writes require paid_until on or after today.
+    Expired or missing company => tenant becomes read-only.
     """
 
     def has_permission(self, request, view):
@@ -59,11 +50,11 @@ class ActiveSubscriptionOrReadOnly(BasePermission):
         if not user.is_authenticated:
             return False  # let IsAuthenticated produce the 401
 
-        subscription = get_subscription(request)
+        company = get_company(request)
         if (
-            subscription is None or 
-            subscription.paid_until is None or 
-            subscription.paid_until < timezone.localdate()
+            company is None
+            or company.paid_until is None
+            or company.paid_until < timezone.localdate()
         ):
             raise SubscriptionExpired()
         return True

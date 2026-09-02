@@ -19,7 +19,6 @@ from sites.models import (
     SiteCash,
     SiteCashType,
 )
-from subscription.models import Subscription
 from accounts.models import UserSite
 from core import status_codes
 from labours.models import DailyRecord, Labour
@@ -40,10 +39,9 @@ class SiteAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-        # Trial default is 1 site; raise for most CRUD tests.
-        self.subscription.site_limit = 5
-        self.subscription.save(update_fields=["site_limit"])
+        # Default is 2 sites; raise for most CRUD tests.
+        self.company.site_limit = 5
+        self.company.save(update_fields=["site_limit"])
 
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
@@ -275,8 +273,8 @@ class SiteAssignmentVisibilityTests(SiteAPITestCase):
 
 class SiteSubscriptionTests(SiteAPITestCase):
     def test_create_blocked_when_site_limit_exceeded(self):
-        self.subscription.site_limit = 1
-        self.subscription.save(update_fields=["site_limit"])
+        self.company.site_limit = 1
+        self.company.save(update_fields=["site_limit"])
         self._create_site(name="Only Slot")
 
         response = self.client.post(self.list_url, {"name": "Overflow"})
@@ -285,8 +283,8 @@ class SiteSubscriptionTests(SiteAPITestCase):
         self.assertEqual(response.data["errors"][0]["code"], status_codes.SUBSCRIPTION_LIMIT_EXCEEDED)
 
     def test_create_blocked_when_subscription_expired(self):
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.post(self.list_url, {"name": "Too Late"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -295,8 +293,8 @@ class SiteSubscriptionTests(SiteAPITestCase):
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_site(name="Readable")
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -304,8 +302,8 @@ class SiteSubscriptionTests(SiteAPITestCase):
 
     def test_patch_blocked_when_subscription_expired(self):
         site = self._create_site(name="Editable")
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.patch(
             self._detail_url(site.pk),
@@ -322,8 +320,6 @@ class SiteCashAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
             name="Achib Hossen",
@@ -1089,8 +1085,8 @@ class SiteCashFilterIsolationTests(SiteCashAPITestCase):
 
 class SiteCashSubscriptionTests(SiteCashAPITestCase):
     def test_create_blocked_when_subscription_expired(self):
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.post(
             self.list_url,
@@ -1109,8 +1105,8 @@ class SiteCashSubscriptionTests(SiteCashAPITestCase):
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_cash()
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1118,8 +1114,8 @@ class SiteCashSubscriptionTests(SiteCashAPITestCase):
 
     def test_patch_blocked_when_subscription_expired(self):
         cash = self._create_cash(amount=100)
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.patch(
             self._detail_url(self.site.pk, cash.pk),
@@ -1139,8 +1135,6 @@ class PrivateSiteCashAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
             name="Achib Hossen",
@@ -1518,8 +1512,8 @@ class PrivateSiteCashFilterIsolationTests(PrivateSiteCashAPITestCase):
 
 class PrivateSiteCashSubscriptionTests(PrivateSiteCashAPITestCase):
     def test_create_blocked_when_subscription_expired(self):
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.post(
             self.list_url,
@@ -1538,8 +1532,8 @@ class PrivateSiteCashSubscriptionTests(PrivateSiteCashAPITestCase):
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_cash()
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1547,8 +1541,8 @@ class PrivateSiteCashSubscriptionTests(PrivateSiteCashAPITestCase):
 
     def test_patch_blocked_when_subscription_expired(self):
         cash = self._create_cash(amount=100)
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.patch(
             self._detail_url(self.site.pk, cash.pk),
@@ -1568,8 +1562,6 @@ class SiteDailyReportAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
             name="Achib Hossen",
@@ -1918,9 +1910,8 @@ class SiteBillingCategoryAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-        self.subscription.site_limit = 5
-        self.subscription.save(update_fields=["site_limit"])
+        self.company.site_limit = 5
+        self.company.save(update_fields=["site_limit"])
 
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
@@ -2222,8 +2213,8 @@ class SiteBillingCategoryFilterIsolationTests(SiteBillingCategoryAPITestCase):
 
 class SiteBillingCategorySubscriptionTests(SiteBillingCategoryAPITestCase):
     def test_create_blocked_when_subscription_expired(self):
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.post(self.list_url, {"name": "Basement"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -2235,8 +2226,8 @@ class SiteBillingCategorySubscriptionTests(SiteBillingCategoryAPITestCase):
 
     def test_list_allowed_when_subscription_expired(self):
         self._create_billing()
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -2244,8 +2235,8 @@ class SiteBillingCategorySubscriptionTests(SiteBillingCategoryAPITestCase):
 
     def test_patch_blocked_when_subscription_expired(self):
         billing = self._create_billing(name="Basement")
-        self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
-        self.subscription.save(update_fields=["paid_until"])
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
 
         response = self.client.patch(
             self._detail_url(self.site.pk, billing.pk),

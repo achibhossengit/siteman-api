@@ -11,7 +11,6 @@ from django.utils.html import format_html
 from accounts.models import User
 from accounts.views import COMPANY_ADMIN_GROUP
 from core.phone import normalize_bd_phone
-from subscription.models import Subscription, Payment
 from .models import Company, CompanyConfig
 
 
@@ -56,25 +55,6 @@ class CompanyConfigInline(admin.StackedInline):
         return False
 
 
-class SubscriptionInline(admin.TabularInline):
-    model = Subscription
-    template = "admin/edit_inline/tabular_plain.html"
-    extra = 0
-    min_num = 1
-    max_num = 1
-    can_delete = False
-    show_change_link = False
-    fields = (
-        "site_limit",
-        "active_user_limit",
-        "active_labour_limit",
-        "paid_until",
-    )
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
 class CompanyUserInline(admin.TabularInline):
     model = User
     fk_name = "company"
@@ -105,40 +85,10 @@ class CompanyUserInline(admin.TabularInline):
         return False
 
 
-class PaymentInline(admin.TabularInline):
-    model = Payment
-    template = "admin/edit_inline/tabular_plain.html"
-    extra = 0
-    max_num = 0
-    can_delete = False
-    fields = ("transaction_id_link", "method", "amount", "status")
-    readonly_fields = fields
-    ordering = ("-created_at", "-id")
-    verbose_name = "payment"
-    verbose_name_plural = "payments"
-
-    @admin.display(description="transaction id")
-    def transaction_id_link(self, obj):
-        if not obj.pk:
-            return "—"
-        url = reverse("admin:subscription_payment_change", args=[obj.pk])
-        label = obj.transaction_id or f"#{obj.pk}"
-        return format_html('<a href="{}">{}</a>', url, label)
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
     list_display_links = ("name",)
-    list_display = ("id", "name", "is_active", "created_at")
+    list_display = ("id", "name", "is_active", "paid_until", "created_at")
     list_filter = ("is_active",)
     search_fields = ("name",)
     readonly_fields = ("deleted_at", "created_at", "updated_at")
@@ -163,7 +113,31 @@ class CompanyAdmin(admin.ModelAdmin):
                     },
                 ),
             )
-        return super().get_fieldsets(request, obj)
+        return (
+            (
+                None,
+                {
+                    "fields": (
+                        "name",
+                        "is_active",
+                        "deleted_at",
+                        "created_at",
+                        "updated_at",
+                    )
+                },
+            ),
+            (
+                "Entitlements",
+                {
+                    "fields": (
+                        "site_limit",
+                        "active_user_limit",
+                        "active_labour_limit",
+                        "paid_until",
+                    )
+                },
+            ),
+        )
 
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
@@ -172,7 +146,7 @@ class CompanyAdmin(admin.ModelAdmin):
 
     def get_inlines(self, request, obj=None):
         if obj:
-            return [CompanyConfigInline, SubscriptionInline, CompanyUserInline, PaymentInline]
+            return [CompanyConfigInline, CompanyUserInline]
         return []
 
     def save_model(self, request, obj, form, change):

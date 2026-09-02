@@ -1,4 +1,3 @@
-from datetime import timedelta
 from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -7,14 +6,11 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.test import override_settings
 from django.urls import reverse
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework.throttling import SimpleRateThrottle, UserRateThrottle
 from core import status_codes, verifications
 from company.models import Company
-from company.signals import TRIAL_DURATION_DAYS
-from subscription.models import Subscription
 from sites.models import Site
 from .models import UserSite
 from .views import PASSWORD_RESET_PURPOSE
@@ -80,15 +76,6 @@ class RegistrationFlowTests(APITestCase):
         self.assertTrue(user.groups.filter(name="Company Admin").exists())
         self.assertEqual(response.data["phone_number"], "01712345678")
         self.assertEqual(response.data["company"]["name"], "Achib Builders")
-
-    def test_register_applies_trial_subscription(self):
-        self.register()
-        company = Company.objects.get(name="Achib Builders")
-        subscription = Subscription.objects.get(company=company)
-        self.assertEqual(
-            subscription.paid_until,
-            timezone.localdate() + timedelta(days=TRIAL_DURATION_DAYS),
-        )
 
     def test_register_rejects_registered_phone(self):
         User.objects.create_user(
@@ -656,9 +643,8 @@ class UserAPITestCase(APITestCase):
 
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
-        self.subscription = Subscription.objects.get(company=self.company)
-        self.subscription.active_user_limit = 10
-        self.subscription.save(update_fields=["active_user_limit"])
+        self.company.active_user_limit = 10
+        self.company.save(update_fields=["active_user_limit"])
 
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
@@ -1247,8 +1233,8 @@ class UserFilterIsolationTests(UserAPITestCase):
 
 class UserSubscriptionTests(UserAPITestCase):
     def test_create_blocked_when_active_user_limit_exceeded(self):
-        self.subscription.active_user_limit = 1
-        self.subscription.save(update_fields=["active_user_limit"])
+        self.company.active_user_limit = 1
+        self.company.save(update_fields=["active_user_limit"])
         # self.user already counts as the one active slot
         response = self.client.post(
             self.list_url,
@@ -1271,8 +1257,8 @@ class UserSubscriptionTests(UserAPITestCase):
             phone="+8801711127777",
             is_active=False,
         )
-        self.subscription.active_user_limit = 1
-        self.subscription.save(update_fields=["active_user_limit"])
+        self.company.active_user_limit = 1
+        self.company.save(update_fields=["active_user_limit"])
 
         response = self.client.patch(
             self._detail_url(inactive.pk),
