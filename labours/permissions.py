@@ -35,8 +35,7 @@ class HasLabourCurrentSiteAccess(HasSitePermissions):
 
     - Resolve labour (company-scoped).
     - Unassigned labour: companyadmin only.
-    - Otherwise: user must have access to labour.current_site
-      (and site must be active for unsafe methods).
+    - Otherwise: user must have access to labour.current_site.
     """
 
     def get_site_id(self, request, view):

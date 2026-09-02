@@ -171,11 +171,6 @@ class LabourSerializer(serializers.ModelSerializer):
                 "Site does not belong to your company.",
                 code=status_codes.SITE_WRONG_COMPANY,
             )
-        if site.is_closed:
-            raise serializers.ValidationError(
-                "Cannot assign labour to a closed site.",
-                code=status_codes.SITE_CLOSED,
-            )
         if not user.is_companyadmin and not site.is_authorized_user(user):
             raise serializers.ValidationError(
                 "You can only assign labour to a site you belong to.",

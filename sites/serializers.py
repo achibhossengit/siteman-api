@@ -13,8 +13,6 @@ class SiteListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
-            "is_active",
-            "is_closed",
         ]
 
 class SiteSerializer(serializers.ModelSerializer):
@@ -23,17 +21,12 @@ class SiteSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
-            "is_active",
-            "is_closed",
-            "closed_at",
             "company",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "company",
-            "is_closed",
-            "closed_at",
             "created_at",
             "updated_at",
         ]
@@ -49,13 +42,6 @@ class SiteSerializer(serializers.ModelSerializer):
                 code=status_codes.SITE_NAME_EXISTS,
             )
         return value
-
-    def validate(self, attrs):
-        if self.instance is not None and self.instance.closed_at is not None:
-            raise serializers.ValidationError(
-                "Closed sites cannot be edited.", code=status_codes.SITE_CLOSED
-            )
-        return attrs
 
 
 class BillingCategoryListSerializer(serializers.ModelSerializer):

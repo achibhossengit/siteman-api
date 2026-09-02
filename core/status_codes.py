@@ -21,9 +21,7 @@ SUBSCRIPTION_LIMIT_EXCEEDED = "subscription_limit_exceeded"
 
 # Sites
 SITE_NAME_EXISTS = "site_name_exists"
-SITE_CLOSED = "site_closed"
 SITE_HAS_RECORDS = "site_has_records"
-SITE_INACTIVE = "site_inactive"
 SITE_WRONG_COMPANY = "site_wrong_company"
 UNAUTHORIZED_SITE = "unauthorized_site"
 BILLING_CATEGORY_INACTIVE = "billing_category_inactive"

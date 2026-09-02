@@ -1,14 +1,13 @@
-from rest_framework.permissions import SAFE_METHODS, BasePermission
+from rest_framework.permissions import BasePermission
 from rest_framework.exceptions import PermissionDenied
 
 from core import status_codes
-from .models import Site
+
 
 class HasSitePermissions(BasePermission):
     """
-    1. Check site exists.
-    2. Check user has access to the site.
-    3. Check site is active.
+    1. Resolve the site id from the route.
+    2. Check the user has access to that site.
     """
 
     def get_site_id(self, request, view):
@@ -34,16 +33,6 @@ class HasSitePermissions(BasePermission):
             raise PermissionDenied(
                 detail="You are not a member of this site.",
                 code=status_codes.UNAUTHORIZED_SITE,
-            )
-
-        if request.method in SAFE_METHODS:
-            return True
-
-        site = Site.objects.get(company_id=request.user.company_id, id=site_id)
-        if not site.is_active:
-            raise PermissionDenied(
-                detail="This site is inactive; no changes can be made.",
-                code=status_codes.SITE_INACTIVE,
             )
 
         return True

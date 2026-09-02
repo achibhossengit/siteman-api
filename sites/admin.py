@@ -15,12 +15,10 @@ class SiteAdmin(ReadOnlyModelAdmin):
     change_form_template = "admin/sites/site/change_form.html"
     list_display = (
         "name",
-        "is_active",
-        "is_closed",
         "created_at",
     )
     list_display_links = ("name",)
-    list_filter = (("company", CompanyListFilter), "is_active", "is_closed", ("created_at", DateRangeFilter))
+    list_filter = (("company", CompanyListFilter), ("created_at", DateRangeFilter))
     search_fields = ("name", "company__name")
 
     def has_reset_permission(self, request):

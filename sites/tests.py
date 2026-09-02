@@ -115,19 +115,7 @@ class SiteCRUDTests(SiteAPITestCase):
         response = self.client.post(self.list_url, {"name": "Padma Bridge"})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["name"], "Padma Bridge")
-        self.assertTrue(response.data["is_active"])
-        self.assertFalse(response.data["is_closed"])
-        self.assertIsNone(response.data["closed_at"])
         self.assertEqual(response.data["company"], self.company.pk)
-    def test_create_forces_open_and_active(self):
-        response = self.client.post(
-            self.list_url,
-            {"name": "Forced", "is_active": False, "is_closed": True},
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(response.data["is_active"])
-        self.assertFalse(response.data["is_closed"])
-        self.assertIsNone(response.data["closed_at"])
 
     def test_list_uses_list_serializer_fields(self):
         site = self._create_site(name="List Site")
@@ -136,7 +124,7 @@ class SiteCRUDTests(SiteAPITestCase):
         self.assertEqual(len(_list_results(response)), 1)
         self.assertCountEqual(
             _list_results(response)[0].keys(),
-            ["id", "name", "is_active", "is_closed"],
+            ["id", "name"],
         )
         self.assertEqual(_list_results(response)[0]["id"], site.pk)
 
@@ -148,26 +136,16 @@ class SiteCRUDTests(SiteAPITestCase):
         self.assertIn("company", response.data)
         self.assertIn("created_at", response.data)
 
-    def test_patch_name_and_is_active(self):
+    def test_patch_name(self):
         site = self._create_site(name="Old Name")
         response = self.client.patch(
             self._detail_url(site.pk),
-            {"name": "New Name", "is_active": False},
+            {"name": "New Name"},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "New Name")
-        self.assertFalse(response.data["is_active"])
         site.refresh_from_db()
         self.assertEqual(site.name, "New Name")
-        self.assertFalse(site.is_active)
-
-    def test_patch_closed_site_rejected(self):
-        site = self._create_site(name="Closed Site", is_closed=True, closed_at=timezone.now())
-        response = self.client.patch(
-            self._detail_url(site.pk),
-            {"name": "Should Fail"},
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_delete_site_success(self):
         site = self._create_site(name="To Delete")
@@ -199,41 +177,12 @@ class SiteCRUDTests(SiteAPITestCase):
         site = self._create_site(name="Keep")
         response = self.client.patch(
             self._detail_url(site.pk),
-            {"is_active": False},
+            {"name": "Keep"},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
 class SiteFilterIsolationTests(SiteAPITestCase):
-    def test_filter_by_is_active(self):
-        self._create_site(name="Active", is_active=True)
-        self._create_site(name="Inactive", is_active=False)
-
-        response = self.client.get(self.list_url, {"is_active": "true"})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(_list_results(response)), 1)
-        self.assertEqual(_list_results(response)[0]["name"], "Active")
-
-        response = self.client.get(self.list_url, {"is_active": "false"})
-        self.assertEqual(len(_list_results(response)), 1)
-        self.assertEqual(_list_results(response)[0]["name"], "Inactive")
-
-    def test_filter_by_is_closed(self):
-        open_site = self._create_site(name="Open")
-        closed_site = self._create_site(
-            name="Closed",
-            is_closed=True,
-            closed_at=timezone.now(),
-        )
-
-        response = self.client.get(self.list_url, {"is_closed": "false"})
-        self.assertEqual(len(_list_results(response)), 1)
-        self.assertEqual(_list_results(response)[0]["id"], open_site.pk)
-
-        response = self.client.get(self.list_url, {"is_closed": "true"})
-        self.assertEqual(len(_list_results(response)), 1)
-        self.assertEqual(_list_results(response)[0]["id"], closed_site.pk)
-
     def test_search_by_name(self):
         self._create_site(name="Padma Bridge")
         self._create_site(name="Metro Rail")
@@ -334,18 +283,6 @@ class SiteSubscriptionTests(SiteAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(Site.objects.filter(name="Overflow").exists())
         self.assertEqual(response.data["errors"][0]["code"], status_codes.SUBSCRIPTION_LIMIT_EXCEEDED)
-
-    def test_closed_site_does_not_count_toward_open_limit(self):
-        self.subscription.open_site_limit = 1
-        self.subscription.save(update_fields=["open_site_limit"])
-        self._create_site(
-            name="Closed Slot",
-            is_closed=True,
-            closed_at=timezone.now(),
-        )
-
-        response = self.client.post(self.list_url, {"name": "New Open"})
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_create_blocked_when_subscription_expired(self):
         self.subscription.paid_until = timezone.localdate() - timedelta(days=1)
@@ -498,31 +435,6 @@ class SiteCashAuthPermissionTests(SiteCashAPITestCase):
             response.data["errors"][0]["code"],
             status_codes.UNAUTHORIZED_SITE,
         )
-
-    def test_inactive_site_blocks_create(self):
-        self.site.is_active = False
-        self.site.save(update_fields=["is_active"])
-        response = self.client.post(
-            self.list_url,
-            {
-                "date": str(timezone.localdate()),
-                "type": SiteCashType.DEPOSIT,
-                "amount": 500,
-            },
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.SITE_INACTIVE,
-        )
-
-    def test_inactive_site_still_allows_list(self):
-        self._create_cash()
-        self.site.is_active = False
-        self.site.save(update_fields=["is_active"])
-        response = self.client.get(self.list_url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(_list_results(response)), 1)
 
     def test_other_company_site_returns_403(self):
         other = Company.objects.create(name="Other Co")
@@ -1343,31 +1255,6 @@ class PrivateSiteCashAuthPermissionTests(PrivateSiteCashAPITestCase):
             status_codes.UNAUTHORIZED_SITE,
         )
 
-    def test_inactive_site_blocks_create(self):
-        self.site.is_active = False
-        self.site.save(update_fields=["is_active"])
-        response = self.client.post(
-            self.list_url,
-            {
-                "date": str(timezone.localdate()),
-                "type": PrivateSiteCashType.BILL,
-                "amount": 500,
-            },
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.SITE_INACTIVE,
-        )
-
-    def test_inactive_site_still_allows_list(self):
-        self._create_cash()
-        self.site.is_active = False
-        self.site.save(update_fields=["is_active"])
-        response = self.client.get(self.list_url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(_list_results(response)), 1)
-
     def test_other_company_site_returns_403(self):
         other = Company.objects.create(name="Other Co")
         other_user = User.objects.create_user(
@@ -2128,24 +2015,6 @@ class SiteBillingCategoryAuthPermissionTests(SiteBillingCategoryAPITestCase):
             response.data["errors"][0]["code"],
             status_codes.UNAUTHORIZED_SITE,
         )
-
-    def test_inactive_site_blocks_create(self):
-        self.site.is_active = False
-        self.site.save(update_fields=["is_active"])
-        response = self.client.post(self.list_url, {"name": "Floor-1"})
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.SITE_INACTIVE,
-        )
-
-    def test_inactive_site_still_allows_list(self):
-        self._create_billing()
-        self.site.is_active = False
-        self.site.save(update_fields=["is_active"])
-        response = self.client.get(self.list_url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(_list_results(response)), 1)
 
     def test_other_company_site_returns_403(self):
         other = Company.objects.create(name="Other Co")

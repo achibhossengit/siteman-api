@@ -410,19 +410,6 @@ class LabourValidationTests(LabourAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_current_site_closed_rejected(self):
-        closed = Site.objects.create(
-            name="Closed Yard",
-            company=self.company,
-            is_closed=True,
-            closed_at=timezone.now(),
-        )
-        response = self.client.post(
-            self.list_url,
-            {"name": "On Closed", "current_site": closed.pk, "default_salary": 500},
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
 
 class LabourFilterIsolationTests(LabourAPITestCase):
     def test_filter_by_is_active(self):
@@ -959,19 +946,6 @@ class DailyRecordAuthPermissionTests(DailyRecordAPITestCase):
         self.assertEqual(
             response.data["errors"][0]["code"],
             status_codes.LABOUR_INACTIVE,
-        )
-
-    def test_inactive_site_blocks_create(self):
-        self.site.is_active = False
-        self.site.save(update_fields=["is_active"])
-        response = self.client.post(
-            self.list_url,
-            {"date": str(timezone.localdate()), "present": "1"},
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.SITE_INACTIVE,
         )
 
     def test_inactive_labour_still_allows_list(self):
@@ -1569,20 +1543,6 @@ class SiteDailyRecordAuthPermissionTests(SiteDailyRecordAPITestCase):
         self.assertEqual(
             response.data["errors"][0]["code"],
             status_codes.UNAUTHORIZED_SITE,
-        )
-
-    def test_inactive_site_blocks_create(self):
-        self.site.is_active = False
-        self.site.save(update_fields=["is_active"])
-        response = self.client.post(
-            self.list_url,
-            [self._record_payload(self.labour)],
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.SITE_INACTIVE,
         )
 
 

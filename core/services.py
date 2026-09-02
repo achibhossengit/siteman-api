@@ -47,19 +47,16 @@ class SubscriptionService:
     @classmethod
     def validate_open_site_limit(cls, company):
         """
-        Check whether another open site can be created / reopened.
+        Check whether another site can be created.
         """
         subscription = cls._validate_active_subscription(company)
 
-        current_count = Site.objects.filter(
-            company=company,
-            is_closed=False,
-        ).count()
+        current_count = Site.objects.filter(company=company).count()
 
         cls._validate_limit(
             current_count=current_count,
             limit=subscription.open_site_limit,
-            resource_name="open sites",
+            resource_name="sites",
         )
 
     @classmethod

@@ -1403,8 +1403,6 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
             {
                 "id": self.site.pk,
                 "name": "Padma Bridge",
-                "is_active": True,
-                "is_closed": False,
             },
         )
         self.assertEqual(rows[other_site.pk]["name"], "Jamuna Bridge")

@@ -10,11 +10,7 @@ from core.models import CompanyOwnedMixin, TimeStampedMixin
 
 class Site(TimeStampedMixin, CompanyOwnedMixin):
     name = models.CharField(max_length=255)
-    is_active = models.BooleanField(default=True)
-    is_closed = models.BooleanField(default=False)
-    closed_at = models.DateTimeField(null=True, blank=True)
-    
-    
+
     def is_authorized_user(self, user):
         return self.users.filter(user_id=user.id).exists()
 

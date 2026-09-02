@@ -51,15 +51,12 @@ class SiteViewSet(viewsets.ModelViewSet):
     - CompanyAdmin: provide all permissions
     
     Here, subscription limit check is need for creating new site.
-    `is_closed` is readonly in SiteSerializers, so reopening not possible.
-    site `close` and `reopen` will handled by differnet views.
     """
     serializer_class = SiteSerializer
     queryset = Site.objects.none()  # real queryset in get_queryset; here for router/schema
     pagination_class = StandardPagination
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]  # no PUT
     filter_backends = [*api_settings.DEFAULT_FILTER_BACKENDS, SearchFilter]
-    filterset_fields = ["is_active", "is_closed"]
     search_fields = ["name"]
 
     def get_serializer_class(self):
@@ -87,11 +84,7 @@ class SiteViewSet(viewsets.ModelViewSet):
             raise SubscriptionLimitExceeded()
         except SubscriptionExpiredError:
             raise SubscriptionExpired()
-        serializer.save(
-            company=company,
-            closed_at=None,
-            is_active=True,
-        )
+        serializer.save(company=company)
         activity_after_create(self, serializer.instance)
 
     @transaction.atomic
@@ -109,7 +102,7 @@ class SiteViewSet(viewsets.ModelViewSet):
                 instance.delete()
         except (ProtectedError, RestrictedError):
             raise serializers.ValidationError(
-                detail="This site has existing records; delete them or close the site first.",
+                detail="This site has existing records; delete them first.",
                 code=status_codes.SITE_HAS_RECORDS,
             )
 
