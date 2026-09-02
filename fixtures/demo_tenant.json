@@ -6,15 +6,8 @@
       "updated_at": "2026-08-10T00:00:00Z",
       "name": "কাশেম নির্মাণ",
       "is_active": true,
-      "deleted_at": null
-    }
-  },
-  {
-    "model": "company.companyconfig",
-    "fields": {
-      "company": 1,
-      "labour_transfer_allowed": true,
-      "updated_at": "2026-08-10T00:00:00Z"
+      "deleted_at": null,
+      "labour_transfer_allowed": true
     }
   },
   {

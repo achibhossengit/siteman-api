@@ -11,7 +11,7 @@ from django.utils.html import format_html
 from accounts.models import User
 from accounts.views import COMPANY_ADMIN_GROUP
 from core.phone import normalize_bd_phone
-from .models import Company, CompanyConfig
+from .models import Company
 
 
 class CompanyAddForm(forms.ModelForm):
@@ -41,18 +41,6 @@ class CompanyAddForm(forms.ModelForm):
         password = self.cleaned_data["password"]
         validate_password(password)
         return password
-
-
-class CompanyConfigInline(admin.StackedInline):
-    model = CompanyConfig
-    template = "admin/edit_inline/stacked_plain.html"
-    can_delete = False
-    extra = 0
-    min_num = 1
-    max_num = 1
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 class CompanyUserInline(admin.TabularInline):
@@ -120,6 +108,7 @@ class CompanyAdmin(admin.ModelAdmin):
                     "fields": (
                         "name",
                         "is_active",
+                        "labour_transfer_allowed",
                         "deleted_at",
                         "created_at",
                         "updated_at",
@@ -146,7 +135,7 @@ class CompanyAdmin(admin.ModelAdmin):
 
     def get_inlines(self, request, obj=None):
         if obj:
-            return [CompanyConfigInline, CompanyUserInline]
+            return [CompanyUserInline]
         return []
 
     def save_model(self, request, obj, form, change):

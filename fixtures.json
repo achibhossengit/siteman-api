@@ -32,7 +32,8 @@
             "updated_at": "2026-01-01T00:00:00Z",
             "name": "Achib Builders",
             "is_active": true,
-            "deleted_at": null
+            "deleted_at": null,
+            "labour_transfer_allowed": true
         }
     },
     {
@@ -43,25 +44,8 @@
             "updated_at": "2026-01-01T00:00:00Z",
             "name": "Padma Construction",
             "is_active": true,
-            "deleted_at": null
-        }
-    },
-    {
-        "model": "company.companyconfig",
-        "pk": 1000,
-        "fields": {
-            "company": 1000,
-            "labour_transfer_allowed": true,
-            "updated_at": "2026-01-01T00:00:00Z"
-        }
-    },
-    {
-        "model": "company.companyconfig",
-        "pk": 2000,
-        "fields": {
-            "company": 2000,
-            "labour_transfer_allowed": true,
-            "updated_at": "2026-01-01T00:00:00Z"
+            "deleted_at": null,
+            "labour_transfer_allowed": true
         }
     },
     

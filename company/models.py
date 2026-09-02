@@ -31,22 +31,10 @@ class Company(TimeStampedMixin):
         blank=True,
         default=default_paid_until,
     )
+    labour_transfer_allowed = models.BooleanField(default=True)
 
     class Meta:
         verbose_name_plural = "companies"
 
     def __str__(self):
         return self.name
-
-
-class CompanyConfig(models.Model):
-    company = models.OneToOneField(
-        "company.Company",
-        on_delete=models.CASCADE,
-        related_name="config",
-    )
-    labour_transfer_allowed = models.BooleanField(default=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return self.company.name

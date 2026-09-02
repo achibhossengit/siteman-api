@@ -4,7 +4,7 @@ from django.urls import reverse
 
 from accounts.models import User
 from accounts.views import COMPANY_ADMIN_GROUP
-from company.models import Company, CompanyConfig
+from company.models import Company
 
 
 class CompanyAdminAddTests(TestCase):
@@ -48,7 +48,6 @@ class CompanyAdminAddTests(TestCase):
         self.assertFalse(user.is_staff)
         self.assertTrue(user.check_password("strong-pass-123"))
         self.assertTrue(user.groups.filter(name=COMPANY_ADMIN_GROUP).exists())
-        self.assertTrue(CompanyConfig.objects.filter(company=company).exists())
 
     def test_duplicate_phone_does_not_create_company(self):
         User.objects.create_user(
