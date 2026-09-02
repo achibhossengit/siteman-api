@@ -196,6 +196,24 @@ class LabourSerializer(serializers.ModelSerializer):
                     )
                 }
             )
+        if self.instance is not None and "current_site" in attrs:
+            new_site = attrs["current_site"]
+            new_site_id = new_site.pk if new_site is not None else None
+            # Assigned labour cannot change or leave a site when the company
+            # disables transfers; first assignment of unassigned labour is allowed.
+            if (
+                self.instance.current_site_id is not None
+                and new_site_id != self.instance.current_site_id
+                and not self.instance.company.labour_transfer_allowed
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "current_site": serializers.ErrorDetail(
+                            "Labour transfer is not allowed for this company.",
+                            code=status_codes.LABOUR_TRANSFER_NOT_ALLOWED,
+                        )
+                    }
+                )
         return attrs
 
 

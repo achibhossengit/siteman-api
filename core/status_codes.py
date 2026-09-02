@@ -35,6 +35,7 @@ LABOUR_INACTIVE = "labour_inactive"
 LABOUR_HAS_RECORDS = "labour_has_records"
 LABOUR_NAME_EXISTS = "labour_name_exists"
 LABOUR_UNASSIGNED = "labour_unassigned"
+LABOUR_TRANSFER_NOT_ALLOWED = "labour_transfer_not_allowed"
 DAILY_RECORD_VALUE_REQUIRED = "daily_record_value_required"
 
 # Labour work sessions

@@ -678,6 +678,110 @@ class LabourCurrentSiteAssignmentTests(LabourAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["current_site"], other_site.pk)
 
+    def test_can_move_labour_between_sites_when_transfer_allowed(self):
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+        )
+        labour = self._create_labour(name="Mover")
+
+        response = self.client.patch(
+            self._detail_url(labour.pk),
+            {"current_site": other_site.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["current_site"], other_site.pk)
+
+    def test_cannot_move_labour_when_transfer_not_allowed(self):
+        self.company.labour_transfer_allowed = False
+        self.company.save(update_fields=["labour_transfer_allowed"])
+        other_site = Site.objects.create(
+            name="Other Yard",
+            company=self.company,
+        )
+        labour = self._create_labour(name="Stuck")
+
+        response = self.client.patch(
+            self._detail_url(labour.pk),
+            {"current_site": other_site.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_TRANSFER_NOT_ALLOWED,
+        )
+        labour.refresh_from_db()
+        self.assertEqual(labour.current_site_id, self.site.pk)
+
+    def test_cannot_unassign_when_transfer_not_allowed(self):
+        self.company.labour_transfer_allowed = False
+        self.company.save(update_fields=["labour_transfer_allowed"])
+        labour = self._create_labour(name="Stuck")
+
+        response = self.client.patch(
+            self._detail_url(labour.pk),
+            {"current_site": None},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_TRANSFER_NOT_ALLOWED,
+        )
+        labour.refresh_from_db()
+        self.assertEqual(labour.current_site_id, self.site.pk)
+
+    def test_can_assign_unassigned_labour_when_transfer_not_allowed(self):
+        self.company.labour_transfer_allowed = False
+        self.company.save(update_fields=["labour_transfer_allowed"])
+        labour = self._create_labour(name="Pool", current_site=None)
+
+        response = self.client.patch(
+            self._detail_url(labour.pk),
+            {"current_site": self.site.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["current_site"], self.site.pk)
+
+    def test_can_create_labour_when_transfer_not_allowed(self):
+        self.company.labour_transfer_allowed = False
+        self.company.save(update_fields=["labour_transfer_allowed"])
+
+        response = self.client.post(
+            self.list_url,
+            {
+                "name": "Fresh",
+                "current_site": self.site.pk,
+                "default_salary": 500,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["current_site"], self.site.pk)
+
+    def test_other_fields_still_writable_when_transfer_not_allowed(self):
+        self.company.labour_transfer_allowed = False
+        self.company.save(update_fields=["labour_transfer_allowed"])
+        labour = self._create_labour(name="Keep Site")
+
+        response = self.client.patch(
+            self._detail_url(labour.pk),
+            {"default_salary": 800},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["current_site"], self.site.pk)
+        labour.refresh_from_db()
+        self.assertEqual(labour.default_salary, 800)
+
 
 class LabourSubscriptionTests(LabourAPITestCase):
     def test_create_blocked_when_active_labour_limit_exceeded(self):
