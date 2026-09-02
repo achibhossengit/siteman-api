@@ -190,7 +190,7 @@ class ActivityServiceTests(APITestCase):
         )
 
     def test_site_create_api_writes_activity(self):
-        Subscription.objects.filter(company=self.company).update(open_site_limit=5)
+        Subscription.objects.filter(company=self.company).update(site_limit=5)
         ct = ContentType.objects.get_for_model(Site)
         self.user.user_permissions.add(
             *Permission.objects.filter(

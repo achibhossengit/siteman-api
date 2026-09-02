@@ -77,9 +77,9 @@ class SiteViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def perform_create(self, serializer):
         company = self.request.user.company
-        # validate active subscription and open site limit
+        # validate active subscription and site limit
         try:
-            SubscriptionService.validate_open_site_limit(company)
+            SubscriptionService.validate_site_limit(company)
         except SubscriptionLimitExceededError:
             raise SubscriptionLimitExceeded()
         except SubscriptionExpiredError:

@@ -45,7 +45,7 @@ class SubscriptionService:
         return subscription
 
     @classmethod
-    def validate_open_site_limit(cls, company):
+    def validate_site_limit(cls, company):
         """
         Check whether another site can be created.
         """
@@ -55,7 +55,7 @@ class SubscriptionService:
 
         cls._validate_limit(
             current_count=current_count,
-            limit=subscription.open_site_limit,
+            limit=subscription.site_limit,
             resource_name="sites",
         )
 

@@ -41,9 +41,9 @@ class SiteAPITestCase(APITestCase):
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
         self.subscription = Subscription.objects.get(company=self.company)
-        # Trial default is 1 open site; raise for most CRUD tests.
-        self.subscription.open_site_limit = 5
-        self.subscription.save(update_fields=["open_site_limit"])
+        # Trial default is 1 site; raise for most CRUD tests.
+        self.subscription.site_limit = 5
+        self.subscription.save(update_fields=["site_limit"])
 
         self.user = User.objects.create_user(
             phone_number="+8801712345678",
@@ -274,9 +274,9 @@ class SiteAssignmentVisibilityTests(SiteAPITestCase):
 
 
 class SiteSubscriptionTests(SiteAPITestCase):
-    def test_create_blocked_when_open_site_limit_exceeded(self):
-        self.subscription.open_site_limit = 1
-        self.subscription.save(update_fields=["open_site_limit"])
+    def test_create_blocked_when_site_limit_exceeded(self):
+        self.subscription.site_limit = 1
+        self.subscription.save(update_fields=["site_limit"])
         self._create_site(name="Only Slot")
 
         response = self.client.post(self.list_url, {"name": "Overflow"})
@@ -1919,8 +1919,8 @@ class SiteBillingCategoryAPITestCase(APITestCase):
     def setUp(self):
         self.company = Company.objects.create(name="Achib Builders")
         self.subscription = Subscription.objects.get(company=self.company)
-        self.subscription.open_site_limit = 5
-        self.subscription.save(update_fields=["open_site_limit"])
+        self.subscription.site_limit = 5
+        self.subscription.save(update_fields=["site_limit"])
 
         self.user = User.objects.create_user(
             phone_number="+8801712345678",

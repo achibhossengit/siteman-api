@@ -13,7 +13,7 @@ from .models import Payment, Subscription
 # class PlanAdmin(admin.ModelAdmin):
 #     list_display = (
 #         "name",
-#         "open_site_limit",
+#         "site_limit",
 #         "active_user_limit",
 #         "active_labour_limit",
 #         "created_at",

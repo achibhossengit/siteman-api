@@ -6,7 +6,7 @@ from core.models import CreatedByMixin, TimeStampedMixin
 
 # class Plan(TimeStampedMixin, CreatedByMixin):
 #     name = models.CharField(max_length=100)
-#     open_site_limit = models.IntegerField(help_text="-1 means no limit.")
+#     site_limit = models.IntegerField(help_text="-1 means no limit.")
 #     active_user_limit = models.IntegerField(default=-1)
 #     active_labour_limit = models.IntegerField(default=-1)
 
@@ -39,7 +39,7 @@ from core.models import CreatedByMixin, TimeStampedMixin
 #         related_name="custom_plans",
 #         help_text="A negotiated deal created for one specific company.",
 #     )
-#     open_site_limit = models.IntegerField(help_text="-1 means no limit.")
+#     site_limit = models.IntegerField(help_text="-1 means no limit.")
 #     active_user_limit = models.IntegerField(default=-1)
 #     active_labour_limit = models.IntegerField(default=-1)
 #     duration = models.PositiveIntegerField(help_text="Term length in days.")
@@ -74,7 +74,7 @@ class Subscription(TimeStampedMixin):
     #     related_name="subscriptions",
     #     help_text="The negotiated deal this company is on; suggests the next renewal billing.",
     # )
-    open_site_limit = models.IntegerField(default=0, help_text="Snapshot; -1 means no limit.")
+    site_limit = models.IntegerField(default=0, help_text="Snapshot; -1 means no limit.")
     active_user_limit = models.IntegerField(default=0)
     active_labour_limit = models.IntegerField(default=0)
     paid_until = models.DateField(

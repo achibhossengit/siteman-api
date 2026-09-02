@@ -65,7 +65,7 @@ class SubscriptionInline(admin.TabularInline):
     can_delete = False
     show_change_link = False
     fields = (
-        "open_site_limit",
+        "site_limit",
         "active_user_limit",
         "active_labour_limit",
         "paid_until",
