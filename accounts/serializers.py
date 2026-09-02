@@ -222,6 +222,20 @@ class UserProfileSerializer(UserDetailSerializer):
         qs = Site.objects.filter(company_id=obj.company_id).order_by("name", "id")
         return SiteListSerializer(qs, many=True).data
 
+    def get_company(self, obj):
+        if obj.company_id is None:
+            return None
+        company = obj.company
+        return {
+            "id": company.pk,
+            "name": company.name,
+            "site_limit": company.site_limit,
+            "active_user_limit": company.active_user_limit,
+            "active_labour_limit": company.active_labour_limit,
+            "paid_until": company.paid_until,
+            "labour_transfer_allowed": company.labour_transfer_allowed,
+        }
+
 
 class UserListSerializer(serializers.ModelSerializer):
     phone_number = BDPhoneNumberField(read_only=True)

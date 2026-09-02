@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -6,6 +7,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework.throttling import SimpleRateThrottle, UserRateThrottle
@@ -1338,7 +1340,39 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         self.assertTrue(response.data["is_companyadmin"])
         self.assertEqual(
             response.data["company"],
-            {"id": self.company.pk, "name": "Achib Builders"},
+            {
+                "id": self.company.pk,
+                "name": "Achib Builders",
+                "site_limit": self.company.site_limit,
+                "active_user_limit": self.company.active_user_limit,
+                "active_labour_limit": self.company.active_labour_limit,
+                "paid_until": self.company.paid_until,
+                "labour_transfer_allowed": self.company.labour_transfer_allowed,
+            },
+        )
+
+    def test_get_returns_company_entitlements(self):
+        self.company.site_limit = 8
+        self.company.active_user_limit = 12
+        self.company.active_labour_limit = 40
+        self.company.paid_until = timezone.localdate() + timedelta(days=30)
+        self.company.labour_transfer_allowed = False
+        self.company.save()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["company"],
+            {
+                "id": self.company.pk,
+                "name": "Achib Builders",
+                "site_limit": 8,
+                "active_user_limit": 12,
+                "active_labour_limit": 40,
+                "paid_until": self.company.paid_until,
+                "labour_transfer_allowed": False,
+            },
         )
 
     def test_get_returns_allowed_groups(self):
