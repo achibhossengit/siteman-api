@@ -44,6 +44,17 @@ class SiteSerializer(serializers.ModelSerializer):
         return value
 
 
+class SiteDeleteSerializer(serializers.Serializer):
+    """Confirm the acting user's password before deleting a site."""
+
+    password = serializers.CharField(write_only=True, style={"input_type": "password"})
+
+    def validate_password(self, value):
+        if not self.context["request"].user.check_password(value):
+            raise serializers.ValidationError("Password is incorrect.")
+        return value
+
+
 class BillingCategoryListSerializer(serializers.ModelSerializer):
     class Meta:
         model = BillingCategory

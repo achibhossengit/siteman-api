@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.db.utils import IntegrityError
 from django.utils.dateparse import parse_date
-from rest_framework import serializers, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
@@ -37,6 +37,7 @@ from .serializers import (
     SiteCashListSerializer,
     SiteCashSerializer,
     SiteDailyReportSerializer,
+    SiteDeleteSerializer,
     SiteListSerializer,
     SiteSerializer,
 )
@@ -61,6 +62,8 @@ class SiteViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == "list":
             return SiteListSerializer
+        if self.action == "destroy":
+            return SiteDeleteSerializer
         return SiteSerializer
 
     def get_queryset(self):
@@ -91,6 +94,13 @@ class SiteViewSet(viewsets.ModelViewSet):
         old = snapshot_for(serializer.instance)
         serializer.save()
         activity_after_update(self, serializer.instance, old)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def perform_destroy(self, instance):
         if instance.daily_records.filter(is_sealed=False).exists():

@@ -147,9 +147,25 @@ class SiteCRUDTests(SiteAPITestCase):
 
     def test_delete_site_success(self):
         site = self._create_site(name="To Delete")
-        response = self.client.delete(self._detail_url(site.pk))
+        response = self.client.delete(
+            self._detail_url(site.pk), {"password": "strong-pass-123"}
+        )
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Site.objects.filter(pk=site.pk).exists())
+
+    def test_delete_rejects_wrong_password(self):
+        site = self._create_site(name="Keep")
+        response = self.client.delete(
+            self._detail_url(site.pk), {"password": "wrong-pass"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Site.objects.filter(pk=site.pk).exists())
+
+    def test_delete_requires_password(self):
+        site = self._create_site(name="Keep")
+        response = self.client.delete(self._detail_url(site.pk))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Site.objects.filter(pk=site.pk).exists())
 
     def test_delete_blocked_when_unsealed_daily_records_exist(self):
         site = self._create_site(name="Busy Site")
@@ -169,7 +185,9 @@ class SiteCRUDTests(SiteAPITestCase):
             is_sealed=False,
         )
 
-        response = self.client.delete(self._detail_url(site.pk))
+        response = self.client.delete(
+            self._detail_url(site.pk), {"password": "strong-pass-123"}
+        )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
@@ -197,7 +215,9 @@ class SiteCRUDTests(SiteAPITestCase):
             is_sealed=True,
         )
 
-        response = self.client.delete(self._detail_url(site.pk))
+        response = self.client.delete(
+            self._detail_url(site.pk), {"password": "strong-pass-123"}
+        )
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Site.objects.filter(pk=site.pk).exists())
