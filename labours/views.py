@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import ProtectedError, RestrictedError
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import mixins, serializers, status, viewsets
@@ -61,7 +62,7 @@ class LabourViewSet(viewsets.ModelViewSet):
     serializer_class = LabourSerializer
     queryset = Labour.objects.none()
     pagination_class = StandardPagination
-    http_method_names = ["get", "post", "patch", "head", "options"]  # no PUT, no DELETE
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]  # no PUT
     filter_backends = [*api_settings.DEFAULT_FILTER_BACKENDS, SearchFilter]
     filterset_class = LabourFilter
     search_fields = ["name"]
@@ -102,7 +103,18 @@ class LabourViewSet(viewsets.ModelViewSet):
         serializer.save()
         activity_after_update(self, serializer.instance, old)
 
-    # Delete log still not included here. Because, currently we are not deleting labours.
+    def perform_destroy(self, instance):
+        # DailyRecord uses on_delete=RESTRICT — the DB layer blocks delete when
+        # attendance rows still exist. LabourSession cascades on labour delete.
+        try:
+            with transaction.atomic():
+                activity_before_destroy(self, instance)
+                instance.delete()
+        except (ProtectedError, RestrictedError):
+            raise ValidationError(
+                detail="This labour has existing daily records; delete them first.",
+                code=status_codes.LABOUR_HAS_RECORDS,
+            )
 
 
 class LabourDailyRecordViewSet(viewsets.ModelViewSet):

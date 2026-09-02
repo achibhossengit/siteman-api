@@ -109,6 +109,19 @@ class LabourAuthPermissionTests(LabourAPITestCase):
         response = self.client.post(self.list_url, {"name": "New Labour"})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_missing_delete_permission_returns_403(self):
+        labour = self._create_labour(name="Protected")
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_labour_permissions(
+            self.user,
+            ["view_labour", "add_labour", "change_labour"],
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete(self._detail_url(labour.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Labour.objects.filter(pk=labour.pk).exists())
+
 
 class LabourCRUDTests(LabourAPITestCase):
     def test_list_empty(self):
@@ -252,11 +265,70 @@ class LabourCRUDTests(LabourAPITestCase):
         response = self.client.put(self._detail_url(labour.pk), {"name": "Put"})
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    def test_delete_not_allowed(self):
-        labour = self._create_labour()
+    def test_delete_labour_success(self):
+        labour = self._create_labour(name="To Delete")
         response = self.client.delete(self._detail_url(labour.pk))
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Labour.objects.filter(pk=labour.pk).exists())
+
+    def test_delete_labour_cascades_sessions(self):
+        labour = self._create_labour(name="Session Only")
+        session_date = timezone.localdate() - timedelta(days=1)
+        session = LabourSession.objects.create(
+            company=self.company,
+            labour=labour,
+            start_date=session_date,
+            end_date=session_date,
+            present_days=Decimal("1"),
+            salary_earnings=500,
+            extra_earnings=0,
+            total_fooding_pay=0,
+            total_advance_pay=0,
+            total_return=0,
+            affected_rows=1,
+            previous_payable=0,
+        )
+
+        response = self.client.delete(self._detail_url(labour.pk))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Labour.objects.filter(pk=labour.pk).exists())
+        self.assertFalse(LabourSession.objects.filter(pk=session.pk).exists())
+
+    def test_delete_blocked_when_daily_records_exist(self):
+        labour = self._create_labour(name="Has Records")
+        record = DailyRecord.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            date=timezone.localdate(),
+            present=Decimal("1"),
+            wage=500,
+        )
+
+        response = self.client.delete(self._detail_url(labour.pk))
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.LABOUR_HAS_RECORDS,
+        )
         self.assertTrue(Labour.objects.filter(pk=labour.pk).exists())
+        self.assertTrue(DailyRecord.objects.filter(pk=record.pk).exists())
+
+    def test_delete_writes_activity_log(self):
+        labour = self._create_labour(name="Logged Delete")
+
+        response = self.client.delete(self._detail_url(labour.pk))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        log = ActivityLog.objects.filter(
+            entity_type=ActivityEntityType.LABOUR,
+            entity_id=labour.pk,
+            action=ActivityAction.DELETED,
+        ).latest("id")
+        self.assertEqual(log.actor_id, self.user.pk)
+        self.assertEqual(log.changes["name"], "Logged Delete")
 
 
 class LabourValidationTests(LabourAPITestCase):

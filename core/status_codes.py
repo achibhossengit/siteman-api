@@ -34,6 +34,7 @@ USER_NAME_EXISTS = "user_name_exists"
 
 # Labours
 LABOUR_INACTIVE = "labour_inactive"
+LABOUR_HAS_RECORDS = "labour_has_records"
 LABOUR_NAME_EXISTS = "labour_name_exists"
 LABOUR_UNASSIGNED = "labour_unassigned"
 DAILY_RECORD_VALUE_REQUIRED = "daily_record_value_required"

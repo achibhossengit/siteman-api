@@ -150,7 +150,7 @@ class DailyRecord(TimeStampedMixin, CompanyOwnedMixin):
 class LabourSession(TimeStampedMixin, CompanyOwnedMixin):
     labour = models.ForeignKey(
         Labour,
-        on_delete=models.RESTRICT,
+        on_delete=models.CASCADE,
         related_name="sessions",
     )
     start_date = models.DateField(
