@@ -67,7 +67,7 @@ def sitecash_file_upload_to(instance, filename):
 class SiteCash(TimeStampedMixin, CompanyOwnedMixin):
     site = models.ForeignKey(
         Site,
-        on_delete=models.RESTRICT,
+        on_delete=models.CASCADE,
         related_name="cash_entries",
     )
     billing = models.ForeignKey(
@@ -100,7 +100,7 @@ class PrivateSiteCashType(models.TextChoices):
 class PrivateSiteCash(TimeStampedMixin, CompanyOwnedMixin):
     site = models.ForeignKey(
         Site,
-        on_delete=models.RESTRICT,
+        on_delete=models.CASCADE,
         related_name="private_cash_entries",
     )
     billing = models.ForeignKey(

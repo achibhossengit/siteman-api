@@ -151,6 +151,60 @@ class SiteCRUDTests(SiteAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Site.objects.filter(pk=site.pk).exists())
 
+    def test_delete_blocked_when_unsealed_daily_records_exist(self):
+        site = self._create_site(name="Busy Site")
+        labour = Labour.objects.create(
+            name="Karim",
+            company=self.company,
+            current_site=site,
+            default_salary=500,
+        )
+        DailyRecord.objects.create(
+            labour=labour,
+            site=site,
+            company=self.company,
+            date=timezone.localdate(),
+            present=Decimal("1"),
+            wage=500,
+            is_sealed=False,
+        )
+
+        response = self.client.delete(self._detail_url(site.pk))
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SITE_HAS_UNSEALED_DAILYRECORDS,
+        )
+        self.assertTrue(Site.objects.filter(pk=site.pk).exists())
+        self.assertTrue(DailyRecord.objects.filter(site=site).exists())
+
+    def test_delete_succeeds_when_only_sealed_daily_records_exist(self):
+        site = self._create_site(name="Sealed Site")
+        labour = Labour.objects.create(
+            name="Karim",
+            company=self.company,
+            current_site=site,
+            default_salary=500,
+        )
+        record = DailyRecord.objects.create(
+            labour=labour,
+            site=site,
+            company=self.company,
+            date=timezone.localdate(),
+            present=Decimal("1"),
+            wage=500,
+            is_sealed=True,
+        )
+
+        response = self.client.delete(self._detail_url(site.pk))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Site.objects.filter(pk=site.pk).exists())
+        self.assertFalse(DailyRecord.objects.filter(pk=record.pk).exists())
+        labour.refresh_from_db()
+        self.assertIsNone(labour.current_site_id)
+
     def test_put_not_allowed(self):
         site = self._create_site()
         response = self.client.put(self._detail_url(site.pk), {"name": "Put"})

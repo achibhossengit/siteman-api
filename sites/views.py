@@ -1,5 +1,4 @@
 from django.db import transaction
-from django.db.models import ProtectedError, RestrictedError
 from django.db.utils import IntegrityError
 from django.utils.dateparse import parse_date
 from rest_framework import serializers, viewsets
@@ -94,17 +93,15 @@ class SiteViewSet(viewsets.ModelViewSet):
         activity_after_update(self, serializer.instance, old)
 
     def perform_destroy(self, instance):
-        # children FKs use on_delete=RESTRICT/PROTECT — the DB layer is the
-        # single source of truth for "site still has records"
-        try:
-            with transaction.atomic():
-                activity_before_destroy(self, instance)
-                instance.delete()
-        except (ProtectedError, RestrictedError):
+        if instance.daily_records.filter(is_sealed=False).exists():
             raise serializers.ValidationError(
-                detail="This site has existing records; delete them first.",
-                code=status_codes.SITE_HAS_RECORDS,
+                detail="This site has unsealed daily records; delete them first.",
+                code=status_codes.SITE_HAS_UNSEALED_DAILYRECORDS,
             )
+        with transaction.atomic():
+            activity_before_destroy(self, instance)
+            instance.daily_records.all().delete()
+            instance.delete()
 
     @action(
         detail=True,
