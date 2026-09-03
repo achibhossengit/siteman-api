@@ -1,7 +1,9 @@
 from django import forms
 from django.contrib import admin, messages
+from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
+from django.contrib.auth.models import Group
 from django.db.models import Exists, OuterRef
 from django.urls import reverse
 from django.utils import timezone
@@ -16,7 +18,7 @@ from rest_framework_simplejwt.token_blacklist.models import (
 
 from sites.models import Site
 
-from .models import User, UserSite
+from .models import GroupProfile, User, UserSite
 
 
 class ActiveOutstandingTokenFilter(admin.SimpleListFilter):
@@ -160,6 +162,39 @@ class OutstandingTokenAdmin(BaseOutstandingTokenAdmin):
 if admin.site.is_registered(OutstandingToken):
     admin.site.unregister(OutstandingToken)
 admin.site.register(OutstandingToken, OutstandingTokenAdmin)
+
+
+class GroupProfileInline(admin.StackedInline):
+    """Group type on add, change, and detail."""
+
+    model = GroupProfile
+    fk_name = "group"
+    extra = 0
+    min_num = 1
+    max_num = 1
+    can_delete = False
+    fields = ("type",)
+
+
+class GroupAdmin(BaseGroupAdmin):
+    inlines = [GroupProfileInline]
+    list_display = ("name", "profile_type")
+    list_filter = ("profile__type",)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("profile")
+
+    @admin.display(description="type", ordering="profile__type")
+    def profile_type(self, obj):
+        try:
+            return obj.profile.get_type_display()
+        except GroupProfile.DoesNotExist:
+            return "—"
+
+
+if admin.site.is_registered(Group):
+    admin.site.unregister(Group)
+admin.site.register(Group, GroupAdmin)
 
 
 class UserCreationForm(forms.ModelForm):
