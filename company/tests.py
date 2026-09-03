@@ -1,7 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from django.urls import reverse
@@ -161,12 +161,10 @@ class CompanyAuthPermissionTests(CompanyAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertTrue(Company.objects.filter(pk=self.company.pk).exists())
 
-    def test_get_not_allowed(self):
-        self._grant_company_permissions(
-            self.user, ["view_company", "change_company", "delete_company"]
-        )
+    def test_unauthenticated_get_returns_401(self):
+        self.client.force_authenticate(user=None)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_user_without_company_returns_404(self):
         self.user.company = None
@@ -174,6 +172,53 @@ class CompanyAuthPermissionTests(CompanyAPITestCase):
         self._grant_company_permissions(self.user)
         response = self.client.patch(self.url, {"name": "Nope"})
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class CompanyRetrieveTests(CompanyAPITestCase):
+    def test_get_returns_company_config_and_sites(self):
+        site = Site.objects.create(name="Padma Bridge", company=self.company)
+        other_site = Site.objects.create(name="Jamuna Bridge", company=self.company)
+        foreign_company = Company.objects.create(name="Other Co")
+        Site.objects.create(name="Foreign Site", company=foreign_company)
+
+        self.company.site_limit = 8
+        self.company.active_user_limit = 12
+        self.company.active_labour_limit = 40
+        self.company.paid_until = timezone.localdate() + timedelta(days=30)
+        self.company.labour_transfer_allowed = False
+        self.company.save()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.company.pk)
+        self.assertEqual(response.data["name"], "Achib Builders")
+        self.assertEqual(response.data["site_limit"], 8)
+        self.assertEqual(response.data["active_user_limit"], 12)
+        self.assertEqual(response.data["active_labour_limit"], 40)
+        self.assertEqual(response.data["paid_until"], self.company.paid_until.isoformat())
+        self.assertFalse(response.data["labour_transfer_allowed"])
+        rows = {row["id"]: row for row in response.data["sites"]}
+        self.assertCountEqual(rows, [site.pk, other_site.pk])
+        self.assertEqual(rows[site.pk], {"id": site.pk, "name": "Padma Bridge"})
+        self.assertEqual(rows[other_site.pk]["name"], "Jamuna Bridge")
+        groups = {row["id"]: row["name"] for row in response.data["groups"]}
+        self.assertEqual(len(groups), Group.objects.count())
+        for group in Group.objects.all():
+            self.assertEqual(groups[group.pk], group.name)
+
+    def test_get_does_not_require_view_company(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["sites"], [])
+
+    def test_get_allowed_when_subscription_expired(self):
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Achib Builders")
 
 
 class CompanyUpdateTests(CompanyAPITestCase):

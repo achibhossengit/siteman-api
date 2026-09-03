@@ -77,7 +77,8 @@ class RegistrationFlowTests(APITestCase):
         self.assertTrue(user.is_companyadmin)
         self.assertTrue(user.groups.filter(name="Company Admin").exists())
         self.assertEqual(response.data["phone_number"], "01712345678")
-        self.assertEqual(response.data["company"]["name"], "Achib Builders")
+        self.assertNotIn("company", response.data)
+        self.assertNotIn("sites", response.data)
 
     def test_register_rejects_registered_phone(self):
         User.objects.create_user(
@@ -902,11 +903,15 @@ class UserCRUDTests(UserAPITestCase):
 
     def test_retrieve_user_detail(self):
         other = self._create_company_user(name="Detail User", phone="+8801711114444")
+        site_manager = Group.objects.get(name="Site Manager")
+        other.groups.add(site_manager)
         response = self.client.get(self._detail_url(other.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Detail User")
-        self.assertIn("company", response.data)
-        self.assertIn("allowed_sites", response.data)
+        self.assertEqual(response.data["allowed_groups"], [site_manager.pk])
+        self.assertEqual(response.data["allowed_sites"], [])
+        self.assertNotIn("company", response.data)
+        self.assertNotIn("allowed_permissions", response.data)
         self.assertNotIn("sites", response.data)
         self.assertNotIn("password", response.data)
 
@@ -1338,51 +1343,9 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         self.assertEqual(response.data["email"], "achib@example.com")
         self.assertIsNone(response.data["photo"])
         self.assertTrue(response.data["is_companyadmin"])
-        self.assertEqual(
-            response.data["company"],
-            {
-                "id": self.company.pk,
-                "name": "Achib Builders",
-                "site_limit": self.company.site_limit,
-                "active_user_limit": self.company.active_user_limit,
-                "active_labour_limit": self.company.active_labour_limit,
-                "paid_until": self.company.paid_until,
-                "labour_transfer_allowed": self.company.labour_transfer_allowed,
-            },
-        )
-
-    def test_get_returns_company_entitlements(self):
-        self.company.site_limit = 8
-        self.company.active_user_limit = 12
-        self.company.active_labour_limit = 40
-        self.company.paid_until = timezone.localdate() + timedelta(days=30)
-        self.company.labour_transfer_allowed = False
-        self.company.save()
-
-        response = self.client.get(self.url)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            response.data["company"],
-            {
-                "id": self.company.pk,
-                "name": "Achib Builders",
-                "site_limit": 8,
-                "active_user_limit": 12,
-                "active_labour_limit": 40,
-                "paid_until": self.company.paid_until,
-                "labour_transfer_allowed": False,
-            },
-        )
-
-    def test_get_returns_allowed_groups(self):
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn(
-            {"id": self.site_manager.pk, "name": "Site Manager"},
-            response.data["allowed_groups"],
-        )
-        self.assertNotIn("groups", response.data)
+        self.assertNotIn("company", response.data)
+        self.assertNotIn("sites", response.data)
+        self.assertNotIn("allowed_groups", response.data)
 
     def test_get_returns_allowed_permissions(self):
         response = self.client.get(self.url)
@@ -1407,31 +1370,7 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
             [self.site.pk, other_site.pk],
         )
 
-    def test_sites_is_company_catalog_with_fields(self):
-        other_site = Site.objects.create(
-            name="Jamuna Bridge",
-            company=self.company,
-        )
-        foreign_company = Company.objects.create(name="Other Co")
-        Site.objects.create(name="Foreign Site", company=foreign_company)
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        rows = {row["id"]: row for row in response.data["sites"]}
-        self.assertCountEqual(rows, [self.site.pk, other_site.pk])
-        self.assertEqual(
-            rows[self.site.pk],
-            {
-                "id": self.site.pk,
-                "name": "Padma Bridge",
-            },
-        )
-        self.assertEqual(rows[other_site.pk]["name"], "Jamuna Bridge")
-
     def test_non_admin_allowed_sites_are_only_assigned(self):
-        unassigned = Site.objects.create(
-            name="Unassigned Site",
-            company=self.company,
-        )
         worker = User.objects.create_user(
             phone_number="+8801799999999",
             name="Worker",
@@ -1448,10 +1387,7 @@ class UserProfileRetrieveTests(UserProfileAPITestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["allowed_sites"], [self.site.pk])
-        self.assertCountEqual(
-            [row["id"] for row in response.data["sites"]],
-            [self.site.pk, unassigned.pk],
-        )
+        self.assertNotIn("sites", response.data)
 
     def test_get_is_only_request_user(self):
         other = User.objects.create_user(

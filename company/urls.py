@@ -5,7 +5,9 @@ from .views import CompanyViewSet
 urlpatterns = [
     path(
         "company",
-        CompanyViewSet.as_view({"patch": "partial_update", "delete": "destroy"}),
+        CompanyViewSet.as_view(
+            {"get": "retrieve", "patch": "partial_update", "delete": "destroy"}
+        ),
         name="company-detail",
     ),
 ]

@@ -10,11 +10,22 @@ from core import status_codes
 from core.images import ProfilePhotoField
 from core.phone import format_bd_phone_local, normalize_bd_phone
 from sites.models import Site
-from sites.serializers import SiteListSerializer
 from .models import UserSite
 
 User = get_user_model()
 OTP_LENGTH = getattr(settings, "OTP_LENGTH", 6)
+
+
+def _allowed_site_ids(user):
+    if user.is_companyadmin:
+        return list(
+            Site.objects.filter(company_id=user.company_id).values_list(
+                "id", flat=True
+            )
+        )
+    return list(
+        UserSite.objects.filter(user_id=user.pk).values_list("site_id", flat=True)
+    )
 
 # Allowed group names for company users.
 ROLE_GROUP_NAMES = (
@@ -102,19 +113,13 @@ class UserDeleteSerializer(serializers.Serializer):
         return value
     
 
-class UserDetailSerializer(serializers.ModelSerializer):
-    """Company user detail: same snapshot as profile, without the site catalog.
+class UserProfileSerializer(serializers.ModelSerializer):
+    """Own profile: GET/PATCH user fields plus access snapshot.
 
-    Writable on profile PATCH: name and phone_number. Email changes require a
-    verification flow. Password changes go through ``/auth/password/change``
-    or reset.
-
-    ``allowed_*`` is this user's access. The company site catalog (``sites``)
-    is only on ``UserProfileSerializer``.
+    ``allowed_permissions`` and ``allowed_sites`` are this user's access.
+    Company config and the site catalog live on ``GET /company``.
     """
 
-    company = serializers.SerializerMethodField()
-    allowed_groups = serializers.SerializerMethodField()
     allowed_permissions = serializers.SerializerMethodField()
     allowed_sites = serializers.SerializerMethodField()
     phone_number = BDPhoneNumberField()
@@ -128,21 +133,17 @@ class UserDetailSerializer(serializers.ModelSerializer):
             "photo",
             "phone_number",
             "email",
-            "company",
             "is_active",
             "is_staff",
             "is_companyadmin",
-            "allowed_groups",
             "allowed_permissions",
             "allowed_sites",
         )
         read_only_fields = (
             "id",
-            "company",
             "is_active",
             "is_staff",
             "is_companyadmin",
-            "allowed_groups",
             "allowed_permissions",
             "allowed_sites",
         )
@@ -150,28 +151,11 @@ class UserDetailSerializer(serializers.ModelSerializer):
             "phone_number": {"validators": []},
         }
 
-    def get_company(self, obj):
-        if obj.company_id is None:
-            return None
-        return {"id": obj.company_id, "name": obj.company.name}
-
-    def get_allowed_groups(self, obj):
-        return [
-            {"id": group.pk, "name": group.name}
-            for group in obj.groups.all().order_by("name")
-        ]
-
     def get_allowed_permissions(self, obj):
         return sorted(obj.get_all_permissions())
 
     def get_allowed_sites(self, obj):
-        if obj.is_companyadmin and obj.company_id is not None:
-            return list(
-                Site.objects.filter(company_id=obj.company_id).values_list(
-                    "id", flat=True
-                )
-            )
-        return list(obj.sites.values_list("site_id", flat=True))
+        return _allowed_site_ids(obj)
 
     def validate_phone_number(self, value):
         try:
@@ -203,38 +187,35 @@ class UserDetailSerializer(serializers.ModelSerializer):
         return value
 
 
-class UserProfileSerializer(UserDetailSerializer):
-    """Own profile: GET returns full snapshot; PATCH updates basic fields.
+class UserDetailSerializer(serializers.ModelSerializer):
+    """Company user retrieve: identity plus assigned groups. No company payload."""
 
-    ``sites`` is the company site catalog (id → name and related fields),
-    not the access list.
-    """
+    allowed_groups = serializers.SerializerMethodField()
+    allowed_sites = serializers.SerializerMethodField()
+    phone_number = BDPhoneNumberField(read_only=True)
+    photo = ProfilePhotoField(read_only=True)
 
-    sites = serializers.SerializerMethodField()
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "name",
+            "photo",
+            "phone_number",
+            "email",
+            "is_active",
+            "is_staff",
+            "is_companyadmin",
+            "allowed_groups",
+            "allowed_sites",
+        )
+        read_only_fields = fields
 
-    class Meta(UserDetailSerializer.Meta):
-        fields = UserDetailSerializer.Meta.fields + ("sites",)
-        read_only_fields = UserDetailSerializer.Meta.read_only_fields + ("sites",)
-
-    def get_sites(self, obj):
-        if obj.company_id is None:
-            return []
-        qs = Site.objects.filter(company_id=obj.company_id).order_by("name", "id")
-        return SiteListSerializer(qs, many=True).data
-
-    def get_company(self, obj):
-        if obj.company_id is None:
-            return None
-        company = obj.company
-        return {
-            "id": company.pk,
-            "name": company.name,
-            "site_limit": company.site_limit,
-            "active_user_limit": company.active_user_limit,
-            "active_labour_limit": company.active_labour_limit,
-            "paid_until": company.paid_until,
-            "labour_transfer_allowed": company.labour_transfer_allowed,
-        }
+    def get_allowed_groups(self, obj):
+        return list(obj.groups.values_list("id", flat=True))
+    
+    def get_allowed_sites(self, obj):
+        return _allowed_site_ids(obj)
 
 
 class UserListSerializer(serializers.ModelSerializer):

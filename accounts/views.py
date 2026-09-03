@@ -272,12 +272,11 @@ class UserProfileViewSet(
 ):
     """Current authenticated user's profile.
 
-    ``GET /profile`` — basic info, allowed groups/permissions/site ids,
-    and the company site catalog (``sites``).
-    Allowed site ids are all company sites for company admins; otherwise
-    assigned sites only. ``sites`` is every site in the company.
+    ``GET /profile`` — user fields plus ``allowed_permissions`` and
+    ``allowed_sites``.
     ``PATCH /profile`` — update name, email, phone.
     Password changes use ``/auth/password/change`` or reset.
+    Company config and the site catalog are on ``GET /company``.
     No Django model-permission gate (any authenticated user).
     """
 
@@ -286,18 +285,15 @@ class UserProfileViewSet(
     http_method_names = ["get", "patch", "head", "options"]
 
     def get_object(self):
-        qs = (
+        return (
             User.objects.filter(pk=self.request.user.pk)
-            .select_related("company")
             .prefetch_related(
                 "groups",
                 "groups__permissions",
                 "user_permissions",
             )
+            .get()
         )
-        if not self.request.user.is_companyadmin:
-            qs = qs.prefetch_related("sites")
-        return qs.get()
 
     def retrieve(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_object())

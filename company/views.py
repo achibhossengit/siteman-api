@@ -1,22 +1,24 @@
 from django.db import transaction
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import NotFound
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import DjangoModelPermissions, IsAuthenticated
 from rest_framework.response import Response
 
-from core.permissions import ActiveSubscriptionOrReadOnly, DjangoModelPermissionsWithView
+from core.permissions import ActiveSubscriptionOrReadOnly
 from .models import Company
 from .permissions import HasTenantCompany
 from .serializers import CompanyDeleteSerializer, CompanySerializer
 
 
 class CompanyViewSet(
+    mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
     """Current user's company.
 
+    ``GET /company`` — name, entitlements, and the company site catalog.
     ``PATCH /company`` — name and labour_transfer_allowed (``change_company``).
     ``DELETE /company`` — password-confirmed hard delete (``delete_company``).
     """
@@ -26,10 +28,11 @@ class CompanyViewSet(
     permission_classes = [
         IsAuthenticated,
         HasTenantCompany,
-        DjangoModelPermissionsWithView,
+        # allow to view the company config without "view_company" permission 
+        DjangoModelPermissions,
         ActiveSubscriptionOrReadOnly,
     ]
-    http_method_names = ["patch", "delete", "head", "options"]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
 
     def get_serializer_class(self):
         if self.action == "destroy":
