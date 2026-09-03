@@ -9,8 +9,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from accounts.models import User
-from accounts.views import COMPANY_ADMIN_GROUP
+from accounts.models import GroupProfile, User
 from company.models import Company
 from core import status_codes
 from labours.models import DailyRecord, Labour
@@ -57,7 +56,10 @@ class CompanyAdminAddTests(TestCase):
         self.assertTrue(user.is_companyadmin)
         self.assertFalse(user.is_staff)
         self.assertTrue(user.check_password("strong-pass-123"))
-        self.assertTrue(user.groups.filter(name=COMPANY_ADMIN_GROUP).exists())
+        self.assertCountEqual(
+            user.groups.values_list("id", flat=True),
+            GroupProfile.non_platform_groups().values_list("id", flat=True),
+        )
 
     def test_duplicate_phone_does_not_create_company(self):
         User.objects.create_user(

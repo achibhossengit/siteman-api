@@ -116,6 +116,10 @@ class GroupProfile(models.Model):
     def tenant_groups(cls):
         return Group.objects.filter(profile__type=cls.Type.TENANT)
 
+    @classmethod
+    def non_platform_groups(cls):
+        return Group.objects.exclude(profile__type=cls.Type.PLATFORM)
+
 
 class UserSite(TimeStampedMixin, CompanyOwnedMixin):
     user = models.ForeignKey(

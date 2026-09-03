@@ -14,7 +14,7 @@ from rest_framework.throttling import SimpleRateThrottle, UserRateThrottle
 from core import status_codes, verifications
 from company.models import Company
 from sites.models import Site
-from .models import UserSite
+from .models import GroupProfile, UserSite
 from .views import PASSWORD_RESET_PURPOSE
 
 User = get_user_model()
@@ -65,6 +65,11 @@ class RegistrationFlowTests(APITestCase):
         return self.client.post(self.register_url, payload or self.valid_payload)
 
     def test_register_creates_company_admin(self):
+        platform_group = Group.objects.create(name="Platform Staff")
+        GroupProfile.objects.create(
+            group=platform_group,
+            type=GroupProfile.Type.PLATFORM,
+        )
         response = self.register()
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertNotIn("access", response.data)
@@ -75,7 +80,11 @@ class RegistrationFlowTests(APITestCase):
         self.assertIsNone(user.email)
         self.assertEqual(user.company.name, "Achib Builders")
         self.assertTrue(user.is_companyadmin)
-        self.assertTrue(user.groups.filter(name="Company Admin").exists())
+        self.assertCountEqual(
+            user.groups.values_list("id", flat=True),
+            GroupProfile.non_platform_groups().values_list("id", flat=True),
+        )
+        self.assertFalse(user.groups.filter(pk=platform_group.pk).exists())
         self.assertEqual(response.data["phone_number"], "01712345678")
         self.assertNotIn("company", response.data)
         self.assertNotIn("sites", response.data)

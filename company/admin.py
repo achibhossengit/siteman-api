@@ -1,6 +1,5 @@
 from django import forms
 from django.contrib import admin
-from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -8,8 +7,7 @@ from django.db import transaction
 from django.urls import reverse
 from django.utils.html import format_html
 
-from accounts.models import User
-from accounts.views import COMPANY_ADMIN_GROUP
+from accounts.models import GroupProfile, User
 from core.phone import normalize_bd_phone
 from .models import Company
 
@@ -151,5 +149,4 @@ class CompanyAdmin(admin.ModelAdmin):
                 company=obj,
                 is_companyadmin=True,
             )
-            admin_group, _ = Group.objects.get_or_create(name=COMPANY_ADMIN_GROUP)
-            user.groups.add(admin_group)
+            user.groups.set(GroupProfile.non_platform_groups())

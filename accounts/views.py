@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
-from django.contrib.auth.models import Group
 from django.db import IntegrityError, transaction
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status, viewsets
@@ -24,7 +23,7 @@ from core.exceptions import (
 from core.pagination import StandardPagination
 from core.services import SubscriptionService
 from company.models import Company
-from .models import User
+from .models import GroupProfile, User
 from .serializers import (
     # registration serializers
     RegisterSerializer,
@@ -51,7 +50,6 @@ from .serializers import (
 )
 
 PASSWORD_RESET_PURPOSE = "password_reset"
-COMPANY_ADMIN_GROUP = "Company Admin"
 
 
 def _ensure_registration_enabled():
@@ -127,8 +125,7 @@ class RegisterView(GenericAPIView):
         )
         user.password = make_password(data["password"])
         user.save()
-        admin_group, _ = Group.objects.get_or_create(name=COMPANY_ADMIN_GROUP)
-        user.groups.add(admin_group)
+        user.groups.set(GroupProfile.non_platform_groups())
         return user
 
 
