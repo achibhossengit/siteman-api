@@ -15,18 +15,7 @@ User = get_user_model()
 OTP_LENGTH = getattr(settings, "OTP_LENGTH", 6)
 
 
-def _allowed_site_ids(user):
-    if user.is_companyadmin:
-        return list(
-            Site.objects.filter(company_id=user.company_id).values_list(
-                "id", flat=True
-            )
-        )
-    return list(
-        UserSite.objects.filter(user_id=user.pk).values_list("site_id", flat=True)
-    )
-
-
+# ============= Auth serializers =============
 class BDPhoneNumberField(serializers.CharField):
     """Store as +880…; serialize responses as 01XXXXXXXXX."""
 
@@ -94,89 +83,123 @@ class PasswordChangeSerializer(serializers.Serializer):
         return value
 
 
-class UserDeleteSerializer(serializers.Serializer):
-    """Confirm the acting admin's password before hard-deleting a user."""
-
-    password = serializers.CharField(write_only=True, style={"input_type": "password"})
-
-    def validate_password(self, value):
-        if not self.context["request"].user.check_password(value):
-            raise serializers.ValidationError("Password is incorrect.")
-        return value
+class CookieTokenObtainPairSerializer(TokenObtainPairSerializer):
     
+    def validate_phone_number(self, value):
+        phone = normalize_bd_phone(value)
+        return phone
 
-class UserProfileSerializer(serializers.ModelSerializer):
-    """Own profile: GET/PATCH user fields plus access snapshot.
 
-    ``allowed_permissions`` and ``allowed_sites`` are this user's access.
-    Company config and the site catalog live on ``GET /company``.
-    """
+class CookieRefreshFallbackMixin:
+    """Let `refresh` come from the request body or, failing that, the
+    httponly auth cookie — browser clients cannot read the cookie from JS."""
 
-    allowed_permissions = serializers.SerializerMethodField()
-    allowed_sites = serializers.SerializerMethodField()
-    phone_number = BDPhoneNumberField()
-    photo = ProfilePhotoField(required=False, allow_null=True)
+    def validate(self, attrs):
+        if not attrs.get("refresh"):
+            request = self.context.get("request")
+            cookie_name = getattr(settings, "REFRESH_TOKEN_COOKIE_NAME", "refresh_token")
+            attrs["refresh"] = request.COOKIES.get(cookie_name) if request else None
+        if not attrs["refresh"]:
+            raise InvalidToken("No refresh token found in request body or cookie.")
+        return super().validate(attrs)
+
+
+class CookieTokenRefreshSerializer(CookieRefreshFallbackMixin, TokenRefreshSerializer):
+    refresh = serializers.CharField(required=False)
+
+
+class CookieTokenBlacklistSerializer(CookieRefreshFallbackMixin, TokenBlacklistSerializer):
+    refresh = serializers.CharField(required=False, write_only=True)
+
+
+
+# ============= User serializers =============
+def _get_site_ids_for_user(user):
+    if user.is_companyadmin:
+        return list(
+            Site.objects.filter(company_id=user.company_id).values_list(
+                "id", flat=True
+            )
+        )
+    return list(
+        UserSite.objects.filter(user_id=user.pk).values_list("site_id", flat=True)
+    )
+
+
+def _get_tenant_sites_for_request(serializer):
+    request = serializer.context.get("request")
+    company_id = getattr(getattr(request, "user", None), "company_id", None)
+    if company_id is None:
+        return Site.objects.none()
+    return Site.objects.filter(company_id=company_id)
+
+
+def _set_user_groups_and_sites(instance, groups, sites, company):
+    if groups is not None:
+        instance.groups.set(groups)
+    if sites is not None:
+        sites_by_id = {site.pk: site for site in sites}
+        instance.sites.exclude(site_id__in=sites_by_id).delete()
+        existing_site_ids = set(instance.sites.values_list("site_id", flat=True))
+        for site_id, site in sites_by_id.items():
+            if site_id not in existing_site_ids:
+                UserSite.objects.create(
+                    user=instance,
+                    site=site,
+                    company=company,
+                )
+    return instance
+
+
+def _validate_unique_user_phone(phone, exclude_pk=None):
+    try:
+        phone = normalize_bd_phone(phone)
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(exc.messages[0])
+    qs = User.objects.filter(phone_number=phone)
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    if qs.exists():
+        raise serializers.ValidationError(
+            "This phone number is already registered.",
+            code=status_codes.ALREADY_REGISTERED,
+        )
+    return phone
+
+
+def _validate_unique_user_name(name, company_id, exclude_pk=None):
+    if company_id is None:
+        return name
+    qs = User.objects.filter(company_id=company_id, name=name)
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    if qs.exists():
+        raise serializers.ValidationError(
+            "A user with this name already exists in your company.",
+            code=status_codes.USER_NAME_EXISTS,
+        )
+    return name
+
+
+class UserSiteRelatedField(serializers.PrimaryKeyRelatedField):
+    def to_representation(self, value):
+        return value.site_id
+
+
+class UserListSerializer(serializers.ModelSerializer):
+    phone_number = BDPhoneNumberField(read_only=True)
 
     class Meta:
         model = User
-        fields = (
+        fields = [
             "id",
             "name",
             "photo",
             "phone_number",
             "email",
             "is_active",
-            "is_staff",
             "is_companyadmin",
-            "allowed_permissions",
-            "allowed_sites",
-        )
-        read_only_fields = (
-            "id",
-            "is_active",
-            "is_staff",
-            "is_companyadmin",
-            "allowed_permissions",
-            "allowed_sites",
-        )
-        extra_kwargs = {
-            "phone_number": {"validators": []},
-        }
-
-    def get_allowed_permissions(self, obj):
-        return sorted(obj.get_all_permissions())
-
-    def get_allowed_sites(self, obj):
-        return _allowed_site_ids(obj)
-
-    def validate_phone_number(self, value):
-        try:
-            phone = normalize_bd_phone(value)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(exc.messages[0])
-        qs = User.objects.filter(phone_number=phone)
-        if self.instance is not None:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(
-                "This phone number is already registered.",
-                code=status_codes.ALREADY_REGISTERED,
-            )
-        return phone
-
-    def validate_name(self, value):
-        company_id = getattr(self.instance, "company_id", None)
-        if company_id is None:
-            return value
-        qs = User.objects.filter(company_id=company_id, name=value)
-        if self.instance is not None:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(
-                "A user with this name already exists in your company.",
-                code=status_codes.USER_NAME_EXISTS,
-            )
-        return value
+        ]
 
 
 class UserDetailSerializer(serializers.ModelSerializer):
@@ -205,41 +228,25 @@ class UserDetailSerializer(serializers.ModelSerializer):
 
     def get_allowed_groups(self, obj):
         return list(obj.groups.values_list("id", flat=True))
-    
+
     def get_allowed_sites(self, obj):
-        return _allowed_site_ids(obj)
+        return _get_site_ids_for_user(obj)
 
 
-class UserListSerializer(serializers.ModelSerializer):
-    phone_number = BDPhoneNumberField(read_only=True)
+class UserCreateSerializer(serializers.ModelSerializer):
+    """Create a company user with an initial password set by the admin.
 
-    class Meta:
-        model = User
-        fields = [
-            "id",
-            "name",
-            "photo",
-            "phone_number",
-            "email",
-            "is_active",
-            "is_companyadmin",
-        ]
+    Password is write-only and create-only. Updates go through
+    ``UserUpdateSerializer``, which does not accept password — users change
+    their own password via ``/auth/password/change`` or reset.
 
+    Optional ``groups`` (tenant group ids) and ``allowed_sites`` (site ids)
+    are assigned in the same request.
+    """
 
-class UserGroupRelatedField(serializers.PrimaryKeyRelatedField):
-    def to_representation(self, instance):
-        return {"id": instance.pk, "name": instance.name}
-
-
-class UserSiteRelatedField(serializers.PrimaryKeyRelatedField):
-    def to_representation(self, value):
-        return value.site_id
-
-
-class UserAccessAssignmentMixin(serializers.Serializer):
-    """Writable group and allowed-site assignment for company users."""
-
-    groups = UserGroupRelatedField(
+    password = serializers.CharField(write_only=True, style={"input_type": "password"})
+    phone_number = BDPhoneNumberField()
+    groups = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=GroupProfile.tenant_groups(),
         required=False,
@@ -250,59 +257,6 @@ class UserAccessAssignmentMixin(serializers.Serializer):
         required=False,
         source="sites",
     )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get("request")
-        company_id = getattr(getattr(request, "user", None), "company_id", None)
-        if company_id is not None:
-            self.fields["allowed_sites"].child_relation.queryset = Site.objects.filter(
-                company_id=company_id
-            )
-
-    def validate_groups(self, groups):
-        if len(groups) > 1:
-            raise serializers.ValidationError(
-                "A user can belong to only one group at a time.",
-                code=status_codes.INVALID,
-            )
-        return groups
-
-    def _assign_access(self, instance, groups, sites):
-        if groups is not None:
-            instance.groups.set(groups)
-
-        if sites is not None:
-            sites_by_id = {site.pk: site for site in sites}
-            instance.sites.exclude(site_id__in=sites_by_id).delete()
-            existing_site_ids = set(
-                instance.sites.values_list("site_id", flat=True)
-            )
-            request = self.context["request"]
-            for site_id, site in sites_by_id.items():
-                if site_id not in existing_site_ids:
-                    UserSite.objects.create(
-                        user=instance,
-                        site=site,
-                        company=request.user.company,
-                    )
-
-        return instance
-
-
-class UserCreateSerializer(UserAccessAssignmentMixin, serializers.ModelSerializer):
-    """Create a company user with an initial password set by the admin.
-
-    Password is write-only and create-only. Updates go through
-    ``UserUpdateSerializer``, which does not accept password — users change
-    their own password via ``/auth/password/change`` or reset.
-
-    Optional ``groups`` (group ids, tenant type only) and ``allowed_sites``
-    (site ids) are assigned in the same request.
-    """
-
-    password = serializers.CharField(write_only=True, style={"input_type": "password"})
-    phone_number = BDPhoneNumberField()
 
     class Meta:
         model = User
@@ -326,42 +280,28 @@ class UserCreateSerializer(UserAccessAssignmentMixin, serializers.ModelSerialize
             "updated_at",
         ]
         extra_kwargs = {
-            # Own uniqueness check → ALREADY_REGISTERED (after normalize).
             "phone_number": {"validators": []},
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.instance is None:
-            # Create always stamps is_active=True in the viewset.
             self.fields["is_active"].read_only = True
+        self.fields["allowed_sites"].child_relation.queryset = (
+            _get_tenant_sites_for_request(self)
+        )
 
     def validate_phone_number(self, value):
-        try:
-            phone = normalize_bd_phone(value)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(exc.messages[0])
-        qs = User.objects.filter(phone_number=phone)
-        if self.instance is not None:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(
-                "This phone number is already registered.",
-                code=status_codes.ALREADY_REGISTERED,
-            )
-        return phone
+        exclude_pk = self.instance.pk if self.instance is not None else None
+        return _validate_unique_user_phone(value, exclude_pk=exclude_pk)
 
     def validate_name(self, value):
-        company = self.context["request"].user.company
-        qs = User.objects.filter(company=company, name=value)
-        if self.instance is not None:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(
-                "A user with this name already exists in your company.",
-                code=status_codes.USER_NAME_EXISTS,
-            )
-        return value
+        exclude_pk = self.instance.pk if self.instance is not None else None
+        return _validate_unique_user_name(
+            value,
+            self.context["request"].user.company_id,
+            exclude_pk=exclude_pk,
+        )
 
     def validate_password(self, value):
         validate_password(value)
@@ -372,47 +312,110 @@ class UserCreateSerializer(UserAccessAssignmentMixin, serializers.ModelSerialize
         groups = validated_data.pop("groups", None)
         sites = validated_data.pop("sites", None)
         user = User.objects.create_user(password=password, **validated_data)
-        return self._assign_access(user, groups, sites)
+        return _set_user_groups_and_sites(
+            user, groups, sites, self.context["request"].user.company
+        )
 
 
-class UserUpdateSerializer(UserAccessAssignmentMixin, serializers.ModelSerializer):
+class UserUpdateSerializer(serializers.ModelSerializer):
+    groups = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=GroupProfile.tenant_groups(),
+        required=False,
+    )
+    allowed_sites = UserSiteRelatedField(
+        many=True,
+        queryset=Site.objects.none(),
+        required=False,
+        source="sites",
+    )
+
     class Meta:
         model = User
         fields = ["id", "is_active", "groups", "allowed_sites"]
         read_only_fields = ["id"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["allowed_sites"].child_relation.queryset = (
+            _get_tenant_sites_for_request(self)
+        )
+
     def update(self, instance, validated_data):
         groups = validated_data.pop("groups", None)
         sites = validated_data.pop("sites", None)
         instance = super().update(instance, validated_data)
-        return self._assign_access(instance, groups, sites)
+        return _set_user_groups_and_sites(
+            instance, groups, sites, self.context["request"].user.company
+        )
 
 
-class CookieTokenObtainPairSerializer(TokenObtainPairSerializer):
-    
+class UserDeleteSerializer(serializers.Serializer):
+    """Confirm the acting admin's password before hard-deleting a user."""
+
+    password = serializers.CharField(write_only=True, style={"input_type": "password"})
+
+    def validate_password(self, value):
+        if not self.context["request"].user.check_password(value):
+            raise serializers.ValidationError("Password is incorrect.")
+        return value
+
+
+# ============= Profile serializers =============
+class ProfileDetailSerializer(serializers.ModelSerializer):
+    """GET /profile: identity plus access snapshot."""
+
+    allowed_permissions = serializers.SerializerMethodField()
+    allowed_sites = serializers.SerializerMethodField()
+    phone_number = BDPhoneNumberField(read_only=True)
+    photo = ProfilePhotoField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "name",
+            "photo",
+            "phone_number",
+            "email",
+            "is_active",
+            "is_staff",
+            "is_companyadmin",
+            "allowed_permissions",
+            "allowed_sites",
+        )
+        read_only_fields = fields
+
+    def get_allowed_permissions(self, obj):
+        return sorted(obj.get_all_permissions())
+
+    def get_allowed_sites(self, obj):
+        return _get_site_ids_for_user(obj)
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """PATCH /profile: name, photo, phone, email."""
+
+    phone_number = BDPhoneNumberField()
+    photo = ProfilePhotoField(required=False, allow_null=True)
+
+    class Meta:
+        model = User
+        fields = ("name", "photo", "phone_number", "email")
+        extra_kwargs = {
+            "phone_number": {"validators": []},
+        }
+
     def validate_phone_number(self, value):
-        phone = normalize_bd_phone(value)
-        return phone
+        exclude_pk = self.instance.pk if self.instance is not None else None
+        return _validate_unique_user_phone(value, exclude_pk=exclude_pk)
 
+    def validate_name(self, value):
+        exclude_pk = self.instance.pk if self.instance is not None else None
+        return _validate_unique_user_name(
+            value,
+            getattr(self.instance, "company_id", None),
+            exclude_pk=exclude_pk,
+        )
 
-class CookieRefreshFallbackMixin:
-    """Let `refresh` come from the request body or, failing that, the
-    httponly auth cookie — browser clients cannot read the cookie from JS."""
-
-    def validate(self, attrs):
-        if not attrs.get("refresh"):
-            request = self.context.get("request")
-            cookie_name = getattr(settings, "REFRESH_TOKEN_COOKIE_NAME", "refresh_token")
-            attrs["refresh"] = request.COOKIES.get(cookie_name) if request else None
-        if not attrs["refresh"]:
-            raise InvalidToken("No refresh token found in request body or cookie.")
-        return super().validate(attrs)
-
-
-class CookieTokenRefreshSerializer(CookieRefreshFallbackMixin, TokenRefreshSerializer):
-    refresh = serializers.CharField(required=False)
-
-
-class CookieTokenBlacklistSerializer(CookieRefreshFallbackMixin, TokenBlacklistSerializer):
-    refresh = serializers.CharField(required=False, write_only=True)
 

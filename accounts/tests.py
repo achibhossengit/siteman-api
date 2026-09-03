@@ -778,10 +778,7 @@ class UserCRUDTests(UserAPITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(
-            response.data["groups"],
-            [{"id": site_manager.pk, "name": "Site Manager"}],
-        )
+        self.assertEqual(response.data["groups"], [site_manager.pk])
         self.assertCountEqual(response.data["allowed_sites"], [site_a.pk, site_b.pk])
 
         created = User.objects.get(pk=response.data["id"])
@@ -794,7 +791,7 @@ class UserCRUDTests(UserAPITestCase):
             [site_a.pk, site_b.pk],
         )
 
-    def test_create_rejects_multiple_groups(self):
+    def test_create_assigns_multiple_groups(self):
         site_manager = Group.objects.get(name="Site Manager")
         site_auditor = Group.objects.get(name="Site Auditor")
         response = self.client.post(
@@ -807,12 +804,16 @@ class UserCRUDTests(UserAPITestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.INVALID,
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertCountEqual(
+            response.data["groups"],
+            [site_manager.pk, site_auditor.pk],
         )
-        self.assertFalse(User.objects.filter(name="Two Groups").exists())
+        created = User.objects.get(name="Two Groups")
+        self.assertCountEqual(
+            created.groups.values_list("id", flat=True),
+            [site_manager.pk, site_auditor.pk],
+        )
 
     def test_create_rejects_company_admin_group(self):
         company_admin = Group.objects.get(name="Company Admin")
@@ -947,16 +948,13 @@ class UserCRUDTests(UserAPITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            response.data["groups"],
-            [{"id": site_auditor.pk, "name": "Site Auditor"}],
-        )
+        self.assertEqual(response.data["groups"], [site_auditor.pk])
         self.assertCountEqual(
             other.groups.values_list("id", flat=True),
             [site_auditor.pk],
         )
 
-    def test_patch_groups_rejects_multiple_groups(self):
+    def test_patch_groups_assigns_multiple_groups(self):
         other = self._create_company_user(phone="+8801711116667")
         site_manager = Group.objects.get(name="Site Manager")
         site_auditor = Group.objects.get(name="Site Auditor")
@@ -965,12 +963,15 @@ class UserCRUDTests(UserAPITestCase):
             {"groups": [site_manager.pk, site_auditor.pk]},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.data["errors"][0]["code"],
-            status_codes.INVALID,
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertCountEqual(
+            response.data["groups"],
+            [site_manager.pk, site_auditor.pk],
         )
-        self.assertFalse(other.groups.exists())
+        self.assertCountEqual(
+            other.groups.values_list("id", flat=True),
+            [site_manager.pk, site_auditor.pk],
+        )
 
     def test_patch_groups_rejects_company_admin(self):
         other = self._create_company_user(phone="+8801711116668")

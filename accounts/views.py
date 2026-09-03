@@ -31,7 +31,8 @@ from .serializers import (
     ResendOtpSerializer,
     UserCreateSerializer,
     UserDetailSerializer,
-    UserProfileSerializer,
+    ProfileDetailSerializer,
+    ProfileUpdateSerializer,
 
     # password reset serializers
     PasswordResetSerializer,
@@ -110,7 +111,7 @@ class RegisterView(GenericAPIView):
                 code=status_codes.ALREADY_REGISTERED,
                 detail={"phone_number": "This phone number is already registered."},
             )
-        serialized_user = UserProfileSerializer(user)
+        serialized_user = ProfileDetailSerializer(user)
         return Response(data=serialized_user.data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
@@ -280,9 +281,14 @@ class UserProfileViewSet(
     No Django model-permission gate (any authenticated user).
     """
 
-    serializer_class = UserProfileSerializer
+    serializer_class = ProfileDetailSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ["get", "patch", "head", "options"]
+
+    def get_serializer_class(self):
+        if self.action in ("partial_update", "update"):
+            return ProfileUpdateSerializer
+        return ProfileDetailSerializer
 
     def get_object(self):
         return (
@@ -309,7 +315,12 @@ class UserProfileViewSet(
         serializer.is_valid(raise_exception=True)
         serializer.save()
         log_updated(request.user, serializer.instance, old_snapshot=old_snapshot)
-        return Response(self.get_serializer(self.get_object()).data)
+        return Response(
+            ProfileDetailSerializer(
+                self.get_object(),
+                context=self.get_serializer_context(),
+            ).data
+        )
 
 
 class UserViewSet(viewsets.ModelViewSet):
