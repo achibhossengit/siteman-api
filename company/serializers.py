@@ -1,4 +1,5 @@
 from django.contrib.auth.models import Group
+from django.db.models import F
 from rest_framework import serializers
 
 from sites.serializers import SiteListSerializer
@@ -40,7 +41,9 @@ class CompanySerializer(serializers.ModelSerializer):
         return SiteListSerializer(qs, many=True).data
 
     def get_groups(self, obj):
-        return list(Group.objects.order_by("name").values("id", "name"))
+        return list(
+            Group.objects.values("id", "name", type=F("profile__type"),)
+        )
 
 
 class CompanyDeleteSerializer(serializers.Serializer):

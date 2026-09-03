@@ -2,7 +2,7 @@ import uuid
 from pathlib import Path
 
 from django.conf import settings
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+from django.contrib.auth.models import AbstractBaseUser, Group, PermissionsMixin
 from django.db import models
 from django.core.exceptions import ValidationError
 from core.models import CompanyOwnedMixin, TimeStampedMixin
@@ -83,7 +83,39 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedMixin):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
-        
+
+
+class GroupProfile(models.Model):
+    """Extra fields on Django's Group; display name stays on Group."""
+
+    class Type(models.TextChoices):
+        PLATFORM = "platform", "Platform"
+        TENANT_SYSTEM = "tenant_system", "Tenant system"
+        TENANT = "tenant", "Tenant"
+
+    group = models.OneToOneField(
+        Group,
+        on_delete=models.CASCADE,
+        related_name="profile",
+    )
+    type = models.CharField(
+        max_length=32,
+        choices=Type.choices,
+        default=Type.TENANT,
+        help_text=(
+            "platform: system group for platform users. "
+            "tenant_system: system group for tenant users; register/seed only. "
+            "tenant: assignable via the tenant user API."
+        ),
+    )
+
+    def __str__(self):
+        return self.group.name
+
+    @classmethod
+    def tenant_groups(cls):
+        return Group.objects.filter(profile__type=cls.Type.TENANT)
+
 
 class UserSite(TimeStampedMixin, CompanyOwnedMixin):
     user = models.ForeignKey(

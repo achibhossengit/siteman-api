@@ -771,7 +771,7 @@ class UserCRUDTests(UserAPITestCase):
                 "name": "Assigned Manager",
                 "phone_number": "01711112223",
                 "password": "initial-pass-123",
-                "groups": ["Site Manager"],
+                "groups": [site_manager.pk],
                 "allowed_sites": [site_a.pk, site_b.pk],
             },
             format="json",
@@ -795,13 +795,15 @@ class UserCRUDTests(UserAPITestCase):
         )
 
     def test_create_rejects_multiple_groups(self):
+        site_manager = Group.objects.get(name="Site Manager")
+        site_auditor = Group.objects.get(name="Site Auditor")
         response = self.client.post(
             self.list_url,
             {
                 "name": "Two Groups",
                 "phone_number": "01711112224",
                 "password": "initial-pass-123",
-                "groups": ["Site Manager", "Site Auditor"],
+                "groups": [site_manager.pk, site_auditor.pk],
             },
             format="json",
         )
@@ -813,13 +815,14 @@ class UserCRUDTests(UserAPITestCase):
         self.assertFalse(User.objects.filter(name="Two Groups").exists())
 
     def test_create_rejects_company_admin_group(self):
+        company_admin = Group.objects.get(name="Company Admin")
         response = self.client.post(
             self.list_url,
             {
                 "name": "Fake Admin",
                 "phone_number": "01711112225",
                 "password": "initial-pass-123",
-                "groups": ["Company Admin"],
+                "groups": [company_admin.pk],
             },
             format="json",
         )
@@ -939,7 +942,7 @@ class UserCRUDTests(UserAPITestCase):
 
         response = self.client.patch(
             self._detail_url(other.pk),
-            {"groups": ["Site Auditor"]},
+            {"groups": [site_auditor.pk]},
             format="json",
         )
 
@@ -955,9 +958,11 @@ class UserCRUDTests(UserAPITestCase):
 
     def test_patch_groups_rejects_multiple_groups(self):
         other = self._create_company_user(phone="+8801711116667")
+        site_manager = Group.objects.get(name="Site Manager")
+        site_auditor = Group.objects.get(name="Site Auditor")
         response = self.client.patch(
             self._detail_url(other.pk),
-            {"groups": ["Site Manager", "Site Auditor"]},
+            {"groups": [site_manager.pk, site_auditor.pk]},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -969,21 +974,22 @@ class UserCRUDTests(UserAPITestCase):
 
     def test_patch_groups_rejects_company_admin(self):
         other = self._create_company_user(phone="+8801711116668")
+        company_admin = Group.objects.get(name="Company Admin")
         response = self.client.patch(
             self._detail_url(other.pk),
-            {"groups": ["Company Admin"]},
+            {"groups": [company_admin.pk]},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(other.groups.exists())
 
-    def test_patch_groups_rejects_unknown_group_name(self):
+    def test_patch_groups_rejects_non_tenant_group(self):
         other = self._create_company_user(phone="+8801711116766")
-        Group.objects.create(name="Unassignable Group")
+        extra = Group.objects.create(name="Unassignable Group")
 
         response = self.client.patch(
             self._detail_url(other.pk),
-            {"groups": ["Unassignable Group"]},
+            {"groups": [extra.pk]},
             format="json",
         )
 

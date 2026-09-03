@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
@@ -10,7 +9,7 @@ from core import status_codes
 from core.images import ProfilePhotoField
 from core.phone import format_bd_phone_local, normalize_bd_phone
 from sites.models import Site
-from .models import UserSite
+from .models import GroupProfile, UserSite
 
 User = get_user_model()
 OTP_LENGTH = getattr(settings, "OTP_LENGTH", 6)
@@ -26,13 +25,6 @@ def _allowed_site_ids(user):
     return list(
         UserSite.objects.filter(user_id=user.pk).values_list("site_id", flat=True)
     )
-
-# Allowed group names for company users.
-ROLE_GROUP_NAMES = (
-    # "Company Admin",
-    "Site Manager",
-    "Site Auditor",
-)
 
 
 class BDPhoneNumberField(serializers.CharField):
@@ -234,7 +226,7 @@ class UserListSerializer(serializers.ModelSerializer):
         ]
 
 
-class UserGroupRelatedField(serializers.SlugRelatedField):
+class UserGroupRelatedField(serializers.PrimaryKeyRelatedField):
     def to_representation(self, instance):
         return {"id": instance.pk, "name": instance.name}
 
@@ -249,8 +241,7 @@ class UserAccessAssignmentMixin(serializers.Serializer):
 
     groups = UserGroupRelatedField(
         many=True,
-        slug_field="name",
-        queryset=Group.objects.filter(name__in=ROLE_GROUP_NAMES),
+        queryset=GroupProfile.tenant_groups(),
         required=False,
     )
     allowed_sites = UserSiteRelatedField(
@@ -306,8 +297,8 @@ class UserCreateSerializer(UserAccessAssignmentMixin, serializers.ModelSerialize
     ``UserUpdateSerializer``, which does not accept password — users change
     their own password via ``/auth/password/change`` or reset.
 
-    Optional ``groups`` (role names) and ``allowed_sites`` (site ids) are
-    assigned in the same request.
+    Optional ``groups`` (group ids, tenant type only) and ``allowed_sites``
+    (site ids) are assigned in the same request.
     """
 
     password = serializers.CharField(write_only=True, style={"input_type": "password"})

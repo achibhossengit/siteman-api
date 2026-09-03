@@ -202,10 +202,11 @@ class CompanyRetrieveTests(CompanyAPITestCase):
         self.assertCountEqual(rows, [site.pk, other_site.pk])
         self.assertEqual(rows[site.pk], {"id": site.pk, "name": "Padma Bridge"})
         self.assertEqual(rows[other_site.pk]["name"], "Jamuna Bridge")
-        groups = {row["id"]: row["name"] for row in response.data["groups"]}
+        groups = {row["id"]: row for row in response.data["groups"]}
         self.assertEqual(len(groups), Group.objects.count())
-        for group in Group.objects.all():
-            self.assertEqual(groups[group.pk], group.name)
+        for group in Group.objects.select_related("profile"):
+            self.assertEqual(groups[group.pk]["name"], group.name)
+            self.assertEqual(groups[group.pk]["type"], group.profile.type)
 
     def test_get_does_not_require_view_company(self):
         response = self.client.get(self.url)
