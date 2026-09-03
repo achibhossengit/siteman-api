@@ -366,6 +366,7 @@ class ProfileDetailSerializer(serializers.ModelSerializer):
     """GET /profile: identity plus access snapshot."""
 
     allowed_permissions = serializers.SerializerMethodField()
+    allowed_groups = serializers.SerializerMethodField()
     allowed_sites = serializers.SerializerMethodField()
     phone_number = BDPhoneNumberField(read_only=True)
     photo = ProfilePhotoField(read_only=True)
@@ -382,12 +383,16 @@ class ProfileDetailSerializer(serializers.ModelSerializer):
             "is_staff",
             "is_companyadmin",
             "allowed_permissions",
+            "allowed_groups",
             "allowed_sites",
         )
         read_only_fields = fields
 
     def get_allowed_permissions(self, obj):
         return sorted(obj.get_all_permissions())
+
+    def get_allowed_groups(self, obj):
+        return list(obj.groups.values_list("id", flat=True))
 
     def get_allowed_sites(self, obj):
         return _get_site_ids_for_user(obj)
