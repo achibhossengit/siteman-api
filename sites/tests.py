@@ -1708,10 +1708,11 @@ class SiteDailyReportAuthTests(SiteDailyReportAPITestCase):
         response = self.client.get(url, {"date": str(self.report_date)})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_missing_date_returns_400(self):
+    def test_missing_date_returns_total_summary(self):
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["errors"][0]["attr"], "date")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["site"], self.site.pk)
+        self.assertEqual(response.data["previous_balance"], 0)
 
     def test_invalid_date_returns_400(self):
         response = self.client.get(self.url, {"date": "not-a-date"})
@@ -1977,6 +1978,63 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["errors"][0]["attr"], "date__lte")
+
+    def test_no_date_returns_all_time_totals(self):
+        yesterday = self.report_date - timedelta(days=1)
+        labour = self._create_labour()
+        DailyRecord.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            date=yesterday,
+            present=Decimal("1"),
+            wage=500,
+            advance_pay=200,
+            return_amount=50,
+        )
+        DailyRecord.objects.create(
+            company=self.company,
+            labour=labour,
+            site=self.site,
+            date=self.report_date,
+            present=Decimal("1.5"),
+            wage=500,
+            advance_pay=100,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.DEPOSIT,
+            date=yesterday,
+            amount=1000,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.DEPOSIT,
+            date=self.report_date,
+            amount=500,
+        )
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.COST,
+            date=self.report_date,
+            amount=80,
+        )
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Decimal(response.data["present_count"]), Decimal("2.5"))
+        self.assertEqual(response.data["labour_payment"], 300)
+        self.assertEqual(response.data["labour_return"], 50)
+        self.assertEqual(response.data["deposit"], 1500)
+        self.assertEqual(response.data["site_cost"], 80)
+        self.assertEqual(response.data["total_cost"], 380)
+        # remaining = (deposit + return) - (withdrawal + total_cost) = 1550 - 380
+        self.assertEqual(response.data["remaining"], 1170)
+        self.assertEqual(response.data["previous_balance"], 0)
+        self.assertEqual(response.data["balance"], 1170)
 
 
 class SiteBillingCategoryAPITestCase(APITestCase):

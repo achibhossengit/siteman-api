@@ -74,22 +74,25 @@ def aggregate_site_cash_totals(queryset):
 
 
 def build_site_daily_report(
-    site, start_date, end_date=None, *, include_private=False
+    site, start_date=None, end_date=None, *, include_private=False
 ):
     """Aggregate a site's summary from ``start_date`` through ``end_date``.
 
-    ``end_date`` defaults to ``start_date`` (one day). ``previous_balance`` is
-    the running balance through the day before ``start_date``.
+    ``end_date`` defaults to ``start_date`` (one day). When both are omitted,
+    the report covers all dates. ``previous_balance`` is the running balance
+    through the day before ``start_date``, or 0 for an all-time summary.
     """
-    if end_date is None:
+    if start_date is not None and end_date is None:
         end_date = start_date
 
-    records = DailyRecord.objects.filter(
-        site=site, date__gte=start_date, date__lte=end_date
-    )
-    cash_qs = SiteCash.objects.filter(
-        site=site, date__gte=start_date, date__lte=end_date
-    )
+    records = DailyRecord.objects.filter(site=site)
+    cash_qs = SiteCash.objects.filter(site=site)
+    if start_date is not None:
+        records = records.filter(date__gte=start_date)
+        cash_qs = cash_qs.filter(date__gte=start_date)
+    if end_date is not None:
+        records = records.filter(date__lte=end_date)
+        cash_qs = cash_qs.filter(date__lte=end_date)
 
     wage_expr = ExpressionWrapper(
         Coalesce(F("present"), _ZERO_DEC) * Coalesce(F("wage"), _ZERO),
@@ -125,8 +128,11 @@ def build_site_daily_report(
     cash_out = int((cash["withdrawal"] or 0) + total_cost)
     remaining = cash_in - cash_out
 
-    previous_date = start_date - timedelta(days=1)
-    previous_balance = _site_cash_balance_through(site, through_date=previous_date)
+    if start_date is None:
+        previous_balance = 0
+    else:
+        previous_date = start_date - timedelta(days=1)
+        previous_balance = _site_cash_balance_through(site, through_date=previous_date)
     balance = previous_balance + remaining
 
     report = {

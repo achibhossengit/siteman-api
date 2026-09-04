@@ -207,7 +207,7 @@ class PrivateSiteCashSerializer(SiteLedgerValidationMixin, serializers.ModelSeri
 
 
 class SiteDailyReportSerializer(serializers.Serializer):
-    """GET ``/sites/<pk>/daily-reports`` response (``date`` or ``date__gte``/``date__lte``)."""
+    """GET ``/sites/<pk>/daily-reports`` response (all-time, ``date``, or range)."""
 
     site = serializers.IntegerField()
     present_count = serializers.DecimalField(max_digits=12, decimal_places=2)

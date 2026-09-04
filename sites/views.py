@@ -120,8 +120,9 @@ class SiteViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, ActiveSubscriptionOrReadOnly, HasSitePermissions],
     )
     def daily_reports(self, request, pk=None, **kwargs):
-        """Day or range summary. ``date`` (YYYY-MM-DD) is required for a
+        """Day, range, or all-time summary. ``date`` (YYYY-MM-DD) is a
         single day. ``date__gte`` + ``date__lte`` cover an inclusive window.
+        Omit both for the site's total summary.
         """
         start_date, end_date = self._daily_report_date_bounds(request)
         site = self.get_object()
@@ -165,10 +166,7 @@ class SiteViewSet(viewsets.ModelViewSet):
                 )
             return date_gte, date_lte
         if exact is None:
-            raise serializers.ValidationError(
-                {"date": "This field is required."},
-                code=status_codes.INVALID,
-            )
+            return None, None
         return exact, exact
 
     @staticmethod
