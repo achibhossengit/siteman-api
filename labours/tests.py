@@ -1841,13 +1841,57 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["errors"][0]["attr"], "date")
 
-    def test_date_query_param_defaults_to_today(self):
+    def test_no_date_returns_all_time_totals(self):
         yesterday = timezone.localdate() - timedelta(days=1)
-        self._create_daily_record(labour=self.labour, date=yesterday)
+        self._create_daily_record(
+            labour=self.labour,
+            date=yesterday,
+            present=Decimal("1"),
+            extra_earn=40,
+            fooding_pay=10,
+            advance_pay=5,
+            return_amount=3,
+        )
+        self._create_daily_record(
+            labour=self.labour,
+            date=timezone.localdate(),
+            present=Decimal("1.5"),
+            extra_earn=20,
+            fooding_pay=8,
+            advance_pay=2,
+        )
+        self._create_daily_record(
+            labour=self.labour_b,
+            date=timezone.localdate(),
+            present=Decimal("1"),
+            extra_earn=15,
+        )
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
         by_id = _by_labour_id(response)
         self.assertEqual(by_id[self.labour.pk]["records"], [])
+        self.assertEqual(
+            by_id[self.labour.pk]["totals"],
+            {
+                "present": "2.50",
+                "extra_earn": 60,
+                "fooding_pay": 18,
+                "advance_pay": 7,
+                "return_amount": 3,
+            },
+        )
+        self.assertEqual(by_id[self.labour_b.pk]["records"], [])
+        self.assertEqual(
+            by_id[self.labour_b.pk]["totals"],
+            {
+                "present": "1.00",
+                "extra_earn": 15,
+                "fooding_pay": 0,
+                "advance_pay": 0,
+                "return_amount": 0,
+            },
+        )
 
     def test_record_attached_and_empty_row_kept(self):
         record = self._create_daily_record(

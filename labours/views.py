@@ -199,9 +199,10 @@ class SiteDailyRecordViewSet(
 ):
     """Nested under ``/sites/<site_pk>/daily-records``.
 
-    GET returns a hajira roster for ``date`` (defaults to today) or
-    ``date__gte`` / ``date__lte``. Windows longer than one month return
-    per-labour totals without individual records. POST is still bulk create.
+    GET returns a hajira roster for ``date`` (one day) or ``date__gte`` /
+    ``date__lte``. Omit both for an all-time summary (per-labour totals,
+    no individual records). Windows longer than one month also return
+    totals only. POST is still bulk create.
     """
 
     serializer_class = SiteDailyRecordSerializer
@@ -275,8 +276,7 @@ class SiteDailyRecordViewSet(
                 code=status_codes.INVALID,
             )
         if exact is None and date_gte is None and date_lte is None:
-            today = timezone.localdate()
-            return today, today
+            return None, None
         if exact is not None:
             return exact, exact
         if (
