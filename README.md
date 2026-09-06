@@ -3,7 +3,7 @@
 </p>
 
 <h3 align="center">
-  A SaaS application for construction companies to manage workers and expenses with accountability.
+  A SaaS application for construction companies to manage expenses with accountability.
 </h3>
 
 <p align="center">
@@ -18,25 +18,28 @@
 </p>
 
 ## Overview
-The platform is designed around a multi-tenant structure where each company operates within its own isolated workspace. Companies can manage their construction sites, users, workforce, expenses, and operational activities while controlling access through role- and permission-based authorization.
+A construction company typically runs several sites, each with labour, a cash box, and staff who are not all equally trusted. Without a shared system, attendance and expenses live in notebooks, and there is no trail when a figure is edited.
 
-The backend provides the REST API that powers the Siteman application, handling business logic, data management, authentication, authorization, and communication between the frontend and supporting services.
+SiteMan gives each company its own workspace. Admins create sites and staff; site managers log daily attendance (presence, wage, fooding, advance) and site cash (deposit, cost, withdrawal). Site auditors review unreviewed changes. Reports answer a simple question: for this site and date range, what is the cash balance and what is still owed.
 
+The repository provides the REST API that implements that model.
 
 ## Features
 
-- Multi-tenant company workspaces with isolated data
-- JWT-based authentication with token blacklisting
-- Role- and permission based authorization
-- Site, billing category, site expense and site bills management
-- Staff acccount and their permission management
-- Worker accounts, daily attendance and work period management
-
-- Worker account transfer between sites
-- Date- and site-based summary reports
-- Change tracking and review system for accountability
-- Subscription entitlements and usage limits
-- Image and file management
+- Multi-tenant workspaces with two isolation layers — the company boundary, then per-site assignment.
+- Phone-and-password login with JWT in cookies, logout via token blacklist
+- Password reset by emailed OTP, plus signed-in password change
+- Role- and permission-based access: company admin, site manager, site auditor
+- Staff accounts scoped to assigned sites
+- Sites with optional billing categories
+- Daily attendance: presence, wage, extra earn, fooding, advance, returns
+- Site cash (deposit, cost, withdrawal) and admin-only private cash
+- Work sessions that snapshot payables and seal past rows
+- Labour roster, one site at a time, with transfer between sites
+- Date- and site-based balance reports
+- Change log with auditor review on attendance, site cash, and sessions
+- Subscription limits; expired companies stay read-only
+- Photo and file uploads (profiles, labour, site-cash receipts)
 
 
 ## Workflow
