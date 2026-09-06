@@ -3,7 +3,7 @@
 </p>
 
 <h3 align="center">
-  REST API for Siteman, a SaaS application that helps construction companies manage sites, workers, expenses and operational activities.
+  A SaaS application that helps construction companies manage sites, workers, expenses and operational activities.
 </h3>
 
 <p align="center">
