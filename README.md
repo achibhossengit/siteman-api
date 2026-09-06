@@ -3,7 +3,7 @@
 </p>
 
 <h3 align="center">
-  A SaaS application for construction companies to manage expenses with accountability.
+  A SaaS application that helps construction companies to manage expenses with accountability.
 </h3>
 
 <p align="center">
