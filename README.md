@@ -179,13 +179,26 @@ python manage.py runserver
 - Docs: `http://127.0.0.1:8000/api/docs/`
 
 
-## Tests
+## Scripts
 
-```bash
-python manage.py test
-```
+| Command                                          | Description                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------ |
+| `docker compose up -d`                           | Start Postgres 17 and Redis 7                                |
+| `python manage.py migrate`                       | Apply migrations (also creates the three default role groups) |
+| `python manage.py loaddata fixtures/role_groups.json` | Fill those groups with their permissions                |
+| `python manage.py loaddata fixtures/demo_tenant.json` | Load a demo company with sites, labour, and records     |
+| `python manage.py createsuperuser`               | Create a platform admin for `/admin`                         |
+| `python manage.py runserver`                     | Dev server on `127.0.0.1:8000`                               |
+| `python manage.py test`                          | Full test suite                                              |
+| `python manage.py spectacular --file schema.yml` | Export the OpenAPI schema                                    |
+| `python manage.py collectstatic --noinput`       | Collect static files (run on deploy)                         |
+| `python manage.py flushexpiredtokens`            | Drop expired JWT blacklist rows                              |
+| `python manage.py purge_activity_logs`           | Delete activity logs past retention (`--days`, `--dry-run`)  |
+| `python manage.py purge_orphan_photos`           | Delete unreferenced media (`--dry-run`, `--min-age-hours`, `--limit`) |
 
-Tests use the local file backend for media so they never touch R2.
+The last three are cron jobs. `purge_activity_logs` defaults to `ACTIVITY_LOG_RETENTION_DAYS` (180) and `purge_orphan_photos` keeps objects newer than `PHOTO_ORPHAN_MIN_AGE_HOURS` (168) so a mistaken replace can still be recovered; it refuses to run when the database has no media references at all, unless you pass `--force`.
+
+Tests use the local file backend for media, so they never touch R2.
 
 
 ## Author
