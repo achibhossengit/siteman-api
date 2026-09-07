@@ -7,9 +7,9 @@
 </h3>
 
 <p align="center">
-  <a href="https://sitemaan.netlify.app">Live app</a>
+  <a href="https://siteman.achibhossen.me">Live app</a>
   ·
-  <a href="https://siteman-api-production.up.railway.app/api/docs">API docs</a>
+  <a href="https://siteman-api.achibhossen.me/api/docs">API docs</a>
   ·
   <a href="https://github.com/achibhossengit/siteman-client">Frontend Repo</a>
   ·
