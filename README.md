@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="সাইটম্যান (SiteMan)">
+  <img src="docs/banner.png" alt="SiteMan — Your construction companion">
 </p>
 
 <h3 align="center">
