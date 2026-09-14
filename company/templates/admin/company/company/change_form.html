@@ -1,0 +1,10 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+{% for link in tenant_links %}
+<li>
+  <a href="{{ link.url }}">{{ link.label }}</a>
+</li>
+{% endfor %}
+{{ block.super }}
+{% endblock %}

@@ -1,15 +1,23 @@
+from urllib.parse import urlencode
+
 from django import forms
 from django.contrib import admin
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-
 from django.urls import reverse
-from django.utils.html import format_html
 
 from accounts.models import GroupProfile, User
+from core.admin import COMPANY_LOOKUP
 from core.phone import normalize_bd_phone
 from .models import Company
+
+TENANT_LINKS = (
+    ("Users", "admin:accounts_user_changelist", "accounts.view_user"),
+    ("Sites", "admin:sites_site_changelist", "sites.view_site"),
+    ("Labours", "admin:labours_labour_changelist", "labours.view_labour"),
+    ("Activity logs", "admin:activity_activitylog_changelist", "activity.view_activitylog"),
+)
 
 
 class CompanyAddForm(forms.ModelForm):
@@ -41,38 +49,9 @@ class CompanyAddForm(forms.ModelForm):
         return password
 
 
-class CompanyUserInline(admin.TabularInline):
-    model = User
-    fk_name = "company"
-    template = "admin/edit_inline/tabular_plain.html"
-    extra = 0
-    max_num = 0
-    can_delete = False
-    fields = ("name_link", "phone_number", "is_active", "is_companyadmin")
-    readonly_fields = fields
-    ordering = ("name", "id")
-    verbose_name = "user"
-    verbose_name_plural = "users"
-
-    @admin.display(description="name")
-    def name_link(self, obj):
-        if not obj.pk:
-            return "—"
-        url = reverse("admin:accounts_user_change", args=[obj.pk])
-        return format_html('<a href="{}">{}</a>', url, obj.name)
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
+    change_form_template = "admin/company/company/change_form.html"
     list_display_links = ("name",)
     list_display = ("id", "name", "is_active", "paid_until", "created_at")
     list_filter = ("is_active",)
@@ -131,10 +110,20 @@ class CompanyAdmin(admin.ModelAdmin):
             return ()
         return self.readonly_fields
 
-    def get_inlines(self, request, obj=None):
-        if obj:
-            return [CompanyUserInline]
-        return []
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["tenant_links"] = []
+        if object_id:
+            query = urlencode({COMPANY_LOOKUP: object_id})
+            extra_context["tenant_links"] = [
+                {
+                    "label": label,
+                    "url": f"{reverse(viewname)}?{query}",
+                }
+                for label, viewname, perm in TENANT_LINKS
+                if request.user.has_perm(perm)
+            ]
+        return super().changeform_view(request, object_id, form_url, extra_context)
 
     def get_deleted_objects(self, objs, request):
         deleted_objects, model_count, perms_needed, protected = super().get_deleted_objects(

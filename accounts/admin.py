@@ -16,6 +16,7 @@ from rest_framework_simplejwt.token_blacklist.models import (
     OutstandingToken,
 )
 
+from core.admin import CompanyListFilter
 from sites.models import Site
 
 from .models import GroupProfile, User, UserSite
@@ -277,7 +278,13 @@ class UserAdmin(BaseUserAdmin):
         "is_companyadmin",
         "is_staff",
     )
-    list_filter = ("is_active", "is_companyadmin", "is_staff", "is_superuser", "company")
+    list_filter = (
+        "is_active",
+        "is_companyadmin",
+        "is_staff",
+        "is_superuser",
+        ("company", CompanyListFilter),
+    )
     search_fields = ("phone_number", "name", "email")
     ordering = ("name",)
     readonly_fields = ("last_login", "created_at", "updated_at")

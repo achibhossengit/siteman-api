@@ -13,6 +13,7 @@ from accounts.models import GroupProfile, User
 from activity.models import ActivityAction, ActivityEntityType, ActivityLog
 from company.models import Company
 from core import status_codes
+from core.admin import COMPANY_LOOKUP
 from labours.models import DailyRecord, Labour
 from sites.models import Site
 
@@ -95,25 +96,57 @@ class CompanyAdminChangeTests(TestCase):
             "admin:company_company_change", args=[self.company.pk]
         )
 
-    def test_users_are_a_read_only_list_linking_to_detail(self):
-        user = User.objects.create_user(
+    def test_change_page_has_tenant_list_links_not_user_inline(self):
+        User.objects.create_user(
             phone_number="+8801712345678",
             name="Site Incharge",
             password="pass-12345",
             company=self.company,
         )
-        detail_url = reverse("admin:accounts_user_change", args=[user.pk])
+        query = f"{COMPANY_LOOKUP}={self.company.pk}"
+        users_url = f"{reverse('admin:accounts_user_changelist')}?{query}"
+        sites_url = f"{reverse('admin:sites_site_changelist')}?{query}"
+        labours_url = f"{reverse('admin:labours_labour_changelist')}?{query}"
+        logs_url = f"{reverse('admin:activity_activitylog_changelist')}?{query}"
 
         response = self.client.get(self.change_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Site Incharge")
-        self.assertContains(response, f'href="{detail_url}"')
-        self.assertContains(response, "+8801712345678")
-        self.assertContains(response, 'name="users-MAX_NUM_FORMS" value="0"')
-        self.assertNotContains(response, 'id="users-empty"')
+        self.assertNotContains(response, 'name="users-MAX_NUM_FORMS"')
         self.assertNotContains(response, 'name="users-0-phone_number"')
-        self.assertNotContains(response, 'name="users-0-name"')
+        self.assertContains(response, f'href="{users_url}"')
+        self.assertContains(response, f'href="{sites_url}"')
+        self.assertContains(response, f'href="{labours_url}"')
+        self.assertContains(response, f'href="{logs_url}"')
+        self.assertContains(response, "Users")
+        self.assertContains(response, "Sites")
+        self.assertContains(response, "Labours")
+        self.assertContains(response, "Activity logs")
+
+    def test_tenant_user_link_filters_by_company(self):
+        User.objects.create_user(
+            phone_number="+8801712345678",
+            name="Ours",
+            password="pass-12345",
+            company=self.company,
+        )
+        other = Company.objects.create(name="Other Co")
+        User.objects.create_user(
+            phone_number="+8801712345679",
+            name="Theirs",
+            password="pass-12345",
+            company=other,
+        )
+        url = (
+            f"{reverse('admin:accounts_user_changelist')}"
+            f"?{COMPANY_LOOKUP}={self.company.pk}"
+        )
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ours")
+        self.assertNotContains(response, "Theirs")
 
 
 class CompanyAdminDeleteTests(TestCase):
