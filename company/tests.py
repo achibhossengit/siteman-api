@@ -10,6 +10,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import GroupProfile, User
+from activity.models import ActivityAction, ActivityEntityType, ActivityLog
 from company.models import Company
 from core import status_codes
 from labours.models import DailyRecord, Labour
@@ -113,6 +114,61 @@ class CompanyAdminChangeTests(TestCase):
         self.assertNotContains(response, 'id="users-empty"')
         self.assertNotContains(response, 'name="users-0-phone_number"')
         self.assertNotContains(response, 'name="users-0-name"')
+
+
+class CompanyAdminDeleteTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_superuser(
+            phone_number="+8801700000001",
+            name="Staff",
+            password="pass-12345",
+        )
+        self.client.force_login(self.staff)
+        self.company = Company.objects.create(name="Acme Builders")
+        self.delete_url = reverse(
+            "admin:company_company_delete", args=[self.company.pk]
+        )
+
+    def test_delete_cascades_related_tenant_rows(self):
+        site = Site.objects.create(name="Padma Bridge", company=self.company)
+        labour = Labour.objects.create(
+            name="Karim",
+            company=self.company,
+            current_site=site,
+            default_salary=500,
+        )
+        record = DailyRecord.objects.create(
+            labour=labour,
+            site=site,
+            company=self.company,
+            date=timezone.localdate(),
+            present=Decimal("1"),
+            wage=500,
+            is_sealed=False,
+        )
+        log = ActivityLog.objects.create(
+            company=self.company,
+            site=site,
+            labour=labour,
+            actor_name="Staff",
+            action=ActivityAction.CREATED,
+            entity_type=ActivityEntityType.SITE,
+            entity_id=site.pk,
+        )
+        company_id = self.company.pk
+
+        response = self.client.get(self.delete_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Cannot delete company")
+        self.assertNotContains(response, "doesn't have permission")
+
+        response = self.client.post(self.delete_url, {"post": "yes"})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Company.objects.filter(pk=company_id).exists())
+        self.assertFalse(Site.objects.filter(pk=site.pk).exists())
+        self.assertFalse(Labour.objects.filter(pk=labour.pk).exists())
+        self.assertFalse(DailyRecord.objects.filter(pk=record.pk).exists())
+        self.assertFalse(ActivityLog.objects.filter(pk=log.pk).exists())
 
 
 class CompanyAPITestCase(APITestCase):

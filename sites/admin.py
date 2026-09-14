@@ -11,7 +11,7 @@ from .reset import preview_site_reset, reset_site
 
 
 @admin.register(Site)
-class SiteAdmin(ReadOnlyModelAdmin):
+class SiteAdmin(admin.ModelAdmin):
     change_form_template = "admin/sites/site/change_form.html"
     list_display = (
         "name",
@@ -20,9 +20,6 @@ class SiteAdmin(ReadOnlyModelAdmin):
     list_display_links = ("name",)
     list_filter = (("company", CompanyListFilter), ("created_at", DateRangeFilter))
     search_fields = ("name", "company__name")
-
-    def has_reset_permission(self, request):
-        return request.user.is_superuser
 
     def get_urls(self):
         info = self.opts.app_label, self.opts.model_name
@@ -37,19 +34,19 @@ class SiteAdmin(ReadOnlyModelAdmin):
 
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
         extra_context = extra_context or {}
-        extra_context["show_reset_site"] = bool(object_id) and self.has_reset_permission(
+        extra_context["show_reset_site"] = bool(object_id) and self.has_change_permission(
             request
         )
         return super().changeform_view(request, object_id, form_url, extra_context)
 
     def reset_view(self, request, object_id, extra_context=None):
-        if not self.has_reset_permission(request):
-            raise PermissionDenied
         site = self.get_object(request, unquote(object_id))
         if site is None:
             return self._get_obj_does_not_exist_redirect(
                 request, self.opts, object_id
             )
+        if not self.has_change_permission(request, site):
+            raise PermissionDenied
 
         counts = preview_site_reset(site)
         counts.pop("session_ids", None)

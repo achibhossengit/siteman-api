@@ -136,6 +136,14 @@ class CompanyAdmin(admin.ModelAdmin):
             return [CompanyUserInline]
         return []
 
+    def get_deleted_objects(self, objs, request):
+        deleted_objects, model_count, perms_needed, protected = super().get_deleted_objects(
+            objs, request
+        )
+        # Related tenant rows stay read-only in their own admin, but company
+        # delete must cascade (on_delete=CASCADE).
+        return deleted_objects, model_count, set(), protected
+
     def save_model(self, request, obj, form, change):
         if change:
             super().save_model(request, obj, form, change)

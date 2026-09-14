@@ -286,7 +286,7 @@ class ResetSiteAdminTests(SiteResetTestCase):
         self.assertEqual(response["Location"], self.change_url)
         self.assertFalse(DailyRecord.objects.filter(site=self.site).exists())
 
-    def test_staff_without_superuser_is_forbidden(self):
+    def test_staff_with_view_only_cannot_reset(self):
         staff = User.objects.create_user(
             phone_number="+8801711111111",
             name="Ops",

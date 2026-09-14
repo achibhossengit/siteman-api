@@ -1,11 +1,11 @@
 from django.contrib import admin
 
-from core.admin import CompanyListFilter, DateRangeFilter, ReadOnlyModelAdmin, SiteListFilter
+from core.admin import CompanyListFilter, DateRangeFilter, SiteListFilter
 from .models import ActivityLog
 
 
 @admin.register(ActivityLog)
-class ActivityLogAdmin(ReadOnlyModelAdmin):
+class ActivityLogAdmin(admin.ModelAdmin):
     list_display = (
         "created_at",
         "entity_type",
@@ -22,3 +22,9 @@ class ActivityLogAdmin(ReadOnlyModelAdmin):
         ("business_date", DateRangeFilter),
     )
     search_fields = ("actor_name", "labour_name", "company__name")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
