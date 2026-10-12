@@ -42,6 +42,8 @@ DAILY_RECORD_VALUE_REQUIRED = "daily_record_value_required"
 SESSION_NO_RECORDS = "session_no_records"
 SESSION_NOT_LATEST = "session_not_latest"
 SESSION_SNAPSHOT_MISMATCH = "session_snapshot_mismatch"
+SESSION_END_DATE_NOT_AFTER_LAST = "session_end_date_not_after_last"
+SESSION_END_DATE_AFTER_LAST_RECORD = "session_end_date_after_last_record"
 
 # Common
 RECORD_FUTURE_DATE = "record_future_date"

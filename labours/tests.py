@@ -2565,6 +2565,123 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         )
         self.assertEqual(LabourSession.objects.count(), 1)
 
+    def _seed_twenty_days(self):
+        """Records on day offsets 1..20 (oldest = today-20, newest = today-1)."""
+        today = timezone.localdate()
+        self.days = [today - timedelta(days=20 - i) for i in range(20)]
+        for day in self.days:
+            self._create_daily_record(day, present="1", wage=500)
+
+    def test_create_partial_session_with_end_date(self):
+        self._seed_twenty_days()
+        response = self.client.post(
+            self.list_url, {"end_date": str(self.days[9])}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["start_date"], str(self.days[0]))
+        self.assertEqual(response.data["end_date"], str(self.days[9]))
+        self.assertEqual(Decimal(response.data["present_days"]), Decimal("10"))
+        self.assertEqual(response.data["salary_earnings"], 5000)
+
+        self.labour.refresh_from_db()
+        self.assertEqual(self.labour.last_session_date, self.days[9])
+        self.assertEqual(
+            DailyRecord.objects.filter(labour=self.labour, is_sealed=True).count(),
+            10,
+        )
+        self.assertFalse(
+            DailyRecord.objects.get(labour=self.labour, date=self.days[10]).is_sealed
+        )
+
+        running = self.client.get(self._running_url(self.labour.pk))
+        self.assertEqual(running.status_code, status.HTTP_200_OK)
+        self.assertEqual(running.data["start_date"], str(self.days[10]))
+        self.assertEqual(running.data["end_date"], str(self.days[19]))
+
+    def test_create_two_sessions_same_day(self):
+        self._seed_twenty_days()
+        first = self.client.post(
+            self.list_url, {"end_date": str(self.days[9])}, format="json"
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        second = self.client.post(
+            self.list_url, {"end_date": str(self.days[19])}, format="json"
+        )
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.data["start_date"], str(self.days[10]))
+        self.assertEqual(second.data["end_date"], str(self.days[19]))
+        self.assertEqual(second.data["previous_payable"], first.data["cumulative_payable"])
+        self.assertEqual(LabourSession.objects.count(), 2)
+
+        # Only the latest session can be deleted; then the older one.
+        self.assertEqual(
+            self.client.delete(
+                self._detail_url(self.labour.pk, first.data["id"])
+            ).status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertEqual(
+            self.client.delete(
+                self._detail_url(self.labour.pk, second.data["id"])
+            ).status_code,
+            status.HTTP_204_NO_CONTENT,
+        )
+        self.labour.refresh_from_db()
+        self.assertEqual(self.labour.last_session_date, self.days[9])
+
+    def test_create_end_date_not_after_last_session_returns_400(self):
+        self._seed_twenty_days()
+        self.client.post(self.list_url, {"end_date": str(self.days[9])}, format="json")
+        for bad in (self.days[9], self.days[5]):
+            response = self.client.post(
+                self.list_url, {"end_date": str(bad)}, format="json"
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertEqual(
+                response.data["errors"][0]["code"],
+                status_codes.SESSION_END_DATE_NOT_AFTER_LAST,
+            )
+        self.assertEqual(LabourSession.objects.count(), 1)
+
+    def test_create_end_date_after_last_record_returns_400(self):
+        self._seed_twenty_days()
+        response = self.client.post(
+            self.list_url,
+            {"end_date": str(timezone.localdate())},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SESSION_END_DATE_AFTER_LAST_RECORD,
+        )
+        self.assertFalse(LabourSession.objects.exists())
+
+    def test_create_end_date_with_empty_range_returns_400(self):
+        today = timezone.localdate()
+        boundary = today - timedelta(days=10)
+        Labour.objects.filter(pk=self.labour.pk).update(last_session_date=boundary)
+        self._create_daily_record(today - timedelta(days=2), present="1", wage=500)
+        response = self.client.post(
+            self.list_url,
+            {"end_date": str(today - timedelta(days=5))},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"], status_codes.SESSION_NO_RECORDS
+        )
+
+    def test_running_session_preview_with_end_date(self):
+        self._seed_twenty_days()
+        response = self.client.get(
+            self._running_url(self.labour.pk), {"end_date": str(self.days[9])}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["start_date"], str(self.days[0]))
+        self.assertEqual(response.data["end_date"], str(self.days[9]))
+        self.assertEqual(response.data["salary_earnings"], 5000)
+
 
 class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
     def test_list_empty(self):

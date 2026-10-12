@@ -13,7 +13,7 @@ from django.db.models import (
     Value,
 )
 from django.db.models.functions import Coalesce
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ErrorDetail, ValidationError
 
 from core import status_codes
 from activity.services import log_created, log_deleted
@@ -126,17 +126,23 @@ def build_site_daily_record_list(
     ]
 
 
-def get_running_session(labour):
+def get_running_session(labour, end_date=None):
+    """Preview of the open period.
+
+    When ``end_date`` is given, only records up to and including that date
+    are aggregated (partial close) and it becomes the session ``end_date``.
+    """
     latest_session = labour.sessions.order_by("-end_date", "-id").first()
     latest_session_payable = latest_session.cumulative_payable if latest_session else 0
 
     # Records after last_session_date (set by LabourSession post_save signal).
     latest_session_date = labour.last_session_date
 
+    date_filter = {}
     if latest_session_date is not None:
-        date_filter = {"date__gt": latest_session_date}
-    else:
-        date_filter = {}
+        date_filter["date__gt"] = latest_session_date
+    if end_date is not None:
+        date_filter["date__lte"] = end_date
 
     qs = DailyRecord.objects.filter(labour=labour, **date_filter)
 
@@ -172,7 +178,7 @@ def get_running_session(labour):
 
     return {
         "start_date": agg["earliest"],
-        "end_date": agg["latest"],
+        "end_date": end_date or agg["latest"],
         "present_days": present_days,
         "salary_earnings": salary_earnings,
         "extra_earnings": extra_earnings,
@@ -188,21 +194,63 @@ def get_running_session(labour):
     }
 
 
-def create_labour_session(*, labour, user):
-    """Close the labour's open period into a new work session.
+def get_closable_running_session(labour, end_date=None):
+    """Validate ``end_date`` and return the running-session aggregate for it.
 
-    Aggregates every DailyRecord dated after ``labour.last_session_date`` and
-    stores the totals plus affected row count. ``previous_payable`` is the
-    prior session's ``cumulative_payable`` (0 if none). Sealing is done by
-    the ``LabourSession`` post_save signal.
+    Rule: ``last_session_end_date < end_date <= last record date`` of the
+    open period. ``end_date=None`` closes the whole open period.
+    """
+    full = get_running_session(labour)
+    if full is None:
+        raise ValidationError(
+            "No records exist after the last session; nothing to close.",
+            code=status_codes.SESSION_NO_RECORDS,
+        )
+    if end_date is None:
+        return full
+
+    if labour.last_session_date is not None and end_date <= labour.last_session_date:
+        raise ValidationError(
+            {
+                "end_date": ErrorDetail(
+                    "end_date must be after the last session end date.",
+                    code=status_codes.SESSION_END_DATE_NOT_AFTER_LAST,
+                )
+            }
+        )
+    if end_date > full["end_date"]:
+        raise ValidationError(
+            {
+                "end_date": ErrorDetail(
+                    "end_date cannot be after the last record date of the "
+                    "running session.",
+                    code=status_codes.SESSION_END_DATE_AFTER_LAST_RECORD,
+                )
+            }
+        )
+
+    running = get_running_session(labour, end_date=end_date)
+    if running is None:
+        raise ValidationError(
+            "No records exist in the selected date range.",
+            code=status_codes.SESSION_NO_RECORDS,
+        )
+    return running
+
+
+def create_labour_session(*, labour, user, end_date=None):
+    """Close (part of) the labour's open period into a new work session.
+
+    Aggregates DailyRecord rows dated after ``labour.last_session_date`` up to
+    ``end_date`` (or the last record when omitted) and stores the totals plus
+    affected row count. ``previous_payable`` is the prior session's
+    ``cumulative_payable`` (0 if none). Sealing is done by the
+    ``LabourSession`` post_save signal.
     """
     with transaction.atomic():
-        running = get_running_session(labour)
-        if running is None:
-            raise ValidationError(
-                "No records exist after the last session; nothing to close.",
-                code=status_codes.SESSION_NO_RECORDS,
-            )
+        # Serialise concurrent closes for the same labour.
+        labour = Labour.objects.select_for_update().get(pk=labour.pk)
+        running = get_closable_running_session(labour, end_date)
 
         try:
             session = LabourSession.objects.create(

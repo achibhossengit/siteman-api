@@ -502,6 +502,12 @@ class LabourSessionSerializer(serializers.ModelSerializer):
         return is_latest_labour_session(obj)
 
 
+class LabourSessionCreateSerializer(serializers.Serializer):
+    """Input for closing a session. Omit ``end_date`` to close the whole open period."""
+
+    end_date = serializers.DateField(required=False)
+
+
 class RunningLabourSessionSerializer(serializers.Serializer):
     """Live open-period preview (not a persisted LabourSession)."""
 

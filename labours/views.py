@@ -40,6 +40,7 @@ from .serializers import (
     DailyRecordSerializer,
     LabourListSerializer,
     LabourSerializer,
+    LabourSessionCreateSerializer,
     LabourSessionListSerializer,
     LabourSessionSerializer,
     RunningLabourSessionSerializer,
@@ -52,6 +53,7 @@ from .services import (
     build_site_daily_record_list,
     create_labour_session,
     delete_labour_session,
+    get_closable_running_session,
     get_running_session,
     inclusive_date_span_days,
     site_daily_records_queryset,
@@ -341,9 +343,11 @@ class LabourSessionViewSet(
 ):
     """Nested under ``/labours/<labour_pk>/sessions``.
 
-    POST takes no payload: it closes the labour's open period (all
-    DailyRecord rows after ``last_session_date``) into a new session and
-    seals the affected records. DELETE only removes the most recent
+    POST optionally takes ``end_date``: it closes the labour's open period
+    (DailyRecord rows after ``last_session_date`` up to ``end_date``, or all
+    of them when omitted) into a new session and seals the affected records.
+    ``end_date`` must satisfy ``last_session_date < end_date <= last record
+    date``. GET ``running_session?end_date=`` previews a partial close. DELETE only removes the most recent
     session, and only when current records still match its stored snapshot.
     """
 
@@ -400,7 +404,13 @@ class LabourSessionViewSet(
 
     def create(self, request, *args, **kwargs):
         labour = get_labour(request, self)
-        session = create_labour_session(labour=labour, user=request.user)
+        input_serializer = LabourSessionCreateSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        session = create_labour_session(
+            labour=labour,
+            user=request.user,
+            end_date=input_serializer.validated_data.get("end_date"),
+        )
         serializer = LabourSessionSerializer(
             session, context=self.get_serializer_context()
         )
@@ -412,7 +422,23 @@ class LabourSessionViewSet(
     @action(detail=False, methods=["get"], url_path="running_session")
     def running_session(self, request, *args, **kwargs):
         labour = get_labour(request, self)
-        running = get_running_session(labour)
+        raw_end_date = request.query_params.get("end_date")
+        if raw_end_date:
+            # Preview of a partial close; same validation as POST.
+            input_serializer = LabourSessionCreateSerializer(
+                data={"end_date": raw_end_date}
+            )
+            input_serializer.is_valid(raise_exception=True)
+            try:
+                running = get_closable_running_session(
+                    labour, input_serializer.validated_data["end_date"]
+                )
+            except ValidationError as exc:
+                if exc.get_codes() == [status_codes.SESSION_NO_RECORDS]:
+                    return Response(status=status.HTTP_204_NO_CONTENT)
+                raise
+        else:
+            running = get_running_session(labour)
         if running is None:
             return Response(status=status.HTTP_204_NO_CONTENT)
         serializer = RunningLabourSessionSerializer(running)
