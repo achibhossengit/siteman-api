@@ -31,6 +31,7 @@ _EMPTY_RECORD_TOTALS = {
     "fooding_pay": 0,
     "advance_pay": 0,
     "return_amount": 0,
+    "settlement": 0,
 }
 
 
@@ -50,6 +51,28 @@ def site_daily_records_queryset(*, company_id, site_id, date_gte=None, date_lte=
     if date_lte is not None:
         qs = qs.filter(date__lte=date_lte)
     return qs
+
+
+def site_labour_sessions_queryset(
+    *, company_id, site_id, date_gte=None, date_lte=None
+):
+    """Sessions that settled cash on this site, by session ``created_at`` date."""
+    qs = LabourSession.objects.filter(company_id=company_id, site_id=site_id)
+    if date_gte is not None:
+        qs = qs.filter(created_at__date__gte=date_gte)
+    if date_lte is not None:
+        qs = qs.filter(created_at__date__lte=date_lte)
+    return qs
+
+
+def build_settlement_totals_by_labour(qs):
+    """Net settlement per labour over a sessions queryset."""
+    rows = (
+        qs.order_by()
+        .values("labour_id")
+        .annotate(settlement=Coalesce(Sum("settlement"), _ZERO))
+    )
+    return {row["labour_id"]: int(row["settlement"] or 0) for row in rows}
 
 
 def build_record_totals_by_labour(qs):
@@ -83,14 +106,19 @@ def build_site_daily_record_list(
     records,
     totals_by_labour,
     include_empty_roster=True,
+    sessions=(),
+    settlement_by_labour=None,
 ):
     """Merge labours with daily records for the requested window.
 
     Empty rows (``records=[]``) are only for *active* labours on this site,
     and only when ``include_empty_roster`` is true. Inactive or transferred
-    labours appear when they have a record in ``records``.
-    ``totals_by_labour`` is the full-window sum per labour.
+    labours appear when they have a record in ``records`` or a session in
+    ``sessions``. ``totals_by_labour`` is the full-window sum per labour;
+    ``settlement_by_labour`` adds the net session settlement to each total.
     """
+    settlement_by_labour = settlement_by_labour or {}
+    sessions_by_labour_id = defaultdict(list)
     records_by_labour_id = defaultdict(list)
     labours_by_id = {}
     if include_empty_roster:
@@ -107,17 +135,29 @@ def build_site_daily_record_list(
         records_by_labour_id[record.labour_id].append(record)
         labours_by_id.setdefault(record.labour_id, record.labour)
 
-    extra_ids = set(totals_by_labour) - set(labours_by_id)
+    for session in sessions:
+        sessions_by_labour_id[session.labour_id].append(session)
+        labours_by_id.setdefault(session.labour_id, session.labour)
+
+    extra_ids = (set(totals_by_labour) | set(settlement_by_labour)) - set(
+        labours_by_id
+    )
     if extra_ids and not records:
-        # Totals-only window: include anyone who has records in the range.
+        # Totals-only window: include anyone who has records or a settlement.
         for labour in Labour.objects.filter(pk__in=extra_ids):
             labours_by_id[labour.pk] = labour
+
+    def totals_for(labour_id):
+        totals = dict(totals_by_labour.get(labour_id, _EMPTY_RECORD_TOTALS))
+        totals["settlement"] = settlement_by_labour.get(labour_id, 0)
+        return totals
 
     return [
         {
             "labour": labour,
             "records": list(records_by_labour_id.get(labour.pk, [])),
-            "totals": totals_by_labour.get(labour.pk, dict(_EMPTY_RECORD_TOTALS)),
+            "sessions": list(sessions_by_labour_id.get(labour.pk, [])),
+            "totals": totals_for(labour.pk),
         }
         for labour in sorted(
             labours_by_id.values(),
@@ -192,6 +232,10 @@ def get_running_session(labour, end_date=None):
         "affected_rows": row_count,
         "previous_payable": latest_session_payable,
         "cumulative_payable": latest_session_payable + payable,
+        "site_id": labour.current_site_id,
+        "settlement": 0,
+        # No settlement yet on an open period, so nothing is carried off.
+        "remaining_payable": latest_session_payable + payable,
     }
 
 

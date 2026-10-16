@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -1291,6 +1291,7 @@ class DailyRecordValidationTests(DailyRecordAPITestCase):
                 "fooding_pay": 0,
                 "advance_pay": 0,
                 "return_amount": 0,
+                "settlement": 0,
             },
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1689,7 +1690,7 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         by_id = _by_labour_id(response)
         row = by_id[self.labour.pk]
-        self.assertCountEqual(row.keys(), ["labour", "records", "totals"])
+        self.assertCountEqual(row.keys(), ["labour", "records", "sessions", "totals"])
         self.assertCountEqual(
             row["labour"].keys(),
             [
@@ -1736,6 +1737,7 @@ class SiteDailyRecordCRUDTests(SiteDailyRecordAPITestCase):
                 "fooding_pay": 0,
                 "advance_pay": 0,
                 "return_amount": 0,
+                "settlement": 0,
             },
         )
         self.assertEqual(by_id[self.labour_b.pk]["records"], [])
@@ -1879,6 +1881,7 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
                 "fooding_pay": 18,
                 "advance_pay": 7,
                 "return_amount": 3,
+                "settlement": 0,
             },
         )
         self.assertEqual(by_id[self.labour_b.pk]["records"], [])
@@ -1890,6 +1893,7 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
                 "fooding_pay": 0,
                 "advance_pay": 0,
                 "return_amount": 0,
+                "settlement": 0,
             },
         )
 
@@ -2088,10 +2092,122 @@ class SiteDailyRecordRosterTests(SiteDailyRecordAPITestCase):
                 "fooding_pay": 10,
                 "advance_pay": 5,
                 "return_amount": 3,
+                "settlement": 0,
             },
         )
         self.assertEqual(by_id[self.labour_b.pk]["records"], [])
         self.assertEqual(by_id[self.labour_b.pk]["totals"]["extra_earn"], 0)
+
+    def _create_settled_session(self, labour, settlement, *, created_on=None, site=None):
+        today = timezone.localdate()
+        # start/end must be unique per labour; shift each new session back.
+        offset = LabourSession.objects.filter(labour=labour).count() * 20
+        session = LabourSession.objects.create(
+            company=self.company,
+            labour=labour,
+            site=site or self.site,
+            start_date=today - timedelta(days=200 + offset),
+            end_date=today - timedelta(days=190 + offset),
+            present_days=Decimal("1"),
+            salary_earnings=0,
+            extra_earnings=0,
+            total_fooding_pay=0,
+            total_advance_pay=0,
+            total_return=0,
+            affected_rows=0,
+            previous_payable=0,
+            settlement=settlement,
+        )
+        if created_on is not None:
+            stamp = timezone.make_aware(datetime.combine(created_on, time(hour=12)))
+            LabourSession.objects.filter(pk=session.pk).update(created_at=stamp)
+            session.refresh_from_db()
+        return session
+
+    def test_single_date_lists_sessions_and_settlement_totals(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        paid = self._create_settled_session(self.labour, 700)
+        self._create_settled_session(self.labour, -50, created_on=yesterday)
+        received = self._create_settled_session(self.labour_b, -300)
+        other_site = Site.objects.create(name="Other", company=self.company)
+        self._create_settled_session(self.labour_b, 999, site=other_site)
+
+        response = self.client.get(self.list_url, {"date": str(today)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_id = _by_labour_id(response)
+
+        row = by_id[self.labour.pk]
+        self.assertEqual([s["id"] for s in row["sessions"]], [paid.pk])
+        self.assertEqual(row["sessions"][0]["settlement"], 700)
+        self.assertEqual(row["sessions"][0]["date"], str(today))
+        self.assertIn("created_at", row["sessions"][0])
+        self.assertEqual(row["totals"]["settlement"], 700)
+
+        row_b = by_id[self.labour_b.pk]
+        self.assertEqual([s["id"] for s in row_b["sessions"]], [received.pk])
+        self.assertEqual(row_b["totals"]["settlement"], -300)
+
+    def test_range_lists_sessions_by_created_date(self):
+        today = timezone.localdate()
+        in_window = today - timedelta(days=5)
+        before = today - timedelta(days=20)
+        inside = self._create_settled_session(
+            self.labour, 400, created_on=in_window
+        )
+        self._create_settled_session(self.labour, 111, created_on=before)
+
+        response = self.client.get(
+            self.list_url,
+            {
+                "date__gte": str(today - timedelta(days=10)),
+                "date__lte": str(today),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = _by_labour_id(response)[self.labour.pk]
+        self.assertEqual([s["id"] for s in row["sessions"]], [inside.pk])
+        self.assertEqual(row["sessions"][0]["date"], str(in_window))
+        self.assertEqual(row["totals"]["settlement"], 400)
+
+    def test_session_only_labour_appears_even_when_transferred(self):
+        today = timezone.localdate()
+        gone = Labour.objects.create(
+            name="Moved",
+            company=self.company,
+            current_site=None,
+            is_active=False,
+        )
+        self._create_settled_session(gone, 250)
+
+        response = self.client.get(self.list_url, {"date": str(today)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = _by_labour_id(response)[gone.pk]
+        self.assertEqual(row["records"], [])
+        self.assertEqual(row["totals"]["settlement"], 250)
+        self.assertEqual(len(row["sessions"]), 1)
+
+    def test_totals_only_window_has_settlement_total_without_sessions(self):
+        today = timezone.localdate()
+        self._create_settled_session(self.labour, 600)
+        self._create_settled_session(self.labour, -100)
+
+        response = self.client.get(self.list_url)  # all-time
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = _by_labour_id(response)[self.labour.pk]
+        self.assertEqual(row["sessions"], [])
+        self.assertEqual(row["totals"]["settlement"], 500)
+
+        response = self.client.get(
+            self.list_url,
+            {
+                "date__gte": str(today - timedelta(days=60)),
+                "date__lte": str(today),
+            },
+        )
+        row = _by_labour_id(response)[self.labour.pk]
+        self.assertEqual(row["sessions"], [])
+        self.assertEqual(row["totals"]["settlement"], 500)
 
     def test_range_of_one_month_still_returns_records(self):
         today = timezone.localdate()
@@ -2425,7 +2541,9 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
         self.assertEqual(data["payable"], 850 + 200 - 1000)
         self.assertEqual(data["previous_payable"], 0)
         self.assertEqual(data["cumulative_payable"], 50)
-        self.assertNotIn("site", data)
+        self.assertEqual(data["site"], self.site.pk)
+        self.assertEqual(data["settlement"], 0)
+        self.assertEqual(data["remaining_payable"], 50)
         self.assertNotIn("details", data)
 
         session = LabourSession.objects.get()
@@ -2672,6 +2790,30 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
             response.data["errors"][0]["code"], status_codes.SESSION_NO_RECORDS
         )
 
+    def test_list_includes_running_session_site_and_settlement(self):
+        self._seed_open_period()
+        self.client.post(self.list_url, {"settlement": 25}, format="json")
+        self._create_daily_record(timezone.localdate(), present="1", wage=500)
+
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = _list_results(response)
+        running, closed = rows[0], rows[1]
+        self.assertNotIn("id", running)
+        self.assertEqual(running["site"], self.site.pk)
+        self.assertEqual(running["settlement"], 0)
+        self.assertEqual(closed["site"], self.site.pk)
+        self.assertEqual(closed["settlement"], 25)
+        self.assertEqual(closed["remaining_payable"], 25)  # payable 50 - 25
+        # running: previous 25 carried + 500 today, nothing settled yet
+        self.assertEqual(running["remaining_payable"], 525)
+        self.assertEqual(running["remaining_payable"], running["cumulative_payable"])
+
+        preview = self.client.get(self._running_url(self.labour.pk))
+        self.assertEqual(preview.data["site"], self.site.pk)
+        self.assertEqual(preview.data["settlement"], 0)
+        self.assertEqual(preview.data["remaining_payable"], 525)
+
     def test_create_defaults_settlement_zero_and_books_current_site(self):
         self._seed_open_period()
         response = self.client.post(self.list_url)
@@ -2760,6 +2902,9 @@ class LabourSessionListRetrieveTests(LabourSessionAPITestCase):
                 "end_date",
                 "payable",
                 "cumulative_payable",
+                "site",
+                "settlement",
+                "remaining_payable",
             ],
         )
 

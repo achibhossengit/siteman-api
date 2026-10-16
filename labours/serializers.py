@@ -357,6 +357,33 @@ class SiteDailyRecordTotalsSerializer(serializers.Serializer):
     fooding_pay = serializers.IntegerField()
     advance_pay = serializers.IntegerField()
     return_amount = serializers.IntegerField()
+    # Net cash settled by work sessions created in the window
+    # (positive = site paid labour, negative = labour paid back).
+    settlement = serializers.IntegerField()
+
+
+class SiteDailyRecordSessionSerializer(serializers.ModelSerializer):
+    """Work session that settled cash on this site, nested on the hajira list.
+
+    ``date`` is the session ``created_at`` day (local time); that is the day
+    the settlement is booked on the site.
+    """
+
+    date = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LabourSession
+        fields = [
+            "id",
+            "date",
+            "start_date",
+            "end_date",
+            "settlement",
+            "created_at",
+        ]
+
+    def get_date(self, obj):
+        return timezone.localtime(obj.created_at).date().isoformat()
 
 
 class SiteDailyRecordListSerializer(serializers.Serializer):
@@ -364,6 +391,7 @@ class SiteDailyRecordListSerializer(serializers.Serializer):
 
     labour = LabourListSerializer()
     records = SiteDailyRecordNestedSerializer(many=True)
+    sessions = SiteDailyRecordSessionSerializer(many=True)
     totals = SiteDailyRecordTotalsSerializer()
 
 
@@ -463,6 +491,10 @@ class LabourSessionListSerializer(serializers.Serializer):
     end_date = serializers.DateField(read_only=True)
     payable = serializers.IntegerField(read_only=True)
     cumulative_payable = serializers.IntegerField(read_only=True)
+    # Running (unsaved) session reports labour.current_site and settlement 0.
+    site = serializers.IntegerField(source="site_id", read_only=True, allow_null=True)
+    settlement = serializers.IntegerField(read_only=True)
+    remaining_payable = serializers.IntegerField(read_only=True)
 
 
 class LabourSessionSerializer(serializers.ModelSerializer):
@@ -471,6 +503,7 @@ class LabourSessionSerializer(serializers.ModelSerializer):
     payable = serializers.IntegerField(read_only=True)
     cumulative_payable = serializers.IntegerField(read_only=True)
     remaining_payable = serializers.IntegerField(read_only=True)
+    site = serializers.PrimaryKeyRelatedField(read_only=True)
 
     # Helps client decide deleteability before calling the API.
     is_modified = serializers.SerializerMethodField()
@@ -495,6 +528,7 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "cumulative_payable",
             "settlement",
             "remaining_payable",
+            "site",
             "is_modified",
             "is_latest",
             "created_at",
@@ -541,3 +575,7 @@ class RunningLabourSessionSerializer(serializers.Serializer):
     payable = serializers.IntegerField()
     previous_payable = serializers.IntegerField()
     cumulative_payable = serializers.IntegerField()
+    # Defaults a close would use: labour.current_site and settlement 0.
+    site = serializers.IntegerField(source="site_id", allow_null=True)
+    settlement = serializers.IntegerField()
+    remaining_payable = serializers.IntegerField()

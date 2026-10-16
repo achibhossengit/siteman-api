@@ -50,6 +50,7 @@ from .serializers import (
 from .services import (
     MAX_SITE_DAILY_RECORD_LIST_DAYS,
     build_record_totals_by_labour,
+    build_settlement_totals_by_labour,
     build_site_daily_record_list,
     create_labour_session,
     delete_labour_session,
@@ -57,6 +58,7 @@ from .services import (
     get_running_session,
     inclusive_date_span_days,
     site_daily_records_queryset,
+    site_labour_sessions_queryset,
 )
 
 
@@ -204,7 +206,9 @@ class SiteDailyRecordViewSet(
     GET returns a hajira roster for ``date`` (one day) or ``date__gte`` /
     ``date__lte``. Omit both for an all-time summary (per-labour totals,
     no individual records). Windows longer than one month also return
-    totals only. POST is still bulk create.
+    totals only. Each row also lists ``sessions`` created in the window on
+    this site (with their ``settlement``) and ``totals.settlement``; the
+    sessions list is empty in totals-only mode. POST is still bulk create.
     """
 
     serializer_class = SiteDailyRecordSerializer
@@ -246,10 +250,22 @@ class SiteDailyRecordViewSet(
             span_days is None or span_days > MAX_SITE_DAILY_RECORD_LIST_DAYS
         )
 
+        session_qs = site_labour_sessions_queryset(
+            company_id=request.user.company_id,
+            site_id=site_id,
+            date_gte=date_gte,
+            date_lte=date_lte,
+        )
+        settlement_by_labour = build_settlement_totals_by_labour(session_qs)
+
         if totals_only:
             records = []
+            sessions = []
         else:
             records = list(qs.select_related("labour").order_by("date", "id"))
+            sessions = list(
+                session_qs.select_related("labour").order_by("created_at", "id")
+            )
 
         rows = build_site_daily_record_list(
             company_id=request.user.company_id,
@@ -257,6 +273,8 @@ class SiteDailyRecordViewSet(
             records=records,
             totals_by_labour=totals_by_labour,
             include_empty_roster=True,
+            sessions=sessions,
+            settlement_by_labour=settlement_by_labour,
         )
         self._pending_activities_map = pending_activities_by_entity(
             company_id=request.user.company_id,
@@ -343,7 +361,8 @@ class LabourSessionViewSet(
 ):
     """Nested under ``/labours/<labour_pk>/sessions``.
 
-    POST optionally takes ``end_date``: it closes the labour's open period
+    POST optionally takes ``settlement`` (signed cash settled at close,
+    default 0; booked on ``labour.current_site``) and ``end_date``: it closes the labour's open period
     (DailyRecord rows after ``last_session_date`` up to ``end_date``, or all
     of them when omitted) into a new session and seals the affected records.
     ``end_date`` must satisfy ``last_session_date < end_date <= last record
