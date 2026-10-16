@@ -13,7 +13,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 
-from labours.models import DailyRecord
+from labours.models import DailyRecord, LabourSession
 from .models import SiteCash, SiteCashType
 
 _ZERO = Value(0)
@@ -42,12 +42,18 @@ def _site_cash_balance_through(site, *, through_date):
         returns=Coalesce(Sum(Coalesce(F("return_amount"), _ZERO)), _ZERO),
     )
 
+    # Session settlement is booked on the day the session was created.
+    settlement = LabourSession.objects.filter(
+        site=site, created_at__date__lte=through_date
+    ).aggregate(total=Coalesce(Sum("settlement"), _ZERO))["total"]
+
     balance = (
         sitecash["cash_in"]
         - sitecash["cash_out"]
         - (labour_cash["fooding"] or 0)
         - (labour_cash["advance"] or 0)
         + (labour_cash["returns"] or 0)
+        - (settlement or 0)
     )
 
     return int(balance)
@@ -87,12 +93,15 @@ def build_site_daily_report(
 
     records = DailyRecord.objects.filter(site=site)
     cash_qs = SiteCash.objects.filter(site=site)
+    sessions = LabourSession.objects.filter(site=site)
     if start_date is not None:
         records = records.filter(date__gte=start_date)
         cash_qs = cash_qs.filter(date__gte=start_date)
+        sessions = sessions.filter(created_at__date__gte=start_date)
     if end_date is not None:
         records = records.filter(date__lte=end_date)
         cash_qs = cash_qs.filter(date__lte=end_date)
+        sessions = sessions.filter(created_at__date__lte=end_date)
 
     wage_expr = ExpressionWrapper(
         Coalesce(F("present"), _ZERO_DEC) * Coalesce(F("wage"), _ZERO),
@@ -119,8 +128,18 @@ def build_site_daily_report(
         ),
     )
 
-    labour_payment = int((labour["fooding_pay"] or 0) + (labour["advance_pay"] or 0))
-    labour_return = int(labour["labour_return"] or 0)
+    settled = sessions.aggregate(
+        paid=Coalesce(Sum("settlement", filter=Q(settlement__gt=0)), _ZERO),
+        received=Coalesce(Sum("settlement", filter=Q(settlement__lt=0)), _ZERO),
+    )
+
+    # Session settlement: positive = paid to labour, negative = received back.
+    labour_payment = int(
+        (labour["fooding_pay"] or 0)
+        + (labour["advance_pay"] or 0)
+        + (settled["paid"] or 0)
+    )
+    labour_return = int((labour["labour_return"] or 0) - (settled["received"] or 0))
 
     # labour_return is cash in, not a cost
     total_cost = labour_payment + int(cash["site_cost"] or 0)

@@ -81,6 +81,8 @@ TRACKED_FIELDS: dict[str, tuple[str, ...]] = {
         "total_return",
         "affected_rows",
         "previous_payable",
+        "site_id",
+        "settlement",
     ),
 }
 

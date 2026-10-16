@@ -133,7 +133,8 @@ def get_running_session(labour, end_date=None):
     are aggregated (partial close) and it becomes the session ``end_date``.
     """
     latest_session = labour.sessions.order_by("-end_date", "-id").first()
-    latest_session_payable = latest_session.cumulative_payable if latest_session else 0
+    # Carry what is still owed after the previous session's settlement.
+    latest_session_payable = latest_session.remaining_payable if latest_session else 0
 
     # Records after last_session_date (set by LabourSession post_save signal).
     latest_session_date = labour.last_session_date
@@ -238,18 +239,25 @@ def get_closable_running_session(labour, end_date=None):
     return running
 
 
-def create_labour_session(*, labour, user, end_date=None):
+def create_labour_session(*, labour, user, end_date=None, settlement=0):
     """Close (part of) the labour's open period into a new work session.
 
     Aggregates DailyRecord rows dated after ``labour.last_session_date`` up to
     ``end_date`` (or the last record when omitted) and stores the totals plus
     affected row count. ``previous_payable`` is the prior session's
-    ``cumulative_payable`` (0 if none). Sealing is done by the
-    ``LabourSession`` post_save signal.
+    ``remaining_payable`` (cumulative payable minus its settlement; 0 if none).
+    ``settlement`` is the cash settled at close (positive = site paid labour,
+    negative = labour paid back) and is booked against ``labour.current_site``.
+    Sealing is done by the ``LabourSession`` post_save signal.
     """
     with transaction.atomic():
         # Serialise concurrent closes for the same labour.
         labour = Labour.objects.select_for_update().get(pk=labour.pk)
+        if labour.current_site_id is None:
+            raise ValidationError(
+                "Labour must be assigned to a site before closing a session.",
+                code=status_codes.LABOUR_UNASSIGNED,
+            )
         running = get_closable_running_session(labour, end_date)
 
         try:
@@ -265,6 +273,8 @@ def create_labour_session(*, labour, user, end_date=None):
                 total_return=running["total_return"],
                 affected_rows=running["affected_rows"],
                 previous_payable=running["previous_payable"],
+                site_id=labour.current_site_id,
+                settlement=settlement,
                 company=user.company,
             )
         except IntegrityError:

@@ -174,6 +174,21 @@ class LabourSession(TimeStampedMixin, CompanyOwnedMixin):
     )
     # it may be negative.
     previous_payable = models.IntegerField()
+    site = models.ForeignKey(
+        "sites.Site",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=False,
+        related_name="labour_sessions",
+        help_text="Snapshot of labour.current_site at close; bears the settlement cash.",
+    )
+    settlement = models.IntegerField(
+        default=0,
+        help_text=(
+            "Cash settled at close. Positive = site paid labour; "
+            "negative = labour paid back to site."
+        ),
+    )
 
     class Meta:
         constraints = [
@@ -202,6 +217,11 @@ class LabourSession(TimeStampedMixin, CompanyOwnedMixin):
     @property
     def cumulative_payable(self):
         return self.previous_payable + self.payable
+
+    @property
+    def remaining_payable(self):
+        """Payable still carried to the next session after the settlement."""
+        return self.cumulative_payable - self.settlement
 
     def __str__(self):
         return f"{self.labour} ({self.start_date} - {self.end_date})"

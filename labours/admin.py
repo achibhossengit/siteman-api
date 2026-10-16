@@ -56,6 +56,7 @@ class LabourSessionAdmin(ReadOnlyModelAdmin):
         "end_date",
         "present_days",
         "salary_earnings",
+        "settlement",
         "affected_rows",
     )
     list_display_links = ("labour",)

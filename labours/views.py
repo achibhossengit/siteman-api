@@ -410,6 +410,7 @@ class LabourSessionViewSet(
             labour=labour,
             user=request.user,
             end_date=input_serializer.validated_data.get("end_date"),
+            settlement=input_serializer.validated_data["settlement"],
         )
         serializer = LabourSessionSerializer(
             session, context=self.get_serializer_context()

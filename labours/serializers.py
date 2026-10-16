@@ -11,6 +11,9 @@ from core.images import ProfilePhotoField
 from .models import DailyRecord, Labour, LabourSession
 from .services import affected_rows_match, is_latest_labour_session
 
+# Signed 32-bit bound; matches the IntegerField columns used for money.
+_INT_MAX = 2_147_483_647
+
 
 class LabourRecordDateValidationMixin:
     """Shared date rules for daily labour records."""
@@ -467,6 +470,7 @@ class LabourSessionSerializer(serializers.ModelSerializer):
     total_payment = serializers.IntegerField(read_only=True)
     payable = serializers.IntegerField(read_only=True)
     cumulative_payable = serializers.IntegerField(read_only=True)
+    remaining_payable = serializers.IntegerField(read_only=True)
 
     # Helps client decide deleteability before calling the API.
     is_modified = serializers.SerializerMethodField()
@@ -489,6 +493,8 @@ class LabourSessionSerializer(serializers.ModelSerializer):
             "total_earnings",
             "payable",
             "cumulative_payable",
+            "settlement",
+            "remaining_payable",
             "is_modified",
             "is_latest",
             "created_at",
@@ -503,9 +509,20 @@ class LabourSessionSerializer(serializers.ModelSerializer):
 
 
 class LabourSessionCreateSerializer(serializers.Serializer):
-    """Input for closing a session. Omit ``end_date`` to close the whole open period."""
+    """Input for closing a session.
+
+    Omit ``end_date`` to close the whole open period. ``settlement`` is the
+    cash settled at close: positive = site paid labour, negative = labour
+    paid back to site (default 0).
+    """
 
     end_date = serializers.DateField(required=False)
+    settlement = serializers.IntegerField(
+        required=False,
+        default=0,
+        min_value=-_INT_MAX,
+        max_value=_INT_MAX,
+    )
 
 
 class RunningLabourSessionSerializer(serializers.Serializer):

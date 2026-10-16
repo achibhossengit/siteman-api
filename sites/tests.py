@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -21,7 +21,7 @@ from sites.models import (
 )
 from accounts.models import UserSite
 from core import status_codes
-from labours.models import DailyRecord, Labour
+from labours.models import DailyRecord, Labour, LabourSession
 
 User = get_user_model()
 
@@ -1818,6 +1818,64 @@ class SiteDailyReportSummaryTests(SiteDailyReportAPITestCase):
         self.assertEqual(response.data["balance"], 1300)  # 1000 + 300
         self.assertEqual(response.data["deposit"], 500)
         self.assertEqual(response.data["withdrawal"], 200)
+
+    def _create_session(self, labour, *, settlement, created_on=None, site=None):
+        session = LabourSession.objects.create(
+            company=self.company,
+            labour=labour,
+            site=site or self.site,
+            start_date=self.report_date - timedelta(days=30),
+            end_date=self.report_date - timedelta(days=20),
+            present_days=Decimal("1"),
+            salary_earnings=0,
+            extra_earnings=0,
+            total_fooding_pay=0,
+            total_advance_pay=0,
+            total_return=0,
+            affected_rows=0,
+            previous_payable=0,
+            settlement=settlement,
+        )
+        if created_on is not None:
+            # created_at is auto_now_add; move it to the wanted day.
+            stamp = timezone.make_aware(
+                datetime.combine(created_on, time(hour=12))
+            )
+            LabourSession.objects.filter(pk=session.pk).update(created_at=stamp)
+        return session
+
+    def test_session_settlement_counts_in_site_report_by_created_date(self):
+        labour = self._create_labour()
+        yesterday = self.report_date - timedelta(days=1)
+        SiteCash.objects.create(
+            company=self.company,
+            site=self.site,
+            type=SiteCashType.DEPOSIT,
+            date=yesterday,
+            amount=10000,
+        )
+        # Paid to labour yesterday (cash out), received from labour today (cash in).
+        self._create_session(labour, settlement=3000, created_on=yesterday)
+        labour2 = self._create_labour(name="Rahim")
+        self._create_session(labour2, settlement=-500)
+        # Another site's settlement must not touch this site.
+        other_site = Site.objects.create(name="Other", company=self.company)
+        self._create_session(
+            self._create_labour(name="Jamal"), settlement=9999, site=other_site
+        )
+
+        response = self.client.get(self.url, {"date": str(self.report_date)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["previous_balance"], 7000)  # 10000 - 3000
+        self.assertEqual(response.data["labour_payment"], 0)
+        self.assertEqual(response.data["labour_return"], 500)
+        self.assertEqual(response.data["remaining"], 500)
+        self.assertEqual(response.data["balance"], 7500)
+
+        response = self.client.get(self.url, {"date": str(yesterday)})
+        self.assertEqual(response.data["labour_payment"], 3000)
+        self.assertEqual(response.data["total_cost"], 3000)
+        self.assertEqual(response.data["balance"], 7000)
 
     def test_private_fields_included_with_permission(self):
         self._grant_private_cash_view(self.user)

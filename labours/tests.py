@@ -2672,6 +2672,63 @@ class LabourSessionCreateTests(LabourSessionAPITestCase):
             response.data["errors"][0]["code"], status_codes.SESSION_NO_RECORDS
         )
 
+    def test_create_defaults_settlement_zero_and_books_current_site(self):
+        self._seed_open_period()
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["settlement"], 0)
+        self.assertEqual(response.data["remaining_payable"], 50)
+        session = LabourSession.objects.get()
+        self.assertEqual(session.site_id, self.site.pk)
+        self.assertEqual(session.settlement, 0)
+
+    def test_create_with_settlement_reduces_carried_payable(self):
+        self._seed_open_period()  # payable = 50
+        response = self.client.post(
+            self.list_url, {"settlement": 30}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["cumulative_payable"], 50)
+        self.assertEqual(response.data["settlement"], 30)
+        self.assertEqual(response.data["remaining_payable"], 20)
+
+        day = timezone.localdate()
+        self._create_daily_record(day, present="1", wage=500)
+        running = self.client.get(self._running_url(self.labour.pk))
+        self.assertEqual(running.status_code, status.HTTP_200_OK)
+        self.assertEqual(running.data["previous_payable"], 20)
+        self.assertEqual(running.data["cumulative_payable"], 520)
+
+    def test_create_with_negative_and_oversized_settlement(self):
+        self._seed_open_period()  # payable = 50
+        response = self.client.post(
+            self.list_url, {"settlement": -200}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["settlement"], -200)
+        self.assertEqual(response.data["remaining_payable"], 250)
+
+    def test_create_settlement_must_be_integer(self):
+        self._seed_open_period()
+        response = self.client.post(
+            self.list_url, {"settlement": "abc"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(LabourSession.objects.exists())
+
+    def test_create_requires_current_site(self):
+        self._seed_open_period()
+        # Company admins can reach an unassigned labour; service must still refuse.
+        self.user.is_companyadmin = True
+        self.user.save()
+        Labour.objects.filter(pk=self.labour.pk).update(current_site=None)
+        response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"], status_codes.LABOUR_UNASSIGNED
+        )
+        self.assertFalse(LabourSession.objects.exists())
+
     def test_running_session_preview_with_end_date(self):
         self._seed_twenty_days()
         response = self.client.get(
