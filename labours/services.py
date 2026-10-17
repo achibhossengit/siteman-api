@@ -16,7 +16,7 @@ from django.db.models.functions import Coalesce
 from rest_framework.exceptions import ErrorDetail, ValidationError
 
 from core import status_codes
-from activity.services import log_created, log_deleted
+from activity.services import log_created, log_deleted, log_updated, snapshot_instance
 from .models import DailyRecord, Labour, LabourSession
 
 _ZERO = Value(0)
@@ -353,6 +353,38 @@ def is_latest_labour_session(session):
     return latest == session.pk
 
 
+def _require_latest_matching_session(session, *, not_latest, mismatch):
+    """Shared last-session + snapshot-count guard for update and delete."""
+    if not is_latest_labour_session(session):
+        raise ValidationError(not_latest, code=status_codes.SESSION_NOT_LATEST)
+
+    if not affected_rows_match(session):
+        raise ValidationError(mismatch, code=status_codes.SESSION_SNAPSHOT_MISMATCH)
+
+
+def update_labour_session(session, *, settlement, actor):
+    """Update settlement on the labour's most recent work session.
+
+    Same guard as delete: only the latest session, and only when DailyRecord
+    row counts between ``start_date`` and ``end_date`` still match the session.
+    ``remaining_payable`` is derived, so the next running period's carry
+    updates automatically.
+    """
+    _require_latest_matching_session(
+        session,
+        not_latest="Only the most recent work session can be updated.",
+        mismatch="Records no longer match this session; update is not allowed.",
+    )
+
+    with transaction.atomic():
+        old_snapshot = snapshot_instance(session)
+        session.settlement = settlement
+        session.save(update_fields=["settlement", "updated_at"])
+        log_updated(actor, session, old_snapshot=old_snapshot)
+
+    return session
+
+
 def delete_labour_session(session, *, actor):
     """Delete the labour's most recent work session.
 
@@ -360,17 +392,11 @@ def delete_labour_session(session, *, actor):
     ``end_date`` still match the session. Unsealing is done by the
     ``LabourSession`` post_delete signal.
     """
-    if not is_latest_labour_session(session):
-        raise ValidationError(
-            "Only the most recent work session can be deleted.",
-            code=status_codes.SESSION_NOT_LATEST,
-        )
-
-    if not affected_rows_match(session):
-        raise ValidationError(
-            "Records no longer match this session; deletion is not allowed.",
-            code=status_codes.SESSION_SNAPSHOT_MISMATCH,
-        )
+    _require_latest_matching_session(
+        session,
+        not_latest="Only the most recent work session can be deleted.",
+        mismatch="Records no longer match this session; deletion is not allowed.",
+    )
 
     with transaction.atomic():
         log_deleted(actor, session)

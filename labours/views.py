@@ -43,6 +43,7 @@ from .serializers import (
     LabourSessionCreateSerializer,
     LabourSessionListSerializer,
     LabourSessionSerializer,
+    LabourSessionUpdateSerializer,
     RunningLabourSessionSerializer,
     SiteDailyRecordListSerializer,
     SiteDailyRecordSerializer,
@@ -59,6 +60,7 @@ from .services import (
     inclusive_date_span_days,
     site_daily_records_queryset,
     site_labour_sessions_queryset,
+    update_labour_session,
 )
 
 
@@ -366,14 +368,16 @@ class LabourSessionViewSet(
     (DailyRecord rows after ``last_session_date`` up to ``end_date``, or all
     of them when omitted) into a new session and seals the affected records.
     ``end_date`` must satisfy ``last_session_date < end_date <= last record
-    date``. GET ``running_session?end_date=`` previews a partial close. DELETE only removes the most recent
+    date``. GET ``running_session?end_date=`` previews a partial close. PATCH
+    updates ``settlement`` on the most recent session when current records
+    still match its stored snapshot. DELETE only removes the most recent
     session, and only when current records still match its stored snapshot.
     """
 
     serializer_class = LabourSessionSerializer
     queryset = LabourSession.objects.none()
     pagination_class = StandardPagination
-    http_method_names = ["get", "post", "delete", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     filterset_fields = ["start_date", "end_date"]
 
     def get_permissions(self):
@@ -386,6 +390,8 @@ class LabourSessionViewSet(
     def get_serializer_class(self):
         if self.action == "list":
             return LabourSessionListSerializer
+        if self.action == "partial_update":
+            return LabourSessionUpdateSerializer
         return LabourSessionSerializer
 
     def get_queryset(self):
@@ -435,6 +441,20 @@ class LabourSessionViewSet(
             session, context=self.get_serializer_context()
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        session = self.get_object()
+        input_serializer = LabourSessionUpdateSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        session = update_labour_session(
+            session,
+            settlement=input_serializer.validated_data["settlement"],
+            actor=request.user,
+        )
+        serializer = LabourSessionSerializer(
+            session, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
 
     def perform_destroy(self, instance):
         delete_labour_session(instance, actor=self.request.user)
