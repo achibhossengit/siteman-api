@@ -505,7 +505,7 @@ class LabourSessionSerializer(serializers.ModelSerializer):
     remaining_payable = serializers.IntegerField(read_only=True)
     site = serializers.PrimaryKeyRelatedField(read_only=True)
 
-    # Helps client decide deleteability before calling the API.
+    # Helps client decide whether the session can be updated or deleted.
     is_modified = serializers.SerializerMethodField()
     is_latest = serializers.SerializerMethodField()
 
@@ -554,6 +554,15 @@ class LabourSessionCreateSerializer(serializers.Serializer):
     settlement = serializers.IntegerField(
         required=False,
         default=0,
+        min_value=-_INT_MAX,
+        max_value=_INT_MAX,
+    )
+
+
+class LabourSessionUpdateSerializer(serializers.Serializer):
+    """Input for correcting settlement on the latest matching session."""
+
+    settlement = serializers.IntegerField(
         min_value=-_INT_MAX,
         max_value=_INT_MAX,
     )

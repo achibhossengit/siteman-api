@@ -2376,6 +2376,7 @@ class LabourSessionAPITestCase(APITestCase):
         codenames = codenames or [
             "view_laboursession",
             "add_laboursession",
+            "change_laboursession",
             "delete_laboursession",
         ]
         ct = ContentType.objects.get_for_model(LabourSession)
@@ -2476,6 +2477,19 @@ class LabourSessionAuthPermissionTests(LabourSessionAPITestCase):
         self._grant_session_permissions(self.user, ["view_laboursession"])
         self.client.force_authenticate(user=self.user)
         response = self.client.post(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_missing_change_permission_returns_403(self):
+        session = self._create_session_via_orm()
+        self.user.user_permissions.clear()
+        self.user = User.objects.get(pk=self.user.pk)
+        self._grant_session_permissions(self.user, ["view_laboursession"])
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, session.pk),
+            {"settlement": 10},
+            format="json",
+        )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_missing_delete_permission_returns_403(self):
@@ -3018,6 +3032,150 @@ class LabourSessionRunningSessionTests(LabourSessionAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
 
+class LabourSessionUpdateTests(LabourSessionAPITestCase):
+    def _create_session_via_api(self, settlement=0):
+        self._seed_open_period()
+        payload = {}
+        if settlement:
+            payload["settlement"] = settlement
+        response = self.client.post(self.list_url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return LabourSession.objects.get(pk=response.data["id"])
+
+    def test_update_latest_session_settlement_success(self):
+        session = self._create_session_via_api()
+        self.assertEqual(session.settlement, 0)
+        self.assertEqual(session.remaining_payable, 50)
+
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, session.pk),
+            {"settlement": 30},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["settlement"], 30)
+        self.assertEqual(response.data["cumulative_payable"], 50)
+        self.assertEqual(response.data["remaining_payable"], 20)
+
+        session.refresh_from_db()
+        self.assertEqual(session.settlement, 30)
+        self.assertEqual(session.remaining_payable, 20)
+
+        day = timezone.localdate()
+        self._create_daily_record(day, present="1", wage=500)
+        running = self.client.get(self._running_url(self.labour.pk))
+        self.assertEqual(running.status_code, status.HTTP_200_OK)
+        self.assertEqual(running.data["previous_payable"], 20)
+
+    def test_update_negative_settlement(self):
+        session = self._create_session_via_api()
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, session.pk),
+            {"settlement": -200},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["settlement"], -200)
+        self.assertEqual(response.data["remaining_payable"], 250)
+
+    def test_update_settlement_must_be_integer(self):
+        session = self._create_session_via_api()
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, session.pk),
+            {"settlement": "abc"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        session.refresh_from_db()
+        self.assertEqual(session.settlement, 0)
+
+    def test_update_requires_settlement(self):
+        session = self._create_session_via_api()
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, session.pk),
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_update_non_latest_session_returns_400(self):
+        older = self._create_session_via_orm(
+            end_date=timezone.localdate() - timedelta(days=5)
+        )
+        self._create_session_via_orm(end_date=timezone.localdate())
+
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, older.pk),
+            {"settlement": 10},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SESSION_NOT_LATEST,
+        )
+        older.refresh_from_db()
+        self.assertEqual(older.settlement, 0)
+
+    def test_update_allowed_when_only_record_amount_changed(self):
+        """Count-only guard: amount edits do not block settlement update."""
+        session = self._create_session_via_api()
+        DailyRecord.objects.filter(date=self.day2).update(advance_pay=9999)
+
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, session.pk),
+            {"settlement": 15},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        session.refresh_from_db()
+        self.assertEqual(session.settlement, 15)
+
+    def test_update_blocked_when_record_removed(self):
+        session = self._create_session_via_api()
+        DailyRecord.objects.filter(date=self.day2).delete()
+
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, session.pk),
+            {"settlement": 15},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SESSION_SNAPSHOT_MISMATCH,
+        )
+        session.refresh_from_db()
+        self.assertEqual(session.settlement, 0)
+
+    def test_put_not_allowed(self):
+        session = self._create_session_via_orm()
+        response = self.client.put(
+            self._detail_url(self.labour.pk, session.pk),
+            {"settlement": 10},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_update_writes_activity_log_diff(self):
+        session = self._create_session_via_api(settlement=10)
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, session.pk),
+            {"settlement": 40},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        log = ActivityLog.objects.get(
+            entity_type=ActivityEntityType.LABOUR_SESSION,
+            entity_id=session.pk,
+            action=ActivityAction.UPDATED,
+        )
+        self.assertEqual(log.actor_id, self.user.pk)
+        self.assertEqual(log.labour_id, self.labour.pk)
+        self.assertEqual(log.changes["settlement"]["old"], 10)
+        self.assertEqual(log.changes["settlement"]["new"], 40)
+
+
 class LabourSessionDeleteTests(LabourSessionAPITestCase):
     def _create_session_via_api(self):
         self._seed_open_period()
@@ -3106,6 +3264,22 @@ class LabourSessionSubscriptionTests(LabourSessionAPITestCase):
             status_codes.SUBSCRIPTION_EXPIRED,
         )
         self.assertFalse(LabourSession.objects.exists())
+
+    def test_update_blocked_when_subscription_expired(self):
+        session = self._create_session_via_orm()
+        self.company.paid_until = timezone.localdate() - timedelta(days=1)
+        self.company.save(update_fields=["paid_until"])
+
+        response = self.client.patch(
+            self._detail_url(self.labour.pk, session.pk),
+            {"settlement": 10},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["errors"][0]["code"],
+            status_codes.SUBSCRIPTION_EXPIRED,
+        )
 
     def test_delete_blocked_when_subscription_expired(self):
         session = self._create_session_via_orm()
